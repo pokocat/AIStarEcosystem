@@ -15,7 +15,10 @@ export function SettingsPanel({ work, onClose, apply, suggestedVideoModel }: { w
   const [aspect, setAspect] = useState(work.settings.aspectRatio);
   const [commerce, setCommerce] = useState(!!work.settings.commerce);
   const [videoModel, setVideoModel] = useState(suggestedVideoModel ?? work.settings.videoModel ?? "");
+  const [videoTier, setVideoTier] = useState<string | null>(suggestedVideoModel && suggestedVideoModel !== work.settings.videoModel ? null : work.settings.videoTier ?? null);
   const chosenVideo = work.videoModels.find(m => videoModel ? m.id === videoModel : m.isDefault) ?? (!videoModel ? work.videoModels[0] : undefined);
+  const videoTiers = chosenVideo?.tiers?.filter(t => t.ratios.includes(aspect)) ?? [];
+  const selectedTier = videoTiers.find(t => t.tier === videoTier)?.tier ?? videoTiers[0]?.tier ?? null;
   const savedText = work.settings.textModel ?? "";
   const [textModel, setTextModel] = useState(savedText);
   const textModels = work.textModels ?? [];
@@ -35,7 +38,9 @@ export function SettingsPanel({ work, onClose, apply, suggestedVideoModel }: { w
     const imageChange = imageModel === savedImage ? {} : { imageModel: imageModel || null };
     const textChange = textModel === savedText ? {} : { textModel: textModel || null };
     const commerceChange = commerce === !!work.settings.commerce ? {} : { commerce };
-    apply(await DirectorApi.patchWork(work.id, { settings: { style: style.trim(), aspectRatio: aspect, videoModel: videoModel || null, ...commerceChange, ...textChange, ...imageChange } }));
+    const nextTier = videoTier === selectedTier ? videoTier : null;
+    const videoChange = nextTier === (work.settings.videoTier ?? null) ? {} : { videoTier: nextTier };
+    apply(await DirectorApi.patchWork(work.id, { settings: { style: style.trim(), aspectRatio: aspect, videoModel: videoModel || null, ...videoChange, ...commerceChange, ...textChange, ...imageChange } }));
     onClose();
   }, message => setLocalError(`设置保存失败：${message}。修改内容已保留，请调整后点击「保存」。`));
   return <div className="director-popover" role="dialog" aria-label="作品设置" ref={dialogFocus} tabIndex={-1}>
@@ -66,7 +71,7 @@ export function SettingsPanel({ work, onClose, apply, suggestedVideoModel }: { w
         : imageModel === savedImage && state?.available && work.boardImage?.size ? `资产图${costText(work.pricing.image, work.pricing.mock)}/张。` : "暂无可用图片模型，请联系管理员开通。")}</small>
     </label>
     <label className="director-field"><span>视频模型</span>
-      <SelectField aria-label="视频模型" value={videoModel} onChange={e => setVideoModel(e.target.value)}>
+      <SelectField aria-label="视频模型" value={videoModel} onChange={e => { setVideoModel(e.target.value); setVideoTier(null); }}>
         <option value="">默认{work.videoModels.find(m => m.isDefault) ? `（${work.videoModels.find(m => m.isDefault)!.name}）` : ""}</option>
         {work.videoModels.map(m => <option key={m.id} value={m.id}>{m.name} · {secRange(m.minSec, m.maxSec)}{m.mode === "frame" ? " · 仅分镜首帧"
           : m.maxRefImages != null ? ` · 最多 ${m.maxRefImages} 张参考图` : ""}</option>)}
@@ -77,6 +82,12 @@ export function SettingsPanel({ work, onClose, apply, suggestedVideoModel }: { w
           : chosenVideo?.maxRefImages != null ? `最多 ${chosenVideo.maxRefImages} 张参考图，含分镜图。角色声音也占用参考素材总数。`
           : "同时参考分镜图、资产图和角色声音，片段时长按模型支持的范围确定。"}</small>
     </label>
+    {!!videoTiers.length && <label className="director-field"><span>视频清晰度</span>
+      <SelectField aria-label="视频清晰度" value={selectedTier ?? ""} disabled={!!busy || videoTiers.length === 1} onChange={e => setVideoTier(e.target.value)}>
+        {videoTiers.map(({ tier }) => <option key={tier} value={tier}>{tier.toUpperCase()}</option>)}
+      </SelectField>
+    </label>}
+    {chosenVideo?.mode === "omni" && chosenVideo.tiers && !videoTiers.length && <p className="director-dialog-note">当前视频模型不支持所选画幅，请更换画幅或视频模型。</p>}
     <p className="director-dialog-note">{suggestedVideoModel ? "保存后，整个作品后续生成的片段都会使用所选视频模型。"
       : "修改仅影响之后生成的内容，已生成的内容不变。"}</p>
     <InlineError message={localError} onClose={() => setLocalError("")}/>

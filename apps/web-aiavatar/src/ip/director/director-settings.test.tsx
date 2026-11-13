@@ -28,6 +28,22 @@ function choose(value: string) {
   const control = screen.getByRole('combobox', { name:'图片模型' });
   fireEvent.change(document.getElementById(control.getAttribute('data-select-native')!)!, { target:{value} });
 }
+test('saves a priced resolution supported by the selected video model and picture ratio', async () => {
+  const next = { ...work, videoModels: [
+    { id: 'seedance25', name: 'Seedance 2.5', isDefault: true, minSec: 4, maxSec: 15, mode: 'omni', tiers: [
+      { tier: '720p', ratios: ['9:16', '16:9'] },
+      { tier: '1080p', ratios: ['9:16', '16:9'] },
+    ] },
+  ] };
+  api.patchWork.mockResolvedValue(next);
+  render(<SettingsPanel work={next} apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
+  const control = screen.getByRole('combobox', { name: '视频清晰度' });
+  fireEvent.change(document.getElementById(control.getAttribute('data-select-native')!)!, { target: { value: '1080p' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存' }));
+  await waitFor(() => expect(api.patchWork).toHaveBeenCalledWith('model-work', {
+    settings: { style: '真人写实', aspectRatio: '9:16', videoModel: null, videoTier: '1080p' },
+  }));
+});
 test('the chosen image model is saved and its own price is shown before saving', async () => {
   const apply=vi.fn(),close=vi.fn();api.patchWork.mockResolvedValue(work);
   render(<SettingsPanel work={work} apply={apply} onClose={close} setError={vi.fn()}/>);

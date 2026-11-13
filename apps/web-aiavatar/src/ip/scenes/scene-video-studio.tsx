@@ -814,7 +814,7 @@ export function SceneVideoStudio() {
     } catch { return { endpointId: m.endpointId, name: m.name, cost: null, changes: "当前素材不支持，需要调整" }; }
   });
   // 规格跟着选的视频模型走（画面比例、清晰度都按这个模型实际支持的给）。
-  const ratios = contract?.tiers.find(t => t.tier === usedTier)?.canvases.map(c => c.aspectRatio).filter(r => r === "9:16" || r === "16:9") ?? ["9:16", "16:9"];
+  const ratios = contract ? ["9:16", "16:9"].filter(r => contract.tiers.some(t => t.canvases.some(c => c.aspectRatio === r))) : ["9:16", "16:9"];
   // 三种入口共用任务工作区，后台按实际制作方式推进。
   const shownDuration = recreation || long ? duration : usedDuration;
   // 按钮旁的价按服务端报价显示（折扣、模型赠款、付款账户），本地价表只在报价回来之前垫着，也作为提交时的上限。
@@ -1371,7 +1371,7 @@ export function SceneVideoStudio() {
         max={MAX_SECONDS} single={recreation ? undefined : contract?.maxSeconds} duration={duration} onDuration={pickDuration} segments={segments}
         followsSource={recreation} sourceKnown={!!video?.durationSec}
         clipCustom={clipCustom} onClipCustom={on => { setClipCustom(on); setHint(""); }} clipMin={cloneMin} clipMax={sourceSeconds}
-        ratios={recreation ? ["9:16", "16:9"] : ratios} ratio={ratio} onRatio={setRatio}
+        ratios={ratios} ratio={ratio} onRatio={setRatio}
         tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
         language={language} onLanguage={setLanguage} optimizable={!!chosenVideo?.supportsPromptOptimization} optimize={optimize || depthClone} onOptimize={setOptimize}
         optimizeFixed={depthClone}
@@ -1679,8 +1679,11 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
     </div>}
     <div className="scene-setting-row"><span>画面比例</span>
       <div className="scene-choice-row">{ratios.map(value => <button key={value} type="button" aria-pressed={value === ratio} onClick={() => onRatio(value)}><RatioGlyph ratio={value}/>{value}</button>)}</div></div>
-    {tiers.length > 1 && <div className="scene-setting-row"><span>清晰度</span>
-      <div className="scene-choice-row">{tiers.map(t => <button key={t} type="button" aria-pressed={t === tier} onClick={() => onTier(t)}>{t.toUpperCase()}</button>)}</div></div>}
+    <div className="scene-setting-row"><span>清晰度</span>
+      {tiers.length ? <div className="scene-choice-row" role="group" aria-label="视频清晰度">
+        {tiers.map(t => <button key={t} type="button" aria-pressed={t === tier} onClick={() => onTier(t)}>{t.toUpperCase()}</button>)}
+      </div> : <p className="scene-setting-text">当前没有可选清晰度</p>}
+    </div>
     {optimizable && optimizeFixed && <div className="scene-setting-row" role="group" aria-label="提示词"><span>提示词</span>
       {/* 服务端对深度复刻总是先优化（StudioCloneVideoPlan.optimize）：动作参考视频要按模型的写法单独交代，按原文直发效果差。 */}
       <p>深度复刻会按此模型的写法优化提示词，按实际用量另计。</p></div>}

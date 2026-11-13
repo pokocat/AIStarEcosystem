@@ -35,7 +35,12 @@ public final class VideoStudioDtos {
 
     /** 一档清晰度及其可选画布。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    public record VideoStudioTier(String tier, List<VideoStudioCanvas> canvases) {}
+    public record VideoStudioTier(String tier, List<VideoStudioCanvas> canvases,
+                                  @JsonInclude(JsonInclude.Include.NON_NULL) Long creditsPerSecond) {
+        public VideoStudioTier(String tier, List<VideoStudioCanvas> canvases) {
+            this(tier, canvases, null);
+        }
+    }
 
     /** 某类素材的限制。{@code minDurationSec} / {@code maxDurationSec} 为 null = 不限。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)

@@ -108,6 +108,28 @@ class DirectorH3VideoFlowTest {
 
     private ObjectNode clip() { return (ObjectNode) c.path("clips").get(0); }
 
+    @Test void selectedResolutionIsUsedForQuoteAndSubmission() {
+        var base = referenceModel("ep-seedance25", "Seedance 2.5", true, 30, 33, "9:16");
+        String mode = "universal_reference_video";
+        var hd = new VideoStudioTier("1080p", List.of(new VideoStudioCanvas("9:16", 1080, 1920)));
+        var contract = new VideoStudioContract(base.contract().modes(), List.of(base.contract().tiers().get(0), hd),
+                4, 15, 7000, 0);
+        var pricing = new VideoStudioPricing(Map.of(mode, Map.of("720p", 120L, "1080p", 358L)), 0, 0, 0);
+        when(videoModels.models()).thenReturn(List.of(new VideoStudioModel(base.endpointId(), base.name(), true, true, false, contract, pricing)));
+        when(works.findById(w.getId())).thenReturn(Optional.of(w));
+        when(videoModels.quote(eq("u1"), any())).thenAnswer(call -> {
+            IpRunService.IpVideoRequest request = call.getArgument(1);
+            return pricing.perSecond().get(mode).get(request.video().resolutionTier()) * request.durationSec();
+        });
+        assertEquals(1440L, referenceQuote().path("credits").asLong());
+        ((ObjectNode) c.path("settings")).put("videoTier", "1080p");
+        assertEquals(4296L, referenceQuote().path("credits").asLong());
+        service.dispatch("u1", w, c, "video", "cl1", "hd", om.createObjectNode(), null, null, 4296L);
+        ArgumentCaptor<IpRunService.IpVideoRequest> request = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
+        verify(imageRuns).generateVideoForDirector(eq("u1"), eq(w.getId()), eq("video:cl1"), request.capture());
+        assertEquals("1080p", request.getValue().video().resolutionTier());
+    }
+
     @Test void referenceImageLimitRecommendsOnlyACompatibleModelAndKeepsAllThirtyImages() {
         when(videoModels.models()).thenReturn(List.of(
                 referenceModel("ep-h3", "MiniMax H3", true, 9, 12, "9:16"),

@@ -57,6 +57,19 @@ class VideoStudioPricingTest {
     class Effective {
 
         @Test
+        void endpointTierPriceOverridesSharedGridAndPreservesExistingFallback() {
+            var old = com.aistareco.aep.videostudio.service.VideoStudioService.contract(4, 15);
+            var contract = new VideoStudioDtos.VideoStudioContract(old.modes(), java.util.List.of(
+                    new VideoStudioDtos.VideoStudioTier("720p", old.tiers().get(0).canvases()),
+                    new VideoStudioDtos.VideoStudioTier("1080p", old.tiers().get(0).canvases(), 358L)),
+                    4, 15, old.promptMaxChars(), old.seedMax());
+            var pricing = VideoStudioPricing.effective(config(cells("t2v", "1080p", 80L), 0, 0L, 0L), 120L, contract);
+            assertEquals(600L, VideoStudioPricing.total(pricing, "t2v", "720p", 5, 0, false));
+            assertEquals(1790L, VideoStudioPricing.total(pricing, "t2v", "1080p", 5, 0, false));
+            assertEquals(1790L, VideoStudioPricing.total(pricing, "universal_reference_video", "1080p", 5, 0, true));
+        }
+
+        @Test
         @DisplayName("每一格 = 配置 ?? 模型每秒价 ?? null；四种模式 × 两档都在，顺序固定")
         void fallbackChain() {
             VideoStudioPricingConfig cfg = VideoStudioPricing.validate(

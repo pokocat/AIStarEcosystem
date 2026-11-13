@@ -5851,6 +5851,7 @@ components:
       properties:
         tier: { type: string, example: 768p }
         canvases: { type: array, items: { $ref: '#/components/schemas/VideoStudioCanvas' } }
+        creditsPerSecond: { type: integer, format: int64, minimum: 1, description: 端点对这一清晰度的每秒售价，优先于共享价表和候选单价 }
     VideoStudioMediaLimit:
       type: object
       required: [mediaType, maxCount, maxBytes, formats, minDurationSec, maxDurationSec]

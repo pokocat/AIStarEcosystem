@@ -424,7 +424,7 @@ function ClipCard({ goTab, openSettings, work, clip, quote, apply, setError, onP
           <PromptEditor work={work} clip={clip} which="video" apply={apply} setError={setError}/>
         </details>
         <ClipVideo work={work} clip={clip} quote={quote} apply={apply} setError={setError} onBoard={boardReady || videoBusy ? undefined : onBoard} onAssets={() => goTab("assets")} onPickVideo={onPickVideo} switching={switching} onChangeModel={openSettings}
-          settings={`${work.settings.style} · ${work.settings.aspectRatio} · ${clip.durationSec} 秒 · ${work.videoLimits?.name ?? "视频模型未开通"}`}/>
+          settings={[work.settings.style, work.settings.aspectRatio, work.videoLimits?.tier?.toUpperCase(), `${clip.durationSec} 秒`, work.videoLimits?.name ?? "视频模型未开通"].filter(Boolean).join(" · ")}/>
       </div>
     </div>}
   </article>;

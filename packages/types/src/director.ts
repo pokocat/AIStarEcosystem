@@ -23,6 +23,8 @@ export interface DirectorSettings {
   textModel?: string | null;
   /** 片段视频用的模型；null = 后台默认。 */
   videoModel: string | null;
+  /** 片段视频清晰度；未设置或 null 时用当前模型和画幅的默认档。 */
+  videoTier?: string | null;
   /** 资产参考图和分镜图使用的模型；未设置或 null = 后台默认。 */
   imageModel?: string | null;
   /** 带货短剧开关：决定商品工作区是否出现、新写的内容是否植入商品。关掉不删数据。 */
@@ -338,6 +340,7 @@ export interface DirectorVideoModel {
   mode: "omni" | "frame";
   /** 全能参考只带图片时的上限，含分镜图。声音参考也会占用素材总额。 */
   maxRefImages?: number;
+  tiers?: { tier: string; ratios: string[] }[];
 }
 
 export interface DirectorPendingExtractItem {
@@ -446,7 +449,7 @@ export interface DirectorWork {
   textModels?: StudioCapabilities["textModels"];
   textModelMode?: StudioCapabilities["textModelMode"];
   videoModels: DirectorVideoModel[];
-  videoLimits: { model: string | null; name: string; minSec: number; maxSec: number; mock: boolean; mode: "omni" | "frame"; maxShots: number } | null;
+  videoLimits: { model: string | null; name: string; minSec: number; maxSec: number; mock: boolean; mode: "omni" | "frame"; maxShots: number; tier?: string | null } | null;
 }
 
 export interface DirectorWorkSummary {

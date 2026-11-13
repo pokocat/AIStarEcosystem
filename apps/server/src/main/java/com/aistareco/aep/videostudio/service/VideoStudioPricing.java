@@ -12,7 +12,7 @@ import java.util.Map;
 /**
  * 视频生成区的计价（docs/video-studio-plan.md §3，v0.199 二版：**我们自己定、后台可配**，不照搬厂商价格）。
  *
- * <p>每一格（模式 × 清晰度）的每秒价 = 后台配置那一格 ?? 后台给这个模型配的每秒价
+ * <p>每一格（模式 × 清晰度）的每秒价 = 端点档位价 ?? 后台配置那一格 ?? 后台给这个模型配的每秒价
  * （候选 {@code creditCostOverride} 且端点按秒计费）?? null。null = 未定价：下发给用户的 pricing 里就是 null，
  * 前端不报价、不许提交，服务端提交 → 503 {@code VIDEO_STUDIO_PRICE_NOT_CONFIGURED}。**不回落任何写死的价**（§8.0）。
  *
@@ -67,7 +67,8 @@ public final class VideoStudioPricing {
             Map<String, Long> prices = new LinkedHashMap<>();
             for (var tier : contract.tiers()) {
                 Map<String, Long> configured = config.perSecond().get(mode.mode());
-                prices.put(tier.tier(), configured == null ? null : configured.get(tier.tier()));
+                prices.put(tier.tier(), tier.creditsPerSecond() != null ? tier.creditsPerSecond()
+                        : configured == null ? null : configured.get(tier.tier()));
             }
             grid.put(mode.mode(), prices);
         }

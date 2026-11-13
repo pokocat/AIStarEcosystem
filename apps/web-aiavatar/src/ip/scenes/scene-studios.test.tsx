@@ -301,6 +301,7 @@ test("视频：爆款复刻在视频规格里开启默认关闭的自动检查",
   await pickFromLibrary("参考视频");
   expect(screen.queryByRole("switch", { name: "自动检查" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /^视频规格：/ }));
+  expect(within(screen.getByRole("group", { name: "视频清晰度" })).getByRole("button", { name: "768P" }).getAttribute("aria-pressed")).toBe("true");
   const autoCheck = screen.getByRole("switch", { name: "自动检查" });
   expect(autoCheck.getAttribute("aria-checked")).toBe("false");
   fireEvent.click(autoCheck);
@@ -312,6 +313,25 @@ test("视频：爆款复刻在视频规格里开启默认关闭的自动检查",
   expect(api.taskStart).toHaveBeenCalledWith("IPP-1", expect.objectContaining({
     configuration: expect.objectContaining({ autoCheck: true }),
     input: expect.objectContaining({ sceneVideoState: expect.objectContaining({ autoCheck: true }) }),
+  }));
+});
+
+test("爆款复刻用所选清晰度生成并保存草稿", async () => {
+  window.history.replaceState(null, "", "/video?scene=recreation");
+  const tier = { tier: "1080p", canvases: [{ aspectRatio: "9:16", width: 1080, height: 1920, outputSizeCode: null }] };
+  api.videoModels.mockResolvedValue([{ ...H3, contract: { ...H3.contract, tiers: [...H3.contract.tiers, tier] } }]);
+  await act(async () => { render(<SceneVideoStudio/>); });
+  await pickFromLibrary("参考视频");
+  fireEvent.click(screen.getByRole("button", { name: /^视频规格：/ }));
+  fireEvent.click(within(screen.getByRole("group", { name: "视频清晰度" })).getByRole("button", { name: "1080P" }));
+  fireEvent.click(screen.getByRole("button", { name: /^视频规格：.*1080P/ }));
+  fillField(screen.getByRole("textbox", { name: "想做的视频" }), "换成我的面霜");
+  const send = screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
+  await waitFor(() => expect(send.disabled).toBe(false));
+  await act(async () => { fireEvent.click(send); });
+  expect(api.taskStart).toHaveBeenCalledWith("IPP-1", expect.objectContaining({
+    configuration: expect.objectContaining({ tier: "1080p" }),
+    input: expect.objectContaining({ sceneVideoState: expect.objectContaining({ tier: "1080p" }) }),
   }));
 });
 

@@ -24,6 +24,8 @@ export interface VideoStudioCanvas {
 
 /** 一档清晰度及其可选画布。 */
 export interface VideoStudioTier {
+  /** Configured endpoint rate for this tier; user-facing quotes use pricing.perSecond. */
+  creditsPerSecond?: number;
   /** 来自端点规格，如 "768p"、"544p"。 */
   tier: string;
   canvases: VideoStudioCanvas[];

@@ -321,7 +321,19 @@ public class DirectorService {
                 String model = in.path("videoModel").asText(null);
                 if (model != null && videoChoices().stream().noneMatch(v -> v.id().equals(model)))
                     throw invalid("该视频模型不支持片段生成，请选择其他模型");
+                if (!Objects.equals(model, s.path("videoModel").asText(null))) s.remove("videoTier");
                 if (model == null) s.putNull("videoModel"); else s.put("videoModel", model);
+            }
+            if (in.has("videoTier")) {
+                if (in.get("videoTier").isNull()) s.remove("videoTier");
+                else {
+                    String tier = in.path("videoTier").asText("");
+                    var choice = videoChoice(videoChoices(), s.path("videoModel").asText(null));
+                    if (choice == null || choice.tiers().stream().noneMatch(t -> t.tier().equals(tier)
+                            && supportsAspect(t, s.path("aspectRatio").asText("9:16"))))
+                        throw invalid("所选视频模型和画幅不支持这个清晰度，请重新选择");
+                    s.put("videoTier", tier);
+                }
             }
         }
         refresh(c);
@@ -1611,6 +1623,7 @@ public class DirectorService {
         ObjectNode m = om.createObjectNode().put("node", node).put("prompt", in.prompt()).put("fingerprint", in.fingerprint())
                 .put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT)
                 .put("videoTemplate", videoTemplateOf(clip, in.lim()));
+        if (in.lim().tier() != null) m.put("resolutionTier", in.lim().tier());
         if (sent != null) m.put("sentPrompt", sent);
         if (original) m.put("promptChoice", "original");
         if (draft != null) {
@@ -4303,12 +4316,12 @@ public class DirectorService {
     // ── 视频模型限制（片段时长来自所选模型的合同，不写死）─────────────────────
 
     /** mode：omni = 全能参考（分镜板 + 参考图 + 声音一起交给模型）；frame = 只按首帧出片（一镜一段，不带参考图和声音）。 */
-    record Limits(String model, String name, int min, int max, boolean mock, String tier, List<String> aspects, boolean optimizable, String mode,
+    record Limits(String model, String name, int min, int max, boolean mock, String tier, String defaultTier, List<String> aspects, boolean optimizable, String mode,
                   VideoStudioReferenceRules references) {
         boolean frame() { return "frame".equals(mode); }
         int maxShots() { return frame() ? 1 : DirectorPrompts.MAX_SHOTS; }
     }
-    record VideoChoice(String id, String name, boolean isDefault, int min, int max, String tier, List<String> aspects, boolean optimizable, String mode,
+    record VideoChoice(String id, String name, boolean isDefault, int min, int max, List<VideoStudioTier> tiers, List<String> aspects, boolean optimizable, String mode,
                        VideoStudioReferenceRules references, boolean priced) {}
     private static final int MAX_CLIP_SECONDS = 15;
 
@@ -4320,15 +4333,16 @@ public class DirectorService {
                 if (contract == null || contract.modes() == null) continue;
                 var mode = contract.modes().stream().filter(x -> VIDEO_MODE.equals(x.mode())).findFirst().orElse(null);
                 if (mode == null) continue;
-                var tiers = contract.tiers() == null ? List.<VideoStudioTier>of() : contract.tiers();
-                var tier = tiers.stream().filter(t -> "768p".equals(t.tier())).findFirst().orElse(tiers.isEmpty() ? null : tiers.get(0));
-                List<String> aspects = new ArrayList<>();
-                if (tier != null && tier.canvases() != null) tier.canvases().forEach(cv -> aspects.add(cv.aspectRatio()));
                 var prices = m.pricing() == null ? null : m.pricing().perSecond().get(VIDEO_MODE);
+                var configuredTiers = contract.tiers() == null ? List.<VideoStudioTier>of() : contract.tiers().stream()
+                        .sorted(Comparator.comparing(t -> !"768p".equals(t.tier())))
+                        .toList();
+                var pricedTiers = configuredTiers.stream().filter(t -> prices != null && prices.get(t.tier()) != null).toList();
+                var tiers = pricedTiers.isEmpty() ? configuredTiers.stream().limit(1).toList() : pricedTiers;
+                var aspects = tiers.stream().flatMap(t -> t.canvases().stream()).map(cv -> cv.aspectRatio()).distinct().toList();
                 // 一段最长 15 秒：分镜图一张 4 镜，节奏也按 2–4 秒一镜写的。模型放开到 30 秒只给 AI 视频页的长视频用（docs/studio-segmented-video.md）。
                 out.add(new VideoChoice(m.endpointId(), m.name(), m.isDefault(), contract.minSeconds(), Math.min(contract.maxSeconds(), MAX_CLIP_SECONDS),
-                        tier == null ? null : tier.tier(), aspects, m.supportsPromptOptimization(), "omni", mode.references(),
-                        tier != null && prices != null && prices.get(tier.tier()) != null));
+                        tiers, aspects, m.supportsPromptOptimization(), "omni", mode.references(), !pricedTiers.isEmpty()));
             }
         } catch (BusinessException e) {
             log.warn("[director] 读取视频模型失败 reason={}", e.getMessage());
@@ -4345,7 +4359,7 @@ public class DirectorService {
                 if (bounds.maxSec() == null) continue;
                 var geometry = videoClient.videoGeometry(e);
                 out.add(new VideoChoice(e.getId(), e.publicModelName(), r.isDefault(), bounds.minSec() == null ? 1 : bounds.minSec(), bounds.maxSec(),
-                        null, geometry == null || geometry.ratios() == null ? List.of() : geometry.ratios(), false, "frame", null, false));
+                        List.of(), geometry == null || geometry.ratios() == null ? List.of() : geometry.ratios(), false, "frame", null, false));
             }
         } catch (BusinessException e) {
             log.warn("[director] 读取首帧视频模型失败 reason={}", e.getMessage());
@@ -4355,14 +4369,29 @@ public class DirectorService {
 
     /** 作品选的视频模型（没选就用默认）。测试响应下没有真模型时按聚算 H3 的合同给一个标了 mock 的限制，只为本地走流程。 */
     private Limits limits(ObjectNode c) {
-        List<VideoChoice> choices = videoChoices();
-        String chosen = c.path("settings").path("videoModel").asText(null);
-        VideoChoice pick = choices.stream().filter(v -> v.id().equals(chosen)).findFirst()
-                .orElse(choices.stream().filter(VideoChoice::isDefault).findFirst().orElse(choices.isEmpty() ? null : choices.get(0)));
-        if (pick != null) return new Limits(pick.id(), pick.name(), pick.min(), pick.max(), false, pick.tier(), pick.aspects(), pick.optimizable(), pick.mode(), pick.references());
+        JsonNode settings = c.path("settings");
+        String chosen = settings.path("videoModel").asText(null);
+        VideoChoice pick = videoChoice(videoChoices(), chosen);
+        if (pick != null) {
+            String aspect = settings.path("aspectRatio").asText("9:16");
+            String selected = chosen == null || chosen.equals(pick.id()) ? settings.path("videoTier").asText(null) : null;
+            var fits = pick.tiers().stream().filter(t -> supportsAspect(t, aspect)).toList();
+            String defaultTier = fits.isEmpty() ? null : fits.get(0).tier();
+            String tier = fits.stream().map(VideoStudioTier::tier).filter(t -> t.equals(selected)).findFirst().orElse(defaultTier);
+            return new Limits(pick.id(), pick.name(), pick.min(), pick.max(), false, tier, defaultTier, pick.aspects(), pick.optimizable(), pick.mode(), pick.references());
+        }
         if (fixtures.enabled()) return new Limits(null, "测试响应", JusuanH3Contract.MIN_SECONDS, JusuanH3Contract.MAX_SECONDS, true,
-                null, List.of("9:16", "16:9", "1:1"), false, "omni", null);
+                null, null, List.of("9:16", "16:9", "1:1"), false, "omni", null);
         return null;
+    }
+
+    private static VideoChoice videoChoice(List<VideoChoice> choices, String model) {
+        return choices.stream().filter(v -> v.id().equals(model)).findFirst()
+                .orElseGet(() -> choices.stream().filter(VideoChoice::isDefault).findFirst().orElse(choices.isEmpty() ? null : choices.get(0)));
+    }
+
+    private static boolean supportsAspect(VideoStudioTier tier, String aspect) {
+        return tier.canvases().stream().anyMatch(canvas -> canvas.aspectRatio().equals(aspect));
     }
 
     /**
@@ -4578,11 +4607,16 @@ public class DirectorService {
         for (VideoChoice m : videoChoices()) {
             var model = models.addObject().put("id", m.id()).put("name", m.name()).put("isDefault", m.isDefault()).put("minSec", m.min()).put("maxSec", m.max()).put("mode", m.mode());
             if (m.references() != null) model.put("maxRefImages", referenceImageLimit(m.references(), 0));
+            var tiers = model.putArray("tiers");
+            for (var tier : m.tiers()) {
+                var ratios = tiers.addObject().put("tier", tier.tier()).putArray("ratios");
+                tier.canvases().forEach(canvas -> ratios.add(canvas.aspectRatio()));
+            }
         }
         Limits lim = limits(c);
         if (lim == null) v.putNull("videoLimits");
         else v.putObject("videoLimits").put("model", lim.model()).put("name", lim.name()).put("minSec", lim.min()).put("maxSec", lim.max()).put("mock", lim.mock())
-                .put("mode", lim.mode()).put("maxShots", lim.maxShots());
+                .put("mode", lim.mode()).put("maxShots", lim.maxShots()).put("tier", lim.tier());
         for (JsonNode clip : v.path("clips")) {
             ((ObjectNode) clip).set("boardRefs", imageReferences(c, clip, false, false));
             ((ObjectNode) clip).set("videoRefs", imageReferences(c, clip, true, lim != null && lim.frame()));
@@ -5007,6 +5041,8 @@ public class DirectorService {
         mainOnly.addAll(mainImageKeys(c, clip));
         for (JsonNode a : speakers(c, clip)) { String k = a.path("voice").path("key").asText(null); if (k != null) audios.add(k); }
         String head = prompt + '|' + duration + '|' + aspect + '|' + (lim == null ? null : lim.model());
+        // Keep existing fingerprints valid at the default resolution.
+        if (lim != null && !Objects.equals(lim.tier(), lim.defaultTier())) head += "|resolution:" + lim.tier();
         return new Current(withKeys(head, joined(images, audios)), prompt, images, audios, withKeys(head, joined(mainOnly, audios)));
     }
 
