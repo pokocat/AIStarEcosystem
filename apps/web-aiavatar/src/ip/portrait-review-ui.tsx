@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Alert, Avatar, Button, Checkbox, Empty, Flex, Form, Image, Input, Modal, QRCode, Radio, Spin, Steps, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
@@ -96,6 +96,10 @@ export function PortraitVerifyPanel({ person, note }: { person: VideoPortraitPer
 const NEW = 'new';
 const NO_BATCH_ITEMS: VideoPortraitItem[] = [];
 type Kind = 'person' | 'virtual';
+const PORTRAIT_KINDS = [
+  { value: 'person', title: '真人照片', example: '本人、朋友或演员的照片，含美颜、修图或保留真人长相的 AI 改图。', next: '首次使用该人物需本人核验。每张照片单独审核。' },
+  { value: 'virtual', title: 'AI 虚拟人像', example: '由 AI 生成的虚构人物，例如虚拟主播或角色图。形象不能与真实人物雷同。', next: '无需本人核验，提交后由火山方舟审核。' },
+] as const;
 
 /** People this photo can be declared as: verified ones, plus a verification still waiting for its scan. One entry per name. */
 function portraitPeople(overview: VideoPortraitOverview, item: VideoPortraitItem) {
@@ -117,6 +121,7 @@ export function PortraitGuide({ item, overview, busy, act, footer, batchItems = 
   footer?: PortraitFooterSlots; batchItems?: VideoPortraitItem[];
 }) {
   const people = portraitPeople(overview, item);
+  const typeId = useId();
   const [kind, setKind] = useState<Kind | undefined>(item.placement === 'person' || item.placement === 'virtual' ? item.placement : undefined);
   // The person on file for this photo, or the only verified one, so a repeat photo is one tick and one click.
   const [choice, setChoice] = useState<string | undefined>(() => people.find(p => p.id === item.personId)?.id
@@ -211,15 +216,25 @@ export function PortraitGuide({ item, overview, busy, act, footer, batchItems = 
       {phase === 'choose' && <Form layout="vertical" requiredMark={false} onFinish={submit} className="portrait-guide-form">
         {(item.arkError || item.status === 'failed') && <Alert type={item.status === 'failed' ? 'error' : 'warning'} showIcon title={item.arkError || item.errorMessage || '素材入库失败。'} className="portrait-provider-error" />}
         {item.status === 'revoked' && <Alert type="warning" showIcon title="这张照片的人物授权已撤销，请重新确认。" />}
-        <Form.Item label="照片类型">
-          <Radio.Group block optionType="button" buttonStyle="solid" value={kind} disabled={busy} onChange={e => { setKind(e.target.value); setAccepted(false); setAdditionalIds([]); }}
-            options={[{ value: 'person', label: '真人照片' }, { value: 'virtual', label: 'AI 虚拟人像' }]} />
+        <Form.Item label={<span id={`${typeId}-label`}>照片类型</span>} extra={<span id={`${typeId}-hint`}>不确定照片来源？请向素材提供者确认，或更换来源明确的图片。</span>}>
+          <Radio.Group name={typeId} aria-labelledby={`${typeId}-label`} aria-describedby={`${typeId}-hint`}
+            className="portrait-type-options" value={kind} disabled={busy}
+            onChange={e => { setKind(e.target.value); setAccepted(false); setAdditionalIds([]); }}>
+            {PORTRAIT_KINDS.map(({ value, title, example, next }) => <Radio key={value} value={value}
+              className="portrait-type-option" aria-labelledby={`${typeId}-${value}-title`} aria-describedby={`${typeId}-${value}-description`}>
+              <span id={`${typeId}-${value}-title`} className="portrait-type-title">{title}</span>
+              <span id={`${typeId}-${value}-description`} className="portrait-type-description">
+                <span>{example}</span>
+                <span>{next}</span>
+              </span>
+            </Radio>)}
+          </Radio.Group>
         </Form.Item>
         {kind === 'person' && options.length > 0 && <Form.Item label="照片中的人物">
           <Radio.Group vertical value={chosen} disabled={busy} onChange={e => { setChoice(e.target.value); setAccepted(false); setAdditionalIds([]); }}
             options={[...options.map(p => ({ value: p.id, label: p.status === 'active' ? p.name : `${p.name}（核验中）` })), { value: NEW, label: '其他人物' }]} />
         </Form.Item>}
-        {kind === 'person' && chosen === NEW && <Form.Item label="人物名称" extra="下一步需要照片中的本人用手机扫码核验。">
+        {kind === 'person' && chosen === NEW && <Form.Item label="人物名称" extra="请将核验二维码或链接交给照片中的本人。">
           <Input value={name} onChange={e => setName(e.target.value)} placeholder="例如：林晚" maxLength={64} disabled={busy} autoFocus={!options.length} />
         </Form.Item>}
         {kind && item.mediaType === 'image' && batchOptions.length > 0 && <Form.Item

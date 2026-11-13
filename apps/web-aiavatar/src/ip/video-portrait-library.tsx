@@ -62,7 +62,7 @@ export function VideoPortraitLibrary() {
       <Flex justify="space-between" align="center" gap={12}><Typography.Text type="secondary">由照片中的本人完成核验。</Typography.Text><Button type="primary" disabled={!library || busy} onClick={() => { setVerification(undefined); setPersonLibrary(library); }}>新增核验</Button></Flex>
       <Table<VideoPortraitPerson> rowKey="id" columns={peopleColumns} dataSource={overview?.persons} loading={!overview} pagination={false} locale={{ emptyText: '暂无本人核验记录' }} />
     </Flex> }]} />
-    <Modal title="确认参考人像" open={!!confirmItem} width={720} mask={{ closable: false }} destroyOnHidden onCancel={() => setConfirming(undefined)}
+    <Modal title="确认参考人像" open={!!confirmItem} width={720} className="portrait-guide-dialog" mask={{ closable: false }} destroyOnHidden onCancel={() => setConfirming(undefined)}
       footer={<PortraitFooterBar footer={footer} after={confirmItem?.status === 'active' && <Button type="primary" onClick={() => setConfirming(undefined)}>完成</Button>}>
         {confirmItem?.status !== 'active' && <Button onClick={() => setConfirming(undefined)}>关闭</Button>}
       </PortraitFooterBar>}>

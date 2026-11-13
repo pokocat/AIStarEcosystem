@@ -68,7 +68,7 @@ export function PortraitReviewHost() {
   const note = loading || ended ? '' : ready ? '审核已通过，正在继续生成。'
     : `${items.length > 1 ? `已通过 ${passed}/${items.length}。` : ''}素材全部通过后将自动继续生成。`;
   return <ConfigProvider theme={PORTRAIT_THEME} button={{ autoInsertSpace: false }}>
-    <Modal title="确认参考人像" open width={720} mask={{ closable: false }} onCancel={() => close(false)} footer={<PortraitFooterBar footer={footer}
+    <Modal title="确认参考人像" open width={720} className="portrait-guide-dialog" mask={{ closable: false }} onCancel={() => close(false)} footer={<PortraitFooterBar footer={footer}
       note={note && <Typography.Text type="secondary" className="portrait-secondary" role="status">{note}</Typography.Text>}>
       <Button onClick={() => close(false)}>{request.links.length ? '关闭' : '暂不生成'}</Button>
     </PortraitFooterBar>}>

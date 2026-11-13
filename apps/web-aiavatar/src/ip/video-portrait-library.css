@@ -5,6 +5,7 @@
 .portrait-loading { padding: 48px 0; }
 
 /* Guided declaration: the photo stays in view while the steps change beside it; phones show a thumbnail above. */
+html[data-layout="mobile"] .portrait-guide-dialog.ant-modal { top: 16px; }
 .portrait-guide { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
 .portrait-guide-photo { margin: 0; display: flex; align-items: center; gap: 12px; min-width: 0; }
 .portrait-guide-photo figcaption { min-width: 0; }
@@ -16,6 +17,22 @@
 .portrait-guide-body { min-width: 0; }
 .portrait-guide-form .ant-form-item { margin-bottom: 20px; }
 .portrait-guide-form > .ant-alert { margin-bottom: 20px; }
+.portrait-type-options.ant-radio-group { display: grid; gap: 8px; margin-bottom: 8px; }
+.portrait-type-option.ant-radio-wrapper {
+  display: flex;
+  align-items: flex-start;
+  margin-inline-end: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(25, 34, 41, .16);
+  border-radius: 8px;
+}
+.portrait-type-option.ant-radio-wrapper:not(.ant-radio-wrapper-disabled):hover,
+.portrait-type-option.ant-radio-wrapper-checked { border-color: #192229; }
+.portrait-type-option.ant-radio-wrapper-checked { background: rgba(25, 34, 41, .04); }
+.portrait-type-option:has(input:focus-visible) { outline: 2px solid #192229; outline-offset: 2px; }
+.portrait-type-option .ant-radio { align-self: flex-start; margin-block-start: 3px; }
+.portrait-type-title { display: block; font-weight: 600; }
+.portrait-type-description { display: grid; gap: 2px; margin-top: 2px; color: rgba(25, 34, 41, .78); font-size: 13px; line-height: 1.5; }
 .portrait-table-thumb { flex: none; width: 48px; height: 60px; }
 .portrait-table-thumb img { border-radius: 6px; }
 .portrait-consent { margin-bottom: 0; }
