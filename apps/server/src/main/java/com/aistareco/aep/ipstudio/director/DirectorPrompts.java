@@ -655,6 +655,21 @@ public final class DirectorPrompts {
         return media(prompts, StudioPromptCallPoints.DIRECTOR_IMAGE_NOTES, vars, null);
     }
 
+    /**
+     * 资产出图最终交给出图模型的描述：角色的形象参考说明放在最前面，场景 / 道具的参考说明和「在当前图上修改」追加在后面。
+     * 2026-11-14：形象参考那句原来排在一千多字的设定板排版之后，生成的人和用户上传的照片对不上；用户换成把参考图锁定写在开头的
+     * 提示词后明显好转。只改交给模型的这一份，资产上保存的描述（和据它算的指纹）不变，已采用的图不会因此被标成需更新。
+     */
+    public static String withImageNotes(StudioPromptAssembler prompts, String body, String refKind, String baseOnLabel) {
+        boolean character = refKind != null && !"scene".equals(refKind) && !"prop".equals(refKind);
+        String lead = character ? imageNotes(prompts, refKind, null) : "";
+        String tail = imageNotes(prompts, character ? null : refKind, baseOnLabel);
+        String out = body;
+        if (!lead.isEmpty()) out = lead + "\n" + out;
+        if (!tail.isEmpty()) out = out + "\n" + tail;
+        return out;
+    }
+
     /** 这个环节现在的版本（生成时记进候选，之后按它核对）；库里没有返回 0。 */
     public static int templateVersion(StudioPromptAssembler prompts, String stage) {
         return prompts.library().find(stage).map(com.aistareco.aep.ipstudio.prompt.StudioPromptEntry::version).orElse(0);

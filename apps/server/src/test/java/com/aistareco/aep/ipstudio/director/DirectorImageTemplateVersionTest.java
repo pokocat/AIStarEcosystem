@@ -25,6 +25,8 @@ class DirectorImageTemplateVersionTest {
     private static final String ASSET = "stage-director-asset-image", BOARD = "stage-director-board";
     /** 分镜图模板现在的版本：这里核对的是「按当时那一版生成的图」，不写死数字，模板正文改了不用改这个测试。 */
     private static final int BOARD_NOW = DirectorPrompts.templateVersion(StudioPromptAssembler.classpath(), BOARD);
+    /** 资产图模板现在的版本，同上（2026-11-14 人物设定图改版后是 v2）。 */
+    private static final int ASSET_NOW = DirectorPrompts.templateVersion(StudioPromptAssembler.classpath(), ASSET);
     private final ObjectMapper om = new ObjectMapper();
     private DirectorService service;
     private ObjectNode c;
@@ -88,8 +90,8 @@ class DirectorImageTemplateVersionTest {
     @Test
     void adoptedImagesKeepTheirTemplateVersionAfterANewVersionIsPublished() {
         service.refresh(c);
-        adoptAsset("as1", asset("as1").path("prompt").asText(), 1);
-        adoptAsset("as2", asset("as2").path("prompt").asText(), null); // 模板进库之前生成的：第 3 版、没有版本号
+        adoptAsset("as1", asset("as1").path("prompt").asText(), ASSET_NOW);
+        adoptAsset("as2", asset("as2").path("prompt").asText(), ASSET_NOW); // 没记版本号的旧图按 v1 核对；仓库文件已是 v2，v1 只在线上库里，这里测不到
         adoptBoard(clip().path("boardPrompt").asText(), BOARD_NOW);
         publishNewTemplates();
         service.refresh(c);
@@ -103,8 +105,8 @@ class DirectorImageTemplateVersionTest {
     @Test
     void aRealChangeIsStillFlaggedUnderTheOldVersion() {
         service.refresh(c);
-        adoptAsset("as1", asset("as1").path("prompt").asText(), 1);
-        adoptAsset("as2", asset("as2").path("prompt").asText(), 1);
+        adoptAsset("as1", asset("as1").path("prompt").asText(), ASSET_NOW);
+        adoptAsset("as2", asset("as2").path("prompt").asText(), ASSET_NOW);
         adoptBoard(clip().path("boardPrompt").asText(), BOARD_NOW);
         publishNewTemplates();
         asset("as1").put("description", "四十岁，寸头，灰色工装");
@@ -121,8 +123,8 @@ class DirectorImageTemplateVersionTest {
     void imagesMadeWithTheNewVersionAreCheckedAgainstIt() {
         publishNewTemplates();
         service.refresh(c);
-        adoptAsset("as1", asset("as1").path("prompt").asText(), 2);
-        adoptAsset("as2", asset("as2").path("prompt").asText(), 2);
+        adoptAsset("as1", asset("as1").path("prompt").asText(), ASSET_NOW + 1);
+        adoptAsset("as2", asset("as2").path("prompt").asText(), ASSET_NOW + 1);
         adoptBoard(clip().path("boardPrompt").asText(), BOARD_NOW + 1);
         service.refresh(c);
         assertEquals("current", check(asset("as1").path("image")));
@@ -132,7 +134,7 @@ class DirectorImageTemplateVersionTest {
         service.refresh(c);
         String v1 = asset("as1").path("prompt").asText();
         publishNewTemplates();
-        adoptAsset("as1", v1, 2);
+        adoptAsset("as1", v1, ASSET_NOW + 1);
         service.refresh(c);
         assertEquals("outdated", check(asset("as1").path("image")));
     }

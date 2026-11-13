@@ -98,6 +98,7 @@ class DirectorPromptStageParityTest {
         for (String st : styles) {
             var settings = json(st);
             for (String a : assets) {
+                if (json(a).path("kind").asText().matches("character|other")) continue; // 人物设定图 2026-11-14 有意改版（{@link #characterSheetIsFullBodyFrontBackAndThreeHeadViews}）
                 assertThat(DirectorPrompts.assetPrompt(A, settings, json(a), null)).as(st + a).isEqualTo(LegacyDirectorPrompts.assetPrompt(settings, json(a)));
                 checked++;
             }
@@ -110,18 +111,50 @@ class DirectorPromptStageParityTest {
                 }
             }
         }
-        assertThat(checked).isEqualTo(4 * 4 + 4 * 6 * 3);
-        assertThat(DirectorPrompts.assetPrompt(A, json("{}"), json(assets.get(0)), 1)).isEqualTo(LegacyDirectorPrompts.assetPrompt(json("{}"), json(assets.get(0))));
+        assertThat(checked).isEqualTo(4 * 2 + 4 * 6 * 3);
     }
 
+    /**
+     * 人物设定图 v2（2026-11-14 用户要求）：只画全身正面、全身背面和头部三视图五格，不再有表情、细节特写和半身分区；
+     * 场景、道具不变（上面那条测试）。已采用的旧图按生成时记的 v1 核对，不会因为改版被标成需更新（DirectorImageTemplateVersionTest）。
+     */
+    @Test
+    void characterSheetIsFullBodyFrontBackAndThreeHeadViews() {
+        String now = DirectorPrompts.assetPrompt(A, json("{\"style\":\"真人写实\"}"), json("{\"kind\":\"character\",\"name\":\"陈默\",\"description\":\"三十岁，短发，藏青夹克\"}"), null);
+        assertThat(now).isNotEqualTo(LegacyDirectorPrompts.assetPrompt(json("{\"style\":\"真人写实\"}"), json("{\"kind\":\"character\",\"name\":\"陈默\",\"description\":\"三十岁，短发，藏青夹克\"}")));
+        assertThat(now).contains("三十岁，短发，藏青夹克");
+        assertThat(DirectorPrompts.templateVersion(A, "stage-director-asset-image")).isEqualTo(2);
+    }
+
+    /** 角色的形象参考说明 2026-11-14 有意改写并挪到最前面（{@link #characterReferenceLeadsTheAssetPrompt}），这里只锁场景、道具和「在当前图上修改」。 */
     @Test
     void imageNotesAreUnchanged() {
-        for (String kind : new String[]{null, "scene", "prop", "character", "other"}) for (String baseOn : new String[]{null, "图2"}) {
+        for (String kind : new String[]{null, "scene", "prop"}) for (String baseOn : new String[]{null, "图2"}) {
             StringBuilder was = new StringBuilder();
             if (kind != null) was.append(LegacyDirectorPrompts.refNote(kind));
             if (baseOn != null) was.append(was.isEmpty() ? "" : "\n").append(LegacyDirectorPrompts.baseOnNote(baseOn));
             assertThat(DirectorPrompts.imageNotes(A, kind, baseOn)).as(kind + " / " + baseOn).isEqualTo(was.toString());
         }
+    }
+
+    /**
+     * 角色带形象参考图时，参考说明排在出图描述最前面（放在最后时生成的人和照片对不上，2026-11-14 用户反馈）；
+     * 「在当前图上修改」仍在后面。场景、道具和没有参考图的资产，交给模型的内容和原来一样。
+     */
+    @Test
+    void characterReferenceLeadsTheAssetPrompt() {
+        String body = "角色设定集正文";
+        for (String kind : new String[]{"character", "other"}) {
+            String lead = DirectorPrompts.imageNotes(A, kind, null);
+            assertThat(lead).isNotBlank();
+            assertThat(DirectorPrompts.withImageNotes(A, body, kind, null)).isEqualTo(lead + "\n" + body);
+            assertThat(DirectorPrompts.withImageNotes(A, body, kind, "图2"))
+                    .isEqualTo(lead + "\n" + body + "\n" + LegacyDirectorPrompts.baseOnNote("图2"));
+        }
+        for (String kind : new String[]{"scene", "prop"}) for (String baseOn : new String[]{null, "图2"})
+            assertThat(DirectorPrompts.withImageNotes(A, body, kind, baseOn)).isEqualTo(body + "\n" + DirectorPrompts.imageNotes(A, kind, baseOn));
+        assertThat(DirectorPrompts.withImageNotes(A, body, null, null)).isEqualTo(body);
+        assertThat(DirectorPrompts.withImageNotes(A, body, null, "图2")).isEqualTo(body + "\n" + LegacyDirectorPrompts.baseOnNote("图2"));
     }
 
     /** 导演台拼的是自己的底座，平台底座里面向商品宣传的事实规则不进短剧编剧（docs/studio-prompt-architecture.md §14.2）。 */

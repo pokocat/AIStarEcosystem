@@ -128,7 +128,7 @@ public final class StudioPromptCallPoints {
                         "hasRefs", "有参考图", "hasProduct", "参考图里有商品", "cells", "每格：[{position（左上 / 右上 / 左下 / 右下）, size, camera, still}]", "blanks", "2×2 板有空着的格子",
                         "live", "真人实拍类风格"), Set.of(), Map.of(), board));
         StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_IMAGE_NOTES, StudioPromptEntry.MESSAGE, "导演台出图附加说明",
-                vars("refScene", "带了用户的场景参考图", "refProp", "带了用户的道具参考图", "refCharacter", "带了用户的形象参考照片",
+                vars("refScene", "带了用户的场景参考图", "refProp", "带了用户的道具参考图", "refCharacter", "带了用户的形象参考图（这段由代码放在出图描述最前面，其余追加在后面）",
                         "form", "正在画角色的这个形态（图1 是主形象）", "baseOn", "在当前图上修改时，当前图的编号（如「图2」）"), Set.of(), Map.of(),
                 new LinkedHashMap<>(Map.of("refScene", false, "refProp", false, "refCharacter", true, "form", "", "baseOn", "图2"))));
         StudioPromptStages.register(new StudioPromptStages.Stage(DIRECTOR_SCENE_VIEWS, StudioPromptEntry.IMAGE_MODEL, "导演台场景四视图",

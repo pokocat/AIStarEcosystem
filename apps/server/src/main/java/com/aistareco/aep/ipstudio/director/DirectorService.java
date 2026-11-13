@@ -1197,9 +1197,8 @@ public class DirectorService {
                 if (refKey != null) refs.add(new Bound(targetId, a.path("name").asText() + ("character".equals(kind) ? "的形象参考" : "的参考图"), kind, refKey, "图1"));
                 if (!a.path("promptCustom").asBoolean(false)) prompts().requireStage(StudioPromptCallPoints.DIRECTOR_ASSET_IMAGE);
                 String baseOn = o.path("baseOnCurrent").asBoolean(false) ? baseOnCurrent(a, "image", a.path("name").asText(), refs) : null;
-                String notes = DirectorPrompts.imageNotes(prompts(), refKey != null ? kind : null, baseOn != null ? refs.get(refs.size() - 1).label() : null);
-                if (!notes.isEmpty()) prompt = prompt + "\n" + notes;
-                return image(userId, w, c, "asset:" + targetId, requestId, prompt, refs, sizeFor(c, a.path("kind").asText()),
+                prompt = DirectorPrompts.withImageNotes(prompts(), prompt, refKey != null ? kind : null, baseOn != null ? refs.get(refs.size() - 1).label() : null);
+                return image(userId, w, c, "asset:" + targetId, a.path("kind").asText(), requestId, prompt, refs, sizeFor(c, a.path("kind").asText()),
                         assetFingerprint(a), pipeline, billing, maxCost, baseOn);
             }
             case "form-image" -> {
@@ -1214,7 +1213,7 @@ public class DirectorService {
                 List<Bound> refs = new ArrayList<>(List.of(new Bound(a.path("id").asText(), a.path("name").asText() + "的主形象", "character", main, "图1")));
                 String baseOn = o.path("baseOnCurrent").asBoolean(false) ? baseOnCurrent(form, "image", a.path("name").asText() + "·" + form.path("name").asText(), refs) : null;
                 prompt = prompt + "\n" + DirectorPrompts.formNotes(prompts(), form.path("name").asText(), baseOn != null ? refs.get(refs.size() - 1).label() : null);
-                return image(userId, w, c, "form:" + targetId, requestId, prompt, refs, sizeFor(c, "character"),
+                return image(userId, w, c, "form:" + targetId, "character", requestId, prompt, refs, sizeFor(c, "character"),
                         formFingerprint(c, a, form), pipeline, billing, maxCost, baseOn);
             }
             case "scene-views" -> {
@@ -1229,7 +1228,7 @@ public class DirectorService {
                 String only = o.path("view").asText("");
                 if (!only.isEmpty() && !DirectorSceneViews.LABELS.containsKey(only)) throw invalid("不支持的视角");
                 List<Bound> refs = List.of(new Bound(targetId, a.path("name").asText() + "的主视图", "scene", main, "图1"));
-                String runId = image(userId, w, c, "views:" + targetId, requestId, prompt, refs, sizeFor(c, "scene"),
+                String runId = image(userId, w, c, "views:" + targetId, "scene", requestId, prompt, refs, sizeFor(c, "scene"),
                         viewsFingerprint(prompt, main), pipeline, billing, maxCost, null);
                 if (!only.isEmpty() && c.path("taskMeta").path(runId) instanceof ObjectNode vm) vm.put("view", only);
                 return runId;
@@ -1244,7 +1243,7 @@ public class DirectorService {
                 String baseOn = o.path("baseOnCurrent").asBoolean(false) ? baseOnCurrent(clip, "board", "片段 " + clip.path("order").asInt() + " 的分镜图", refs) : null;
                 String notes = DirectorPrompts.imageNotes(prompts(), null, baseOn != null ? refs.get(refs.size() - 1).label() : null);
                 if (!notes.isEmpty()) prompt = prompt + "\n" + notes;
-                return image(userId, w, c, "board:" + targetId, requestId, prompt, refs, sizeFor(c, "board"),
+                return image(userId, w, c, "board:" + targetId, "board", requestId, prompt, refs, sizeFor(c, "board"),
                         boardCurrent(c, clip).fingerprint(), pipeline, billing, maxCost, baseOn);
             }
             case "video" -> { return video(userId, w, c, find(c, "clips", targetId, "这个片段"), requestId, pipeline, billing, maxCost, o.path("promptChoice").asText(null)); }
@@ -1410,7 +1409,7 @@ public class DirectorService {
         return slot.path("adoptedId").asText();
     }
 
-    private String image(String userId, DirectorWork w, ObjectNode c, String nodeId, String requestId, String prompt,
+    private String image(String userId, DirectorWork w, ObjectNode c, String nodeId, String imageKind, String requestId, String prompt,
                          List<Bound> refs, String size, String fingerprint, ObjectNode pipeline, BillingSelection billing, Long maxCost, String baseOn) {
         requireIdle(w, nodeId);
         requireRefCapacity(c, refs.size());
@@ -1419,7 +1418,7 @@ public class DirectorService {
         String runId;
         if (fixtures.enabled()) runId = submitTx(() -> fixtureMedia(userId, w.getId(), nodeId, requestId, "image", prompt));
         else runId = submitTx(() -> imageRuns.generateForDirector(userId, w.getId(),
-                new IpRunService.IpGenerateRequest(nodeId, prompt, keys, 1, size, (nodeId.startsWith("board:") ? boardImageSelection(c) : imageSelection(c)).resolved().endpoint().getId(), maxCost, billing, requestId)).id());
+                new IpRunService.IpGenerateRequest(nodeId, prompt, keys, 1, size, imageSelectionFor(c, imageKind).resolved().endpoint().getId(), maxCost, billing, requestId)).id());
         ObjectNode m = om.createObjectNode().put("node", nodeId).put("prompt", prompt).put("fingerprint", fingerprint)
                 .put("promptFormat", DirectorPrompts.IMAGE_PROMPT_FORMAT);
         // 记下这次按出图模板哪一版编的：后台发了新版本，这张图仍按这一版核对，换模板本身不算「描述已修改」
@@ -4470,6 +4469,49 @@ public class DirectorService {
                 }).min(Comparator.comparingLong(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::creditCost)).orElse(selected);
     }
 
+    /**
+     * 人物设定图可以升到 4K 的系列。2026-11-14 用线上同一张参考图实测：GPT Image 2.5 的 4K 正常、约 1 分钟一张；
+     * GPT Image 2 的 4K 接入点被厂商关了（两次都回 400 four_k_disabled），这个系列的人物图仍出 2K。厂商恢复并实测后再加进来。
+     */
+    static final Set<String> CHARACTER_HD_FAMILIES = Set.of("gpt-image-2.5-flare");
+
+    /** 出图用哪个接入点：分镜按作品画幅、人物按高清，其余用作品选的图片模型。尺寸（sizeFor）和提交共用这一处，两边不会对不上。 */
+    com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection imageSelectionFor(ObjectNode c, String kind) {
+        return switch (kind) {
+            case "board" -> boardImageSelection(c);
+            case "character" -> characterImageSelection(c);
+            default -> imageSelection(c);
+        };
+    }
+
+    /**
+     * 人物设定图用同系列里横图像素最大的接入点（2026-11-14 用户要求人物高清出图；GPT Image 2 / 2.5 的 4K 与 2K 同价）。
+     * 只在不比现在贵时才换，换了会加价就仍用作品选的接入点，不悄悄涨价；只在 {@link #CHARACTER_HD_FAMILIES} 列出的系列里升档。
+     */
+    com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection characterImageSelection(ObjectNode c) {
+        var selected = imageSelection(c);
+        if (selected == null) return null;
+        var spec = com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson());
+        var family = com.aistareco.aep.ipstudio.service.StudioImageModelRouting.familyForProviderModel(selected.resolved().endpoint().getModel());
+        if (spec == null || family == null || !CHARACTER_HD_FAMILIES.contains(family.id())) return selected;
+        String nowSize = largestImageSize(spec, "16:9").orElse(null);
+        if (nowSize == null) return selected;
+        long nowPixels = pixels(nowSize), nowPrice = selected.creditCostForSize(nowSize);
+        com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection best = selected;
+        long bestPixels = nowPixels;
+        for (var s : scenePolicies.available("studio", "image", textRuns.directorPrices(null)[1])) {
+            if (!family.equals(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.familyForProviderModel(s.resolved().endpoint().getModel()))) continue;
+            com.aistareco.aep.model.AiImageRequestSpec other;
+            try { other = com.aistareco.aep.model.AiImageRequestSpec.read(s.resolved().endpoint().getImageRequestSpecJson()); }
+            catch (BusinessException unreadable) { continue; }
+            String size = other == null ? null : largestImageSize(other, "16:9").orElse(null);
+            if (size == null || pixels(size) <= bestPixels || s.creditCostForSize(size) > nowPrice) continue;
+            best = s;
+            bestPixels = pixels(size);
+        }
+        return best;
+    }
+
     long boardImagePrice(ObjectNode c, long fallback) {
         if (fixtures.enabled()) return fallback;
         try {
@@ -5165,7 +5207,7 @@ public class DirectorService {
      */
     private String sizeFor(ObjectNode c, String kind) {
         var endpoint = fixtures.enabled() ? null
-                : ("board".equals(kind) ? boardImageSelection(c) : imageSelection(c)).resolved().endpoint();
+                : imageSelectionFor(c, kind).resolved().endpoint();
         return sizeFor(c, kind, endpoint);
     }
 

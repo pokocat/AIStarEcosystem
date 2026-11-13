@@ -389,4 +389,56 @@ class DirectorImageModelTest {
         assertEquals(List.of("asset:c1", "asset:s1"), sent.getAllValues().stream().map(IpRunService.IpGenerateRequest::nodeId).toList());
         sent.getAllValues().forEach(r -> { assertEquals("image-4k", r.model()); assertEquals(55L, r.maxCost()); });
     }
+
+    /** 线上的分辨率价格：GPT Image 2 / 2.5 的 2K 与 4K 同价（studio.image-resolution-pricing）。 */
+    private void tieredPolicy(String lowModel, String highModel) {
+        Map<String, Long> tiers = Map.of("1K", 20L, "2K", 30L, "4K", 30L);
+        var low = selection("img-low", "1K/2K", 16, true, new String[][]{{"2048x2048","1:1"},{"2048x1152","16:9"}});
+        low.resolved().endpoint().setModel(lowModel);
+        var high = selection("img-high", "4K", 55, false, FOUR_K);
+        high.resolved().endpoint().setModel(highModel);
+        var lowT = new AiAppSceneModelPolicyService.Selection(low.resolved(), 16, "per_image", tiers);
+        var highT = new AiAppSceneModelPolicyService.Selection(high.resolved(), 55, "per_image", tiers);
+        var unrelated = selection("seedream", "Seedream 4.5", 16, false, STANDARD);
+        when(policy.available(eq("studio"), eq("image"), anyLong())).thenReturn(List.of(lowT, highT, unrelated));
+        when(policy.resolve(eq("studio"), eq("image"), nullable(String.class), anyLong())).thenReturn(lowT);
+    }
+
+    /** 2026-11-14 用户要求人物高清出图：GPT Image 2.5 的 4K 不加价时，人物主形象走 4K；场景、道具仍用作品选的接入点。 */
+    @Test void charactersUseTheSameFamilyFourKWhenItCostsNoMore() throws Exception {
+        tieredPolicy("gpt-image-2.5-flare-1k", "gpt-image-2.5-flare-4k");
+        var view = patch(om.createObjectNode());
+        assertEquals(30, view.path("pricing").path("image").asLong());
+        asset("c1", "character", "林夏"); generate("asset-image", "c1", 30);
+        assertEquals("img-high", lastSubmitted().model());
+        assertEquals("3840x2160", lastSubmitted().size());
+        assertEquals(30L, lastSubmitted().maxCost());
+        asset("s1", "scene", "老宅"); generate("asset-image", "s1", 30);
+        assertEquals("img-low", lastSubmitted().model());
+        assertEquals("2048x1152", lastSubmitted().size());
+        asset("p1", "prop", "手机"); generate("asset-image", "p1", 30);
+        assertEquals("img-low", lastSubmitted().model());
+        assertEquals("2048x2048", lastSubmitted().size());
+    }
+
+    /** GPT Image 2 的 4K 被厂商关了（2026-11-14 实测 four_k_disabled）：同价也不升，人物图仍出 2K。 */
+    @Test void gptTwoCharactersStayAtTwoKBecauseItsFourKIsDisabled() throws Exception {
+        tieredPolicy("gpt-image-2-1k-pic", "gpt-image-2-4k-pic");
+        asset("c1", "character", "林夏"); generate("asset-image", "c1", 30);
+        assertEquals("img-low", lastSubmitted().model());
+        assertEquals("2048x1152", lastSubmitted().size());
+    }
+
+    /** 4K 比现在贵就不换：不悄悄涨价。 */
+    @Test void charactersStayOnTheChosenEndpointWhenFourKCostsMore() throws Exception {
+        var low = selection("img-low", "GPT Image 2.5", 16, true, new String[][]{{"2048x2048","1:1"},{"2048x1152","16:9"}});
+        low.resolved().endpoint().setModel("gpt-image-2.5-flare-1k");
+        var high = selection("img-high", "GPT Image 2.5 4K", 55, false, FOUR_K);
+        high.resolved().endpoint().setModel("gpt-image-2.5-flare-4k");
+        when(policy.available(eq("studio"), eq("image"), anyLong())).thenReturn(List.of(low, high));
+        when(policy.resolve(eq("studio"), eq("image"), nullable(String.class), anyLong())).thenReturn(low);
+        asset("c1", "character", "林夏"); generate("asset-image", "c1", 16);
+        assertEquals("img-low", lastSubmitted().model());
+        assertEquals("2048x1152", lastSubmitted().size());
+    }
 }
