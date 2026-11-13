@@ -189,6 +189,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [模型接入端点并发与排队](ai-endpoint-generation-queue.md) · v0.220；last-reviewed: 2026-10-09，本地未发布。
 - [AiAvatar 账号与旧 Studio 界面统一](aiavatar-account-unification.md) · 桌面外壳、旧深链兼容、默认头像与账号中心修改入口；last-reviewed: 2026-10-31。
 - [复刻创作：全片创作拆解与视频拉片](ip-studio-recreation.md)：爆款复刻三种方式（分镜复刻 / 深度复刻 / 元素替换，共用拉片和分段，按视频类型推荐）；直接看视频的拉片（逐镜台词、字幕、爆点）、视频页复刻由代码拼制作方案；旧版抽帧拆解、分段裁切及恐龙视频验收。last-reviewed: 2026-11-11。
+- [爆款复刻重构方案](ip-studio-recreation-quality-plan.md)：客户画布 IPP-59710f20 的复盘；视频模型的硬限制和各种生成单位的成本；开源方案对比；新设计（复刻工程、算法拆原片、定妆图、镜头卡还原提示词、逐镜检查、还原基准）；风险；动工前的实验和判定。方案，未实现。last-reviewed: 2026-11-13。
 - [视频拉片操作手册](training/studio-film-study.md)：6步实操截图，覆盖开始、进度、播放、文档编辑与导出。last-reviewed: 2026-10-15。
 - [企业生成入口与扣费引用](ip-studio-enterprise-generation-entry-map.md)
 
