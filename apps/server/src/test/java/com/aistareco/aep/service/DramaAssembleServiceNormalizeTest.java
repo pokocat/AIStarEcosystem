@@ -139,8 +139,9 @@ class DramaAssembleServiceNormalizeTest {
         List<String> args = DramaAssembleService.normalizeArgs(List.of(a, b),
                 List.of(portrait(true), clip(768, 1024, "h264", null, 0, 0, 4.25)), 720, 1280, out);
 
-        assertEquals("-y", args.get(0));
-        assertEquals(List.of("-i", a.toString(), "-i", b.toString()), args.subList(1, 5));
+        assertEquals(List.of("-y", "-filter_complex_threads", "1",
+                "-threads:v", "1", "-i", a.toString(), "-threads:v", "1", "-i", b.toString()),
+                args.subList(0, args.indexOf("-filter_complex")));
         assertFalse(args.contains("concat") || args.contains("-f"), "不走 concat 分离器: " + args);
         String graph = args.get(args.indexOf("-filter_complex") + 1);
         String video = "setpts=PTS-STARTPTS,scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,"
@@ -155,6 +156,7 @@ class DramaAssembleServiceNormalizeTest {
         assertEquals("[vout]", args.get(args.indexOf("-map") + 1));
         assertEquals("[aout]", args.get(args.lastIndexOf("-map") + 1));
         assertEquals("libx264", args.get(args.indexOf("-c:v") + 1));
+        assertEquals("2", args.get(args.lastIndexOf("-threads:v") + 1));
         assertEquals("veryfast", args.get(args.indexOf("-preset") + 1));
         assertEquals("aac", args.get(args.indexOf("-c:a") + 1));
         assertEquals("+faststart", args.get(args.indexOf("-movflags") + 1));

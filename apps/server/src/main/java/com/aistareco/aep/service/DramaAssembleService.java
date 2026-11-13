@@ -613,9 +613,11 @@ public class DramaAssembleService {
         if (inputs.size() != probes.size()) {
             throw new IllegalArgumentException("inputs/probes 数量不一致 " + inputs.size() + " vs " + probes.size());
         }
-        List<String> args = new ArrayList<>();
-        args.add("-y");
+        // Each input opens a decoder. Keep FFmpeg and the JVM within the Studio export worker's PID limit.
+        List<String> args = new ArrayList<>(List.of("-y", "-filter_complex_threads", "1"));
         for (Path p : inputs) {
+            args.add("-threads:v");
+            args.add("1");
             args.add("-i");
             args.add(p.toAbsolutePath().toString());
         }
@@ -645,7 +647,7 @@ public class DramaAssembleService {
         args.addAll(List.of(
                 "-filter_complex", graph.toString(),
                 "-map", "[vout]", "-map", "[aout]",
-                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                "-c:v", "libx264", "-threads:v", "2", "-preset", "veryfast", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-ar", String.valueOf(NORMALIZE_SAMPLE_RATE), "-ac", "2",
                 "-movflags", "+faststart",
                 out.toString()));
