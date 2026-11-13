@@ -1,0 +1,89 @@
+--- a/apps/web-aiavatar/src/ip/scenes/scene-studios.test.tsx
++++ b/apps/web-aiavatar/src/ip/scenes/scene-studios.test.tsx
+@@ -11,7 +11,7 @@
+   push: vi.fn(), failure: vi.fn(), taskStart: vi.fn(), taskGet: vi.fn(), ask: vi.fn(), signKeys: vi.fn(),
+   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
+   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(), videoPrice: vi.fn(),
+-  cloneAdvice: vi.fn(),
++  cloneAdvice: vi.fn(), taskPrice: vi.fn(),
+ }));
+ // 和 Next 一样：地址参数从 useSearchParams 读（页面改地址用 history.replaceState，下次渲染读到新的）。
+ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: api.push, replace: vi.fn() }), useSearchParams: () => new URLSearchParams(window.location.search) }));
+@@ -24,7 +24,7 @@
+ vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
+ vi.mock("@/canvas-bridge/studio-video-tasks", async original => ({ ...await original<any>(),
+   videoTasks: async () => ({ items: [], page: 0, hasMore: false }), videoTask: api.taskGet,
+-  videoTaskPrice: async (q: any) => ({ estimated: q.duration * 40, cap: q.duration * 120, segments: [q.duration], boards: 0 }),
++  videoTaskPrice: (q: any) => api.taskPrice(q),
+   prepareVideoTask: async (_id: string, request: any) => request, startVideoTask: api.taskStart,
+ }));
+ vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
+@@ -47,6 +47,7 @@
+ 
+ beforeEach(() => {
+   api.cloneAdvice.mockRejectedValue(new Error('没有推荐'));
++  api.taskPrice.mockImplementation(async (q: any) => ({ estimated: q.duration * 40, cap: q.duration * 120, segments: [q.duration], boards: 0 }));
+   api.taskStart.mockImplementation(async (projectId: string, request: any) => {
+     if (request.kind === 'direct') await api.submit(projectId, request.video);
+     const task = { id: 'PEX-task', projectId, ...request, request, createdAt: '2026-11-06',
+@@ -284,14 +285,46 @@
+   const send = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
+   await waitFor(() => expect(screen.getByText("请添加参考视频")).toBeTruthy());
+   await pickFromLibrary("参考视频");
+-  const check = screen.getByRole("group", { name: "自动检查" });
+-  expect(within(check).getByRole("button", { name: "开启" }).getAttribute("aria-pressed")).toBe("true");
+-  fireEvent.click(within(check).getByRole("button", { name: "关闭" }));
+-  expect(within(check).getByRole("button", { name: "关闭" }).getAttribute("aria-pressed")).toBe("true");
++  // 开关做小（2026-11-11 用户）：一个 switch，说明在问号的悬停提示里，读屏从 aria-describedby 读到
++  const check = screen.getByRole("switch", { name: "自动检查" });
++  expect(check.getAttribute("aria-checked")).toBe("true");
++  expect(document.getElementById(check.getAttribute("aria-describedby")!)?.textContent).toContain("自动重新生成一次");
++  fireEvent.click(check);
++  expect(check.getAttribute("aria-checked")).toBe("false");
+   fillField(screen.getByRole("textbox", { name: "想做的视频" }), "换成我的面霜");
+   await waitFor(() => expect(send().disabled).toBe(false));
+   await act(async () => { fireEvent.click(send()); });
+   expect(api.taskStart).toHaveBeenCalledWith("IPP-1", expect.objectContaining({ configuration: expect.objectContaining({ autoCheck: false }) }));
++});
++
++// 2026-11-11 用户要求：右侧「示例」展示三种方式的示意图和说明，当前方式高亮，可以在这里改选
++test("视频：爆款复刻的示例列出三种方式，在示例里选用会切换左侧的方式", async () => {
++  window.history.replaceState(null, "", "/video?scene=recreation");
++  api.videoModels.mockResolvedValue([H3]);
++  api.capabilities.mockResolvedValue({ mock: false, operations: ['video-control'], imageCost: 8 });
++  await act(async () => { render(<SceneVideoStudio/>); });
++  const guide = (await screen.findByRole("heading", { name: "三种复刻方式" })).closest(".studio-clone-guide") as HTMLElement;
++  const items = within(guide).getAllByRole("listitem");
++  expect(items.map(li => within(li).getByRole("heading").textContent)).toEqual([expect.stringMatching(/^分镜复刻/), expect.stringMatching(/^深度复刻/), expect.stringMatching(/^元素替换/)]);
++  expect(items[0].getAttribute("aria-current")).toBe("true");
++  expect(within(items[1]).getByRole("img").getAttribute("src")).toBe("/studio/clone-modes/depth.webp");
++  fireEvent.click(within(items[1]).getByRole("button", { name: "选用深度复刻" }));
++  expect(screen.getByRole("radio", { name: /^深度复刻/ }).getAttribute("aria-checked")).toBe("true");
++  expect(within(guide).getAllByRole("listitem")[1].getAttribute("aria-current")).toBe("true");
++  expect(window.location.search).toContain("tool=depth");
++});
++
++// 线上没有动作提取服务时（operations 里没有 video-control）：一选深度复刻就说暂不可用，不再反复请求报价（2026-11-11 线上 503）
++test("视频：深度复刻不可用时先说明原因，也不请求报价", async () => {
++  window.history.replaceState(null, "", "/video?scene=recreation&tool=depth");
++  api.videoModels.mockResolvedValue([H3]);
++  api.capabilities.mockResolvedValue({ mock: false, operations: [], imageCost: 8 });
++  await act(async () => { render(<SceneVideoStudio/>); });
++  await waitFor(() => expect(screen.getByText("深度复刻暂不可用，请联系平台处理。")).toBeTruthy());
++  await act(async () => { await new Promise(r => setTimeout(r, 400)); });
++  expect(api.taskPrice).not.toHaveBeenCalledWith(expect.objectContaining({ kind: "depth" }));
++  fireEvent.click(screen.getByRole("radio", { name: /^分镜复刻/ }));
++  await waitFor(() => expect(api.taskPrice).toHaveBeenCalledWith(expect.objectContaining({ kind: "recreation" })));
+ });
+ 
+ for (const mode of ['depth', 'replacement'] as const) test(`视频工具：${mode} 保存原片和替换图，直接受理后台任务并保持当前模式`, async () => {
+@@ -405,7 +438,8 @@
+   api.videoModels.mockResolvedValue([H3]);
+   api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/v.mp4', url: 'blob:v', mediaType: 'video', mimeType: 'video/mp4', bytes: 1, fileName: '原片' });
+   await act(async () => { render(<SceneVideoStudio/>); });
+-  await screen.findByText('请添加参考视频'); await pickFromLibrary('参考视频');
++  // 不可用的原因一进页面就说，不等用户先传完素材
++  await screen.findByText('深度复刻暂不可用，请联系平台处理。'); await pickFromLibrary('参考视频');
+   fillField(screen.getByRole('textbox', { name: '想做的视频' }), '换成我的商品');
+   api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/new.jpg', url: 'blob:p', mediaType: 'image', mimeType: 'image/jpeg', bytes: 1, fileName: '商品' });
+   await pickFromLibrary('替换素材');

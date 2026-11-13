@@ -1,0 +1,16 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/ipstudio/service/IpRunWorker.java
++++ b/apps/server/src/main/java/com/aistareco/aep/ipstudio/service/IpRunWorker.java
+@@ -464,11 +464,8 @@
+             ObjectNode input=(ObjectNode)projects.parseOrEmptyObject(fresh.getInputJson());
+             ObjectNode exec=(ObjectNode)input.path("_exec");ArrayNode jobs=exec.withArray("imageJobs");
+             while(jobs.size()<=index)jobs.addNull();jobs.set(index,state.deepCopy());
+-            long leaseMillis=180_000;
+-            if(state.hasNonNull("resultUrl")) {
+-                var spec=projects.parseOrEmptyObject(state.path("imageRequestSpec").asText("{}"));
+-                leaseMillis=Math.max(leaseMillis,spec.path("wire").path("requestTimeoutMillis").asLong(90_000)+60_000);
+-            }
++            // Renew for the actual GET deadline; long endpoint windows can outlast the usual worker lease.
++            long leaseMillis=Math.max(180_000,state.path("resultDownloadAttemptTimeoutMillis").asLong()+60_000);
+             exec.put("nativeLeaseUntil",System.currentTimeMillis()+leaseMillis);
+             fresh.setInputJson(write(input));fresh.setHeartbeatAt(Instant.now());runRepo.save(fresh);
+             run.setInputJson(fresh.getInputJson());

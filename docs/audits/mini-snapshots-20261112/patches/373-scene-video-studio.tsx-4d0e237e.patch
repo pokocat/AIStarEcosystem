@@ -1,0 +1,232 @@
+--- a/apps/web-aiavatar/src/ip/scenes/scene-video-studio.tsx
++++ b/apps/web-aiavatar/src/ip/scenes/scene-video-studio.tsx
+@@ -4,8 +4,9 @@
+ import { nanoid } from "nanoid";
+ import Link from "next/link";
+ import { useRouter } from "next/navigation";
+-import { ArrowUp, ArrowUpRight, AudioLines, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, History, Image as ImageIcon, Loader2, Mic, PencilLine, Plus,
+-  RotateCcw, SlidersHorizontal, Square, UserRound, Video, X } from "lucide-react";
++import { Button } from "antd";
++import { ArrowUp, ArrowUpRight, AudioLines, Box, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, History, Image as ImageIcon, Loader2, Mic, Mountain, Package, PencilLine, Plus,
++  RotateCcw, SlidersHorizontal, Square, Upload, UserRound, Video, X } from "lucide-react";
+ import type { IpProject, IpProjectDoc, IpRun, IpSavedAsset, StudioMediaImportResult, StudioSceneComposeRequest, StudioSceneInputs, StudioNodeMetadata, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
+ import { studioScriptSuggestions } from "@/canvas-bridge/studio-script-suggestions";
+ import type { StudioScriptSuggestion, StudioCapabilities, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
+@@ -16,6 +17,7 @@
+ import { cancelRun, fetchStudioVideoModels, readRun, signKeys } from "@/canvas-bridge/api";
+ import { SignedImage } from "@/canvas-bridge/signed-image";
+ import { SignedVideo } from "@/canvas-bridge/signed-video";
++import { SignedAudio } from "@/canvas-bridge/signed-audio";
+ import { getStudioPlanExecution } from "@/canvas-bridge/studio-plan-execution";
+ import type { StudioPlanExecution, StudioSegmentedVideoPrice, StudioSegmentedVideoRequest } from "@ai-star-eco/types/ip-studio-workflow";
+ import { describeSegmentedPrice, segmentedRecords, segmentedVideoPrice, startSegmentedVideo, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
+@@ -64,6 +66,12 @@
+ /** 一条视频最长多少秒（超过单段上限的分段做、再拼成一条，段数由服务端算，docs/studio-segmented-video.md）。 */
+ const MAX_SECONDS = 60;
+ const RECREATION = "reference-video-recreation";
++const RECREATION_IMAGE_GUIDES = [
++  { label: "商品图", hint: "外观和包装", icon: Package },
++  { label: "人物图", hint: "正脸或全身", icon: UserRound },
++  { label: "道具图", hint: "手持物或陈设", icon: Box },
++  { label: "环境图", hint: "场地或背景", icon: Mountain },
++];
+ /**
+  * 爆款复刻默认用的视频模型：OneToken · Seedance 2.0（2026-11-12 用户：复刻对画面质量要求高，默认 Seedance 2.0）。
+  * 线上没有这条（下架、没开参考视频）时回到平台默认；用户自己选过的、草稿里记着的照旧。
+@@ -97,6 +105,7 @@
+   const drafts = useStudioList(loadDrafts, ready && !!catalog);
+   const [sceneId, setSceneId] = useState(DEFAULT_SCENE);
+   const scene = findVideoScene(catalog, sceneId) ?? catalog?.video[0];
++  const recreation = scene?.skill === RECREATION;
+   const [text, setText] = useState("");
+   const [language, setLanguage] = useState(LANGUAGES[0]);
+   const [picked, setPicked] = useState<Record<string, string>>({});
+@@ -106,6 +115,8 @@
+   const [character, setCharacter] = useState<Media>();
+   const [voice, setVoice] = useState<Media>();
+   const [video, setVideo] = useState<Media>();
++  const imageLimit = scene?.images.max ?? 6;
++  const imageCapacity = imageLimit - (recreation && character ? 1 : 0);
+   const [uploading, setUploading] = useState<Slot>();
+   const [settingsOpen, setSettingsOpen] = useState(false);
+   const [busy, setBusy] = useState(false);
+@@ -434,12 +445,24 @@
+     setUploading(kind);
+     try {
+       const projectId = await ensureDraft(ticket);
+-      const max = scene.images.max ?? 6;
+-      const fresh = kind === "image" ? chosen.filter(m => !images.some(o => o.key === m.key)).slice(0, Math.max(0, max - images.length)) : chosen.slice(0, 1);
+-      const titled = fresh.map((m, i) => ({ ...m, title: kind === "image" ? `${scene.images.label} ${images.length + i + 1}` : kind === "character" ? "出镜人物" : m.title || (kind === "voice" ? "声音样本" : "参考视频") }));
++      const occupied = new Set(images.map(m => m.key));
++      if (recreation && character) occupied.add(character.key);
++      const fresh = kind === "image" ? chosen.filter(m => {
++        if (occupied.has(m.key)) return false;
++        occupied.add(m.key);
++        return true;
++      }).slice(0, Math.max(0, imageCapacity - images.length)) : chosen.slice(0, 1);
++      const imageLabel = recreation ? imagePurpose || scene.images.label : scene.images.label;
++      const titles = new Set(images.map(m => m.title));
++      let number = recreation ? 1 : images.length + 1;
++      const titled = fresh.map(m => {
++        if (kind !== "image") return { ...m, title: kind === "character" ? "出镜人物" : m.title || (kind === "voice" ? "声音样本" : "参考视频") };
++        while (titles.has(`${imageLabel} ${number}`)) number++;
++        return { ...m, title: `${imageLabel} ${number++}` };
++      });
+       // 选的时候换了草稿：素材照样记进它自己那份草稿，只是不放到新打开的这页上。
+       if (onPage(ticket, projectId)) {
+-        if (kind === "image") setImages(old => [...old, ...titled].slice(0, max));
++        if (kind === "image") setImages(old => [...old, ...titled].slice(0, imageCapacity));
+         if (kind === "character") setCharacter(titled[0]);
+         if (kind === "voice") setVoice(titled[0]);
+         if (kind === "video") setVideo(titled[0]);
+@@ -449,9 +472,9 @@
+         const made = placeMedia(nodes, media, type, nodes.filter(n => n.metadata?.origin === "upload").length);
+         // 老草稿可能只记了素材类型；重选同一声音 / 视频时也保留资产库里的名称。
+         const placed = nodes.some(n => n.id === made.id)
+-          ? kind === "voice" || kind === "video" ? { ...next, nodes: nodes.map(n => n.id === made.id ? { ...n, title: media.title } : n) } : next
++          ? kind === "voice" || kind === "video" || (recreation && kind === "image") ? { ...next, nodes: nodes.map(n => n.id === made.id ? { ...n, title: media.title } : n) } : next
+           : { ...next, nodes: [...nodes, made] };
+-        return withSceneInput(placed, kind, media.key, "add", max);
++        return withSceneInput(placed, kind, media.key, "add", imageCapacity);
+       }, doc), projectId).catch(() => undefined);
+     } catch (e) { showFailure({ action: "添加素材", error: e }); }
+     finally { setUploading(undefined); }
+@@ -461,24 +484,23 @@
+    * key 是不是本人的由服务端在出片时照常把关（requireOwnedAssetKey）。
+    */
+   const bringImage = async (key: string) => {
+-    if (!scene) return;
++    if (!scene || images.length >= imageCapacity || (recreation && character?.key === key)) return;
+     const ticket = session.current;
+     setUploading("image");
+     try {
+       const url = (await signKeys([key]))[key];
+       if (!url) throw new Error("图片加载失败，请返回 AI 图片重新点击「做成视频」。");
+       const projectId = await ensureDraft(ticket);
+-      const max = scene.images.max ?? 6;
+       const media: Media = { key, url, title: `${scene.images.label} ${images.length + 1}`, mediaType: "image", mimeType: "", bytes: 0, fileName: "" };
+       if (onPage(ticket, projectId)) {
+-        setImages(old => old.some(m => m.key === key) ? old : [...old, media].slice(0, max));
++        setImages(old => old.some(m => m.key === key) ? old : [...old, media].slice(0, imageCapacity));
+         setNote({ text: `图片已添加到「${scene.images.label}」。描述想要的视频后，可交给 AI 编导撰写脚本。` });
+       }
+       await persist(doc => {
+         const nodes = doc.nodes as CanvasNodeData[];
+         const made = placeMedia(nodes, media, "image", nodes.filter(n => n.metadata?.origin === "upload").length);
+         const placed = nodes.some(n => n.id === made.id) ? doc : { ...doc, nodes: [...nodes, made] };
+-        return withSceneInput(placed, "image", key, "add", max);
++        return withSceneInput(placed, "image", key, "add", imageCapacity);
+       }, projectId).catch(() => undefined);
+     } catch (e) { showFailure({ action: "带入图片", error: e }); }
+     finally { setUploading(undefined); }
+@@ -523,7 +545,6 @@
+ 
+   // ── 编导写脚本 ────────────────────────────────────────────────────────
+   const revising = !!latestScript;
+-  const recreation = scene?.skill === RECREATION;
+   // 复刻按原片的镜头分段出片，成片长度跟原片走：时长就是参考视频的时长，不让改（服务端按拉片分段核对，差 1 秒以上就停）。
+   useEffect(() => {
+     if (!recreation || !video?.durationSec) return;
+@@ -1230,6 +1251,15 @@
+   const scriptRefs = (row: CanvasNodeData): ScenePromptRef[] => (row.metadata?.studio?.sceneDirector?.refs ?? [])
+     .map((key, i) => ({ index: i + 1, title: placedMedia(key)?.title || `图${i + 1}`, url: placedMedia(key)?.url, storageKey: key }));
+   const imageIndex = (key: string) => (plan?.used ?? []).filter(m => m.mediaType === "image").findIndex(m => m.key === key);
++  const removeImage = (media: Media) => {
++    drop("image", media.key);
++    setImages(old => {
++      const remaining = old.filter(item => item.key !== media.key);
++      return recreation ? remaining : remaining.map((item, index) => ({ ...item, title: `${scene.images.label} ${index + 1}` }));
++    });
++  };
++  const removeVideo = () => { if (video) drop("video", video.key); setVideo(undefined); };
++  const removeVoice = () => { if (voice) drop("voice", voice.key); setVoice(undefined); };
+ 
+   // 团购的产品图、环境图复用同一排素材占位和上传入口，不另设引导区。
+   const imageSlot = (label: string, guided = false) => <div key={label} className="scene-media">
+@@ -1240,20 +1270,63 @@
+   // 素材和规格在编辑页和编导页是同一份：编导页的输入框里也看得到、改得了，编导按这里的时长和素材写（2026-10-31 用户反馈）。
+   const mediaRow = (compact = false) => <>
+     <div className={`scene-media-row${compact ? " is-compact" : ""}`} role="group" aria-label="素材">
+-      {scene.video && tile("video", video, scene.video.label, Video, !scene.video.required, () => { if (video) drop("video", video.key); setVideo(undefined); })}
+-      {images.map((m, i) => { const at = imageIndex(m.key); return <div key={m.key} className="scene-media is-filled">
++      {scene.video && tile("video", video, scene.video.label, Video, !scene.video.required, removeVideo)}
++      {images.map(m => { const at = imageIndex(m.key); return <div key={m.key} className="scene-media is-filled">
+         <span className="scene-media-preview"><SignedImage src={m.url} storageKey={m.key} alt={m.title}/>{at >= 0 && <i className="scene-ref-index">图{at + 1}</i>}</span>
+         <span>{scene.images.label}</span>
+-        <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => { drop("image", m.key); setImages(old => old.filter((_, j) => j !== i).map((o, j) => ({ ...o, title: `${scene.images.label} ${j + 1}` }))); }}><X size={11} strokeWidth={1.8}/></button></div>; })}
+-      {images.length < (scene.images.max ?? 6) && <>
++        <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => removeImage(m)}><X size={11} strokeWidth={1.8}/></button></div>; })}
++      {images.length < imageCapacity && <>
+         {imageSlot(scene.images.label)}
+         {scene.id === "local-groupbuy" && ["产品图片", "环境图片"].map(label => imageSlot(label, true))}
+       </>}
+       {(scene.character || scene.voice || recreation) && <i className="scene-media-divider" aria-hidden="true"/>}
+       {(scene.character || recreation) && tile("character", character, "角色", UserRound, true, () => { if (character) drop("character", character.key); setCharacter(undefined); })}
+-      {(scene.voice || recreation) && tile("voice", voice, "声音", Mic, true, () => { if (voice) drop("voice", voice.key); setVoice(undefined); })}
++      {(scene.voice || recreation) && tile("voice", voice, "声音", Mic, true, removeVoice)}
+     </div>
+   </>;
++  const recreationMedia = <div className="scene-recreation-media">
++    <section aria-label="参考视频">
++      {video ? <div className="scene-recreation-source">
++        <SignedVideo key={video.key} src={video.url} storageKey={video.key} controls playsInline preload="metadata" aria-label="已选择参考视频"/>
++        <div className="scene-recreation-file">
++          <span title={video.fileName || video.title}>{video.fileName || video.title}</span>
++          <Button size="small" loading={uploading === "video"} disabled={busy || !!uploading} onClick={() => choose("video")} title={video.fileName || video.title}>更换参考视频</Button>
++          <Button size="small" type="text" icon={<X size={15}/>} disabled={busy || !!uploading} onClick={removeVideo} aria-label="移除参考视频"/>
++        </div>
++      </div> : <Button className="scene-recreation-add-video" type="text" aria-label="从资产库选择参考视频"
++        disabled={busy || !!uploading} onClick={() => choose("video")}>
++        {uploading === "video" ? <Loader2 size={24} className="studio-gallery-spinner" aria-hidden/> : <Upload size={24} aria-hidden/>}
++        <strong>添加参考视频</strong><small>必选 · MP4 · 最长 {MAX_SECONDS} 秒</small>
++      </Button>}
++    </section>
++    <section className="scene-recreation-replacements" aria-label="替换素材">
++      <header><h3>替换素材</h3><span aria-live="polite">图片 {images.length + (character ? 1 : 0)} / {imageLimit}</span></header>
++      <div className="scene-recreation-guides">
++        {RECREATION_IMAGE_GUIDES.map(({ label, hint, icon: Icon }) => <Button key={label} type="text" className="scene-recreation-guide"
++          icon={<Icon size={19}/>} aria-label={`添加${label}`} disabled={busy || !!uploading || images.length >= imageCapacity}
++          onClick={() => choose("image", label)}>
++          <span><strong>{label}</strong><small>{hint}</small></span><Plus size={14} aria-hidden/>
++        </Button>)}
++      </div>
++      {(images.length > 0 || character) && <div className="scene-media-row scene-recreation-picked" aria-label="已添加的图片">
++        {images.map(media => <div className="scene-media is-filled" key={media.key}>
++          <span className="scene-media-preview"><SignedImage src={media.url} storageKey={media.key} alt={media.title}/></span>
++          <span title={media.title}>{media.title}</span>
++          <button type="button" className="scene-ref-remove" disabled={busy || !!uploading} aria-label={`移除${media.title}`} onClick={() => removeImage(media)}><X size={12}/></button>
++        </div>)}
++        {character && tile("character", character, "角色", UserRound, true, () => { drop("character", character.key); setCharacter(undefined); })}
++      </div>}
++      <div className="scene-recreation-sound">
++        <div className="scene-recreation-file">
++          <Mic size={17} aria-hidden/>
++          <span title={voice?.fileName || voice?.title}>{voice ? voice.fileName || voice.title : "参考声音 · 可选 1 段"}</span>
++          <Button size="small" loading={uploading === "voice"} disabled={busy || !!uploading} onClick={() => choose("voice")}>{voice ? "更换声音" : "添加声音"}</Button>
++          {voice && <Button size="small" type="text" icon={<X size={15}/>} disabled={busy || !!uploading} onClick={removeVoice} aria-label="移除声音"/>}
++        </div>
++        {voice && <SignedAudio key={voice.key} src={voice.url} storageKey={voice.key} controls aria-label="已选择参考声音"/>}
++      </div>
++    </section>
++  </div>;
+   const specPill =
+     <div className="scene-setting-panel-host">
+       <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${sourceUnknown ? "时长跟随原片" : `${shownDuration} 秒`}，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
+@@ -1330,7 +1403,7 @@
+       : <div className="scene-compose">
+         {recreation && <CloneModePicker mode={cloneMode} disabled={busy || uploading !== undefined}
+           advice={cloneAdviceShown} onChange={pickCloneMode}/>}
+-        {mediaRow()}
++        {recreation ? recreationMedia : mediaRow()}
+ 
+         <div className="scene-box">
+           <ScenePromptEditor ref={input} ariaLabel={scriptId ? "视频脚本" : "想做的视频"} value={text} refs={promptRefs} hidden={recreation ? undefined : layers?.hidden}
+@@ -1406,7 +1479,7 @@
+     </SceneVideoWorkspace>
+     {picking && <div className="scene-picker-host"><LibraryReferencePicker open upload
+       mediaType={picking === "voice" ? "audio" : picking === "video" ? "video" : "image"}
+-      max={picking === "image" ? Math.max(1, (scene.images.max ?? 6) - images.length) : 1}
++      max={picking === "image" ? Math.max(1, imageCapacity - images.length) : 1}
+       title={`选择${picking === "image" ? imagePurpose ?? scene.images.label : picking === "character" ? "出镜人物" : picking === "voice" ? "声音" : scene.video?.label ?? "参考视频"}`}
+       intro="从资产库选择，也可上传新文件。"
+       onClose={() => setPicking(undefined)} onAssets={assets => addFromLibrary(picking, assets)}/></div>}

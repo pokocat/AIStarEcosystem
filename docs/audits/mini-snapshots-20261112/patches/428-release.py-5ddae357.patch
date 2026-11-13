@@ -1,0 +1,43 @@
+--- a/infra/scripts/cluster/release.py
++++ b/infra/scripts/cluster/release.py
+@@ -20,7 +20,7 @@
+  def action(self,node,action,release=None):
+   cmd=[self.config['operation_python'],'-s',self.config['root']+'/control/node.py','--mode',self.mode,'--action',action]
+   if release:cmd+=['--release',release]
+-  result=json.loads(self.ssh(node,shlex.join(cmd)));self.record(action,node=node,**({k:result[k] for k in ['release','sha','drain_seconds'] if k in result}));return result
++  result=json.loads(self.ssh(node,shlex.join(cmd)));self.record(action,node=node,**({k:result[k] for k in ['release','sha','drain_seconds','drain_scope'] if k in result}));return result
+  def alb(self,action,args):
+   self.check_lease()
+   p=subprocess.run(['aliyun','alb',action,'--RegionId',self.config['region'],'--endpoint','alb.'+self.config['region']+'.aliyuncs.com','--force',*args],capture_output=True,text=True,timeout=60)
+@@ -126,20 +126,23 @@
+   initial={node:int(row['Weight']) for node,row in rows.items()}
+   require(initial in (DUAL_ACTIVE,*SINGLE_NODE.values()),'初始权重异常，禁止自动发布')
+   before={node:self.action(node,'inspect') for node in self.config['nodes']}
+-  require(not any(state['quiescing'] for state in before.values()),'存在排空中的节点，禁止自动发布')
++  require(all(not state['quiescing'] or (self.mode=='production' and initial[node]==0)
++              for node,state in before.items()),'承流节点仍在排空，禁止自动发布')
+   for node in self.config['nodes']:self.action(node,'prepare',release)
+   serving='b' if initial==SINGLE_NODE['b'] else 'a'
+   first='a' if serving=='b' else 'b'
+   if initial==DUAL_ACTIVE:self.probe_dual()
+   try:
+    self.select_serving(serving)
+-   self.action(first,'drain-stop')
+-   self.action(first,'start',release)
+-   self.select_serving(first)
+-   second=serving
+-   serving=first
+-   self.action(second,'drain-stop')
+-   self.action(second,'start',release)
++   if before[first]['release']!=release or before[first]['quiescing']:
++    self.action(first,'drain-stop')
++    self.action(first,'start',release)
++   if before[serving]['release']!=release:
++    self.select_serving(first)
++    second=serving
++    serving=first
++    self.action(second,'drain-stop')
++    self.action(second,'start',release)
+    final={node:self.action(node,'inspect') for node in self.config['nodes']}
+    require(all(x['release']==release and not x['quiescing'] for x in final.values()),'双机发布或排空状态不一致')
+    self.weights(DUAL_ACTIVE)

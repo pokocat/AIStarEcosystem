@@ -1,0 +1,279 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/ipstudio/service/JusuanImageClient.java
++++ b/apps/server/src/main/java/com/aistareco/aep/ipstudio/service/JusuanImageClient.java
+@@ -36,6 +36,9 @@
+ public class JusuanImageClient {
+     /** A supplier refusal we cannot state exactly: never its words or a status code, only that it failed and to retry. */
+     static final String GENERATION_FAILED_MESSAGE = "图片生成失败，未生成的图片不扣积分。请重新生成。";
++    private static final int RESULT_DOWNLOAD_ATTEMPTS = 3;
++    private static final long RESULT_DOWNLOAD_EXTRA_MILLIS = 240_000;
++    private static final long RESULT_DOWNLOAD_BACKOFF_MILLIS = 1_000;
+     private static final ScheduledThreadPoolExecutor RESULT_DOWNLOAD_TIMEOUTS = resultDownloadTimeouts();
+     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiModelUsageService usage;
+     private final AiModelInvocationService models;
+@@ -151,8 +154,8 @@
+             if(id.isBlank()&&resultUrl.isBlank())throw new Pending(false,null);
+             try{body=(ObjectNode)mapper.readTree(state.path("requestBody").asText("{}"));}catch(Exception e){throw new Pending(true,e);}
+             if(!resultUrl.isBlank()) {
+-                if(durable)checkpoint.accept(state.deepCopy());
+-                return completeSyncResult(endpoint,spec,size,requestId,owner,body,()->downloadUrl(wire,resultUrl));
++                return completeResult(endpoint,spec,size,requestId,owner,body,id.isBlank()?null:id,
++                        ()->downloadUrl(wire,resultUrl,requestId,state,checkpoint));
+             }
+         } else {
+             List<String> references=new ArrayList<>();
+@@ -165,9 +168,15 @@
+             state.put("submitAttempted",true).put("baseUrl",endpoint.getBaseUrl()).put("model",endpoint.getModel()).put("requestBody",body.toString()).put("imageRequestSpec",spec.json());
+             if(durable)checkpoint.accept(state.deepCopy());
+             JsonNode accepted;
+-            try{accepted=multipart==null?json(endpoint,wire,submitPath,body.toString(),requestId,owner,"POST",true)
+-                    :checkedSubmit(upstream.sendJson(multipart,context(endpoint,requestId,owner,
+-                        body.deepCopy().put("transport","multipart").set("referenceKeys",mapper.valueToTree(keys.stream().map(JusuanImageClient::referenceLabel).toList())).toString(),true)),wire);}
++            try {
++                if(multipart==null)accepted=json(endpoint,wire,submitPath,body.toString(),requestId,owner,"POST",true,state);
++                else {
++                    var response=upstream.sendJson(multipart,context(endpoint,requestId,owner,
++                            body.deepCopy().put("transport","multipart").set("referenceKeys",mapper.valueToTree(keys.stream().map(JusuanImageClient::referenceLabel).toList())).toString(),true));
++                    accepted=checkedSubmit(response,wire);
++                    rememberSubmitTrace(state,response);
++                }
++            }
+             catch(ProviderRejected error){throw error;}
+             catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
+             if(ProviderErrorMessage.hasError(accepted)) {
+@@ -182,10 +191,8 @@
+                 throw unconfirmed;
+             }
+             if(resultMode.startsWith("sync-")) {
+-                return completeSyncResult(endpoint,spec,size,requestId,owner,body,()->syncResult(endpoint,wire,accepted,
+-                        resultMode,requestId,url->{
+-                            if(durable)checkpoint.accept(state.put("resultUrl",url).deepCopy());
+-                        }));
++                return completeResult(endpoint,spec,size,requestId,owner,body,null,()->syncResult(endpoint,wire,accepted,
++                        resultMode,requestId,state,checkpoint));
+             }
+             id=wire!=null && wire.submitIdPointer()!=null?pointerText(accepted,wire.submitIdPointer()):accepted.path("id").asText(accepted.path("jobId").asText());
+             try{requireId(id);}catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
+@@ -201,12 +208,14 @@
+                     Map<String,Object> variables=Map.of("id",id,"model",endpoint.getModel()==null?"":endpoint.getModel(),"requestId",requestId);
+                     pollBody=mapper.valueToTree(renderTemplate(wire.pollTemplate(),variables)).toString();
+                 }
+-                JsonNode job=json(endpoint,wire,pollPath,pollBody,requestId,owner,pollMethod,false);
++                JsonNode job=json(endpoint,wire,pollPath,pollBody,requestId,owner,pollMethod,false,null);
+                 String status=wire!=null && wire.statusPointer()!=null?pointerText(job,wire.statusPointer()):job.path("status").asText();
+                 if(statusIn(status,wire==null?null:wire.failed(),Set.of("failed","cancelled","canceled","expired")))throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(rejected(job,"图片任务失败，请检查提示词和参考图后重试"),job.toString());
+                 if(statusIn(status,wire==null?null:wire.succeeded(),Set.of("succeeded","completed","done"))) {
+                     byte[] bytes;
+-                    if("async-url".equals(resultMode))bytes=resultBytes(endpoint,wire,pointerText(job,wire.outputPointer()),resultMode);
++                    if("async-url".equals(resultMode))
++                        return completeResult(endpoint,spec,size,requestId,owner,body,id,
++                                ()->downloadReceivedUrl(wire,pointerText(job,wire.outputPointer()),requestId,state,checkpoint));
+                     else {String asset=wire!=null && wire.outputAssetIdPointer()!=null?pointerText(job,wire.outputAssetIdPointer()):assetId(job);requireId(asset);bytes=download(endpoint,wire,asset);}
+                     noteOutputSize(spec,size,bytes,endpoint,requestId);
+                     recordSuccess(endpoint,owner,requestId,id,body);return bytes;
+@@ -355,12 +364,12 @@
+         return source.startsWith("data:")?"[inline image]":source.startsWith("http")?"[external image]":source;
+     }
+ 
+-    private byte[] completeSyncResult(AiModelEndpoint endpoint,AiImageRequestSpec spec,String size,String requestId,
+-                                      Invocation owner,ObjectNode body,java.util.function.Supplier<byte[]> fetch) {
++    private byte[] completeResult(AiModelEndpoint endpoint,AiImageRequestSpec spec,String size,String requestId,
++                                  Invocation owner,ObjectNode body,String providerJobId,java.util.function.Supplier<byte[]> fetch) {
+         try {
+             byte[] bytes=fetch.get();
+             noteOutputSize(spec,size,bytes,endpoint,requestId);
+-            recordSuccess(endpoint,owner,requestId,null,body);
++            recordSuccess(endpoint,owner,requestId,providerJobId,body);
+             return bytes;
+         } catch(ProviderRejected error) {
+             throw error;
+@@ -377,7 +386,7 @@
+      * (a presigned S3 address) to a b64_json request. Read the sibling field rather than failing a finished image.
+      */
+     private byte[] syncResult(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,JsonNode accepted,String mode,String requestId,
+-                              Consumer<String> onUrl) {
++                              ObjectNode state,Consumer<ObjectNode> checkpoint) {
+         String pointer=wire.outputPointer(),value=pointerText(accepted,pointer);
+         if((value==null || value.isBlank()) && pointer!=null) {
+             String sibling=pointer.endsWith("/b64_json")?pointer.substring(0,pointer.length()-"b64_json".length())+"url"
+@@ -390,25 +399,28 @@
+                 mode=sibling.endsWith("/url")?"sync-url":"sync-base64";
+             }
+         }
+-        if("sync-url".equals(mode)&&value!=null&&!value.isBlank())onUrl.accept(value);
+-        return resultBytes(endpoint,wire,value,mode);
+-    }
+-
+-    private byte[] resultBytes(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value,String mode) {
++        return "sync-url".equals(mode)?downloadReceivedUrl(wire,value,requestId,state,checkpoint):base64Result(wire,value);
++    }
++
++    private byte[] downloadReceivedUrl(AiImageRequestSpec.Wire wire,String value,String requestId,
++                                       ObjectNode state,Consumer<ObjectNode> checkpoint) {
+         if(value==null || value.isBlank())throw failure(GENERATION_FAILED_MESSAGE);
+-        if("sync-base64".equals(mode)) {
+-            String encoded=value;
+-            if(encoded.startsWith("data:image/")) {
+-                int marker=encoded.indexOf(";base64,");
+-                if(marker<0)throw failure("图片结果编码无效");
+-                encoded=encoded.substring(marker+8);
+-            }
+-            int maxBytes=setting(wire.maxOutputBytes(),64*1024*1024);
+-            if(encoded.length()>((long)maxBytes+2)/3*4+4)throw failure("图片结果超过大小上限");
+-            try{return checkedImage(Base64.getDecoder().decode(encoded),maxBytes);}
+-            catch(IllegalArgumentException e){throw failure("图片结果编码无效");}
+-        }
+-        return downloadUrl(wire,value);
++        state.put("resultUrl",value);
++        return downloadUrl(wire,value,requestId,state,checkpoint);
++    }
++
++    private byte[] base64Result(AiImageRequestSpec.Wire wire,String value) {
++        if(value==null || value.isBlank())throw failure(GENERATION_FAILED_MESSAGE);
++        String encoded=value;
++        if(encoded.startsWith("data:image/")) {
++            int marker=encoded.indexOf(";base64,");
++            if(marker<0)throw failure("图片结果编码无效");
++            encoded=encoded.substring(marker+8);
++        }
++        int maxBytes=setting(wire.maxOutputBytes(),64*1024*1024);
++        if(encoded.length()>((long)maxBytes+2)/3*4+4)throw failure("图片结果超过大小上限");
++        try{return checkedImage(Base64.getDecoder().decode(encoded),maxBytes);}
++        catch(IllegalArgumentException e){throw failure("图片结果编码无效");}
+     }
+ 
+     /**
+@@ -425,39 +437,93 @@
+                 requestId,endpoint.getId(),endpoint.getModel(),size,received);
+     }
+ 
+-    /** Supplier image results use their returned URL, including HTTP, arbitrary ports and redirects (2026-11-09). */
+-    private byte[] downloadUrl(AiImageRequestSpec.Wire wire,String value) {
+-        try {
+-            URI uri=URI.create(value);
+-            long deadline=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(setting(wire.requestTimeoutMillis(),90000));
++    private static final class ResultDownloadFailure extends ProviderRejected {
++        final boolean retryable;
++        ResultDownloadFailure(boolean timeout,boolean retryable) {
++            super(timeout?"STUDIO_IMAGE_RESULT_DOWNLOAD_TIMEOUT":"STUDIO_IMAGE_RESULT_DOWNLOAD_FAILED",
++                    timeout?"生成服务的图片下载超时，未交付的图片不扣积分。"
++                            :"未能从生成服务取回图片，未交付的图片不扣积分。",true);
++            this.retryable=retryable;
++        }
++    }
++
++    /** Retry only the GET for an already received image. Resume the same URL and retry budget after a restart. */
++    private byte[] downloadUrl(AiImageRequestSpec.Wire wire,String value,String requestId,
++                               ObjectNode state,Consumer<ObjectNode> checkpoint) {
++        int configuredMillis=setting(wire.requestTimeoutMillis(),90_000);
++        long budgetMillis=configuredMillis+Math.min(2L*configuredMillis,RESULT_DOWNLOAD_EXTRA_MILLIS)
++                +3*RESULT_DOWNLOAD_BACKOFF_MILLIS;
++        long deadlineAt=state.path("resultDownloadDeadlineAt").asLong(System.currentTimeMillis()+budgetMillis);
++        state.put("resultDownloadDeadlineAt",deadlineAt);
++        int failedAttempts=Math.max(0,Math.min(state.path("resultDownloadFailures").asInt(),RESULT_DOWNLOAD_ATTEMPTS-1));
++        for(int attempt=failedAttempts+1;;attempt++) {
++            long remaining=deadlineAt-System.currentTimeMillis();
++            if(remaining<=0)throw ProviderResponseDiagnostics.attachIdentifiers(
++                    new ResultDownloadFailure(true,false),state.path("providerSubmitTrace").asText());
++            int timeoutMillis=(int)Math.min(configuredMillis,remaining);
++            if(checkpoint!=null)checkpoint.accept(state.put("resultDownloadAttemptTimeoutMillis",timeoutMillis).deepCopy());
++            URI uri;
++            try {uri=URI.create(value);}
++            catch(IllegalArgumentException e){throw new ResultDownloadFailure(false,false);}
++            try {
++                return downloadUrlOnce(uri,wire,timeoutMillis);
++            } catch(ResultDownloadFailure error) {
++                org.slf4j.LoggerFactory.getLogger(getClass()).warn(
++                        "[studio-image-download] request={} host={} attempt={}/{} timeoutMs={} code={}",
++                        requestId,uri.getHost(),attempt,RESULT_DOWNLOAD_ATTEMPTS,timeoutMillis,error.getCode());
++                if(!error.retryable || attempt>=RESULT_DOWNLOAD_ATTEMPTS)
++                    throw ProviderResponseDiagnostics.attachIdentifiers(error,state.path("providerSubmitTrace").asText());
++                if(checkpoint!=null)checkpoint.accept(state.put("resultDownloadFailures",attempt).deepCopy());
++                try {pause.accept(RESULT_DOWNLOAD_BACKOFF_MILLIS*attempt);}
++                catch(RuntimeException interrupted) {
++                    if(Thread.currentThread().isInterrupted())throw new Pending(true,interrupted);
++                    throw interrupted;
++                }
++            }
++        }
++    }
++
++    /** Supplier image results support HTTP, arbitrary ports and redirects. Never send a provider key. */
++    private byte[] downloadUrlOnce(URI uri,AiImageRequestSpec.Wire wire,int timeoutMillis) {
++        HttpResponse<InputStream> response=null;
++        try {
++            long deadline=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+             for(int redirects=0;redirects<=10;redirects++) {
+-                // Result downloads never carry the supplier API key. Keep reference-input fetching separate.
+-                var response=http.send(HttpRequest.newBuilder(uri)
++                response=null;
++                response=http.send(HttpRequest.newBuilder(uri)
+                         .timeout(Duration.ofNanos(downloadTimeLeft(deadline))).GET().build(),
+                         HttpResponse.BodyHandlers.ofInputStream());
+                 try(var input=response.body()) {
+                     if(Set.of(301,302,303,307,308).contains(response.statusCode())) {
+                         String location=response.headers().firstValue("Location").orElse(null);
+-                        if(location==null || redirects==10)throw failure("图片结果下载失败");
++                        if(location==null || redirects==10)throw attachDownload(new ResultDownloadFailure(false,false),response,null);
+                         uri=uri.resolve(location);
+                         continue;
+                     }
+                     if(response.statusCode()/100!=2) {
++                        int status=response.statusCode();
+                         String body=new String(readResultBody(input,4096,deadline),StandardCharsets.UTF_8);
+-                        throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败，请稍后再试")),body);
++                        throw attachDownload(new ResultDownloadFailure(status==408||status==504,
++                                status==408||status==429||status/100==5),response,body);
+                     }
+                     int maxBytes=setting(wire.maxOutputBytes(),64*1024*1024);
+                     return checkedImage(readResultBody(input,maxBytes+1,deadline),maxBytes);
+                 }
+             }
+-            throw failure("图片结果下载失败");
+-        }catch(BusinessException e){throw e;}
+-        catch(HttpTimeoutException e){throw failure("生成服务已返回图片，但下载超时，请稍后重试");}
++            throw new ResultDownloadFailure(false,false);
++        }catch(HttpTimeoutException e){throw attachDownload(new ResultDownloadFailure(true,true),response,null);}
+         catch(InterruptedException e){Thread.currentThread().interrupt();throw new Pending(true,e);}
+-        catch(Exception e){
++        catch(IOException e){
+             if(Thread.currentThread().isInterrupted())throw new Pending(true,e);
+-            throw failure("图片结果下载失败");
+-        }
++            throw attachDownload(new ResultDownloadFailure(false,true),response,null);
++        }catch(IllegalArgumentException e){
++            throw attachDownload(new ResultDownloadFailure(false,false),response,null);
++        }
++    }
++
++    private static ResultDownloadFailure attachDownload(ResultDownloadFailure error,HttpResponse<?> response,String body) {
++        if(response!=null)attach(error,response.statusCode(),response.headers(),body);
++        return error;
+     }
+ 
+     private static long downloadTimeLeft(long deadline) throws HttpTimeoutException {
+@@ -508,7 +574,7 @@
+         }catch(RuntimeException ignored){}
+     }
+     private JsonNode json(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String path,String body,
+-                          String id,Invocation owner,String method,boolean submit) {
++                          String id,Invocation owner,String method,boolean submit,ObjectNode state) {
+         var request=request(endpoint,wire,path);
+         if("GET".equals(method))request.GET();else {
+             if(body!=null)request.header("Content-Type","application/json");
+@@ -519,7 +585,15 @@
+             request.POST(body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(body));
+         }
+         var response=upstream.sendJson(request.build(),context(endpoint,id,owner,body,submit));
+-        return submit?checkedSubmit(response,wire):checked(response,wire);
++        if(!submit)return checked(response,wire);
++        JsonNode accepted=checkedSubmit(response,wire);
++        rememberSubmitTrace(state,response);
++        return accepted;
++    }
++
++    private static void rememberSubmitTrace(ObjectNode state,HttpResponse<?> response) {
++        var trace=ProviderResponseDiagnostics.capture(null,response.headers(),null).identifiers();
++        if(!trace.isEmpty())state.put("providerSubmitTrace",String.join("\n",trace));
+     }
+     private JsonNode checkedSubmit(HttpResponse<String> response,AiImageRequestSpec.Wire wire) {
+         if(response.statusCode()>=400 && refusedForLoad(response.statusCode(),response.body()))throw attach(new ProviderBusy(),response);

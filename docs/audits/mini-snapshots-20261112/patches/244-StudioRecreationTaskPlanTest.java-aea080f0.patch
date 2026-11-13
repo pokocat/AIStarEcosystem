@@ -1,0 +1,85 @@
+--- a/apps/server/src/test/java/com/aistareco/aep/ipstudio/execution/StudioRecreationTaskPlanTest.java
++++ b/apps/server/src/test/java/com/aistareco/aep/ipstudio/execution/StudioRecreationTaskPlanTest.java
+@@ -255,6 +255,82 @@
+                 StudioRecreationTaskPlan.LIBRARY.render(StudioPromptCallPoints.RECREATION_REDO_NOTE,Map.of("fix","人物还戴着原片的贝雷帽")).strip());
+     }
+ 
++    // ── 三种复刻方式（StudioCloneVideoPlan）：深度复刻和元素替换每段把原片片段交给视频模型 ──────────────
++
++    static final String FRAMES="PEX-a-a-study-f",SEGMENTS="PEX-a-a-study-s";
++    JsonNode answer() throws Exception {
++        return om.readTree("""
++            {"summary":"换成小美和保温杯","keep":["原片动作"],"change":["女老板 → 小美"],
++             "units":[{"no":1,"title":"门店爆满","prompt":"参考视频1的动作与运镜……第1镜（0–6 秒）：图1 的女生……","captions":[{"start":0,"end":3,"text":"开店18年"}],"keyframes":[]},
++                      {"no":2,"title":"不推销","prompt":"第1镜（0–7 秒）：图1 的女生说：「我们不推销」","captions":[{"start":1,"end":2,"text":"不推销"}],"keyframes":[]}]}""");
++    }
++    static JsonNode step(JsonNode plan,String id) {
++        for(JsonNode s:plan.path("steps"))if(id.equals(s.path("id").asText()))return s;
++        throw new AssertionError("no step "+id+": "+plan);
++    }
++
++    @Test
++    void depthTurnsEachOriginalSegmentIntoAMotionReferenceBeforeTheVideo() throws Exception {
++        var task=StudioRecreationTaskPlan.prepare(film(),materials(),"ai-h3",h3(),"768p","9:16",true,FRAMES,6,"换成小美和保温杯","depth",SEGMENTS);
++        assertEquals("depth",task.path("method").asText());
++        assertEquals("universal_reference_video",task.path("mode").asText());
++        var first=task.path("units").get(0);
++        assertEquals(SEGMENTS+"1",first.path("clipNodeId").asText());
++        assertEquals(0,first.path("keyframes").size(),"深度复刻不做开场画面");
++        assertEquals("d1",first.path("refs").get(0).path("stepId").asText());
++        assertEquals("reference-video",first.path("refs").get(0).path("role").asText());
++        assertEquals("视频1",first.path("refs").get(0).path("label").asText());
++        assertEquals("girl",first.path("refs").get(1).path("nodeId").asText());assertEquals("图1",first.path("refs").get(1).path("label").asText());
++
++        var plan=StudioRecreationTaskPlan.build(task,answer());
++        var validated=StudioPlanValidator.validateSkillPlan(plan,rules(),"production",Set.of(SEGMENTS+"1",SEGMENTS+"2","cup","girl"));
++        var d1=step(validated,"d1");
++        assertEquals("video-control",d1.path("operation").asText());
++        assertEquals(SEGMENTS+"1",d1.path("settings").path("referenceBindings").get(0).path("nodeId").asText());
++        assertEquals("clip",d1.path("settings").path("referenceBindings").get(0).path("role").asText());
++        var v1=step(validated,"v1");
++        assertTrue(StreamSupport.stream(v1.path("dependsOn").spliterator(),false).anyMatch(d->"d1".equals(d.asText())));
++        assertEquals("d1",v1.path("settings").path("referenceBindings").get(0).path("stepId").asText());
++        assertTrue(step(validated,"final").path("settings").has("captions"),"深度复刻照样把原片字幕加回成片");
++    }
++
++    @Test
++    void replacementGivesTheOriginalSegmentToTheVideoModelAndAddsNoCaptions() throws Exception {
++        var task=StudioRecreationTaskPlan.prepare(film(),materials(),"ai-h3",h3(),"768p","9:16",null,FRAMES,6,"","replacement",SEGMENTS);
++        var plan=StudioRecreationTaskPlan.build(task,answer());
++        var validated=StudioPlanValidator.validateSkillPlan(plan,rules(),"production",Set.of(SEGMENTS+"1",SEGMENTS+"2","cup","girl"));
++        for(JsonNode s:validated.path("steps"))assertNotEquals("video-control",s.path("operation").asText());
++        var v2=step(validated,"v2").path("settings").path("referenceBindings");
++        assertEquals(SEGMENTS+"2",v2.get(0).path("nodeId").asText());assertEquals("reference-video",v2.get(0).path("role").asText());
++        assertFalse(step(validated,"final").path("settings").has("captions"),"原片画面里已有字幕，不再叠一层");
++    }
++
++    @Test
++    void clipMethodsDropAnEndCardOnlySegmentButStoryboardKeepsIt() throws Exception {
++        var b=StudioVideoBreakdown.normalize(om.readTree("""
++            {"summary":"门店","shots":[{"start":0,"end":7,"visual":"排队"},{"start":7,"end":13,"visual":"老板说话"},{"start":13,"end":17,"visual":"账号片尾","caption":"抖音号 123456789"}]}"""),17,List.of(7.0,13.0));
++        ObjectNode film=om.createObjectNode();film.set("breakdown",b);
++        var segments=film.putArray("segments");
++        segments.addObject().put("no",1).put("startSec",0).put("endSec",13).put("firstShot",0).put("lastShot",1);
++        segments.addObject().put("no",2).put("startSec",13).put("endSec",17).put("firstShot",2).put("lastShot",2);
++        assertEquals(1,StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",null,FRAMES,6,"","replacement",SEGMENTS).path("units").size());
++        assertEquals(2,StudioRecreationTaskPlan.prepare(film,materials(),"ai-h3",h3(),"768p","9:16",null,FRAMES,6,"").path("units").size());
++    }
++
++    @Test
++    void eachMethodHasItsOwnPromptStageAndItRendersTheSegmentFootage() throws Exception {
++        assertEquals(StudioPromptCallPoints.RECREATION_COMPILE,StudioPromptCallPoints.recreationCompile("recreation"));
++        assertEquals(StudioPromptCallPoints.RECREATION_COMPILE_DEPTH,StudioPromptCallPoints.recreationCompile("depth"));
++        assertEquals(StudioPromptCallPoints.RECREATION_COMPILE_REPLACE,StudioPromptCallPoints.recreationCompile("replacement"));
++        for(String method:List.of("depth","replacement")) {
++            var task=StudioRecreationTaskPlan.prepare(film(),materials(),"ai-h3",h3(),"768p","9:16",null,FRAMES,6,"",method,SEGMENTS);
++            String text=StudioRecreationTaskPlan.LIBRARY.render(StudioPromptCallPoints.recreationCompile(method),
++                    StudioRecreationTaskPlan.variables(task,film().path("breakdown"),""));
++            assertTrue(text.contains("### 第 1 段"),text);
++            assertTrue(text.contains("- 视频1："),"每段的视频1 列在素材里："+text);
++        }
++    }
++
+     static com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules rules() throws Exception {
+         try(var in=StudioRecreationTaskPlanTest.class.getResourceAsStream("/studio/skills/reference-video-recreation.md")) {
+             return StudioSkillRules.rules(StudioSkillCatalog.parse(new String(in.readAllBytes(),StandardCharsets.UTF_8)));

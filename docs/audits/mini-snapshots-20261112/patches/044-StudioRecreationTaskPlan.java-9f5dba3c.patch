@@ -1,0 +1,205 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/ipstudio/execution/StudioRecreationTaskPlan.java
++++ b/apps/server/src/main/java/com/aistareco/aep/ipstudio/execution/StudioRecreationTaskPlan.java
+@@ -84,6 +84,8 @@
+                     JsonNode s=shots.get(shot-1);
+                     String label="图"+n,stepId="k"+shot;
+                     keyframes.addObject().put("shot",shot).put("label",label).put("stepId",stepId).put("frameNodeId",framePrefix+shot)
++                            .put("atSec",round(Math.max(0,Math.min(seconds,s.path("start").asDouble()-start))))
++                            .put("hasTrick",!s.path("detail").path("trick").asText("").isBlank())
+                             .put("layout",s.path("detail").path("layout").asText("")).put("trick",s.path("detail").path("trick").asText(""))
+                             .put("detail",StudioVideoBreakdown.detailText(s));
+                     bindings.addObject().put("stepId",stepId).put("role","reference-image").put("order",order++).put("label",label)
+@@ -104,6 +106,17 @@
+                     n++;
+                 }
+             }
++            // 这段里重复用的画面：某一镜推到某一刻的画面，就是这段另一镜的开场画面（StudioVideoBreakdown.markSameFrames）。
++            // 那张开场画面在这段的参考图里，写提示词时就能写「推到这里就是图N」；不在这段的（别的段、没做开场画面的）不提。
++            Map<Integer,String> labelOf=new HashMap<>();
++            for(JsonNode k:keyframes)labelOf.put(k.path("shot").asInt(),k.path("label").asText());
++            var same=unit.putArray("sameFrames");
++            for(int i=segment.path("firstShot").asInt();i<=segment.path("lastShot").asInt()&&i<shots.size();i++)
++                for(JsonNode e:shots.get(i).path("sameFrames")) {
++                    int of=e.path("shot").asInt();double at=e.path("at").asDouble(Double.NaN);
++                    if(!labelOf.containsKey(of)||of==i+1||!Double.isFinite(at)||at<start||at>end)continue;
++                    same.addObject().put("shot",i+1).put("atSec",round(at-start)).put("of",of).put("label",labelOf.get(of));
++                }
+         }
+         if(units.isEmpty())throw BusinessException.badRequest("STUDIO_RECREATION_NO_SEGMENTS","拉片没有得到可用的分段，请重新开始");
+         return task;
+@@ -159,6 +172,7 @@
+             unit.put("range",StudioVideoBreakdown.range(u.path("startSec").asDouble(),u.path("endSec").asDouble()));
+             unit.put("seconds",u.path("seconds").asInt());unit.put("refs",refs);
+             unit.put("hasKeyframes",!keyframes.isEmpty());unit.put("keyframes",keyframes);
++            unit.put("sameFrames",sameFrames(u));
+             unit.put("shots",StudioVideoBreakdown.shotTable(breakdown,u.path("firstShot").asInt(),u.path("lastShot").asInt(),u.path("startSec").asDouble(),
+                     u.path("startSec").asDouble(),u.path("endSec").asDouble()));
+             units.add(unit);
+@@ -181,20 +195,29 @@
+ 
+     public static ObjectNode build(JsonNode task,JsonNode answer) {return build(task,answer,null);}
+ 
++    /** 方案里由代码写的文字，从提示词库取：环节名 + 变量 → 正文。worker 传受理时冻结的版本。 */
++    @FunctionalInterface
++    public interface Texts {String render(String stage,Map<String,Object> vars);}
++
++    /** 没有冻结版本时直接用提示词库的当前版本（老调用和测试）。 */
++    static final Texts LIBRARY=(stage,vars)->com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.or(null)
++            .assemble(com.aistareco.aep.ipstudio.prompt.StudioPromptAssembler.Call.of(stage,vars,null,null)).user();
++
+     /** 检查每段成片时看的几项（技能 reference-video-recreation 的 checks 里挑的）。 */
+     static final List<String> CHECK_IDS=List.of("subject-replaced","old-subject-residue","character-consistency","scene-and-action");
+ 
+     /**
+-     * @param keyframePrompt 开场画面的出图描述（提示词库 stage-recreation-keyframe，变量 layout / trick / refs / instruction）；
+-     *                       null 时不做开场画面（老调用和测试）
+-     */
+-    public static ObjectNode build(JsonNode task,JsonNode answer,java.util.function.Function<Map<String,Object>,String> keyframePrompt) {
++     * @param texts 开场画面的出图描述（stage-recreation-keyframe，变量 layout / trick / refs / instruction）和检查要点
++     *              （stage-recreation-keyframe-check / -video-check）从这里取；null 时不做开场画面，检查要点用提示词库的当前版本（老调用和测试）
++     */
++    public static ObjectNode build(JsonNode task,JsonNode answer,Texts texts) {
++        Texts library=texts==null?LIBRARY:texts;
+         Map<Integer,JsonNode> written=new HashMap<>();
+         for(JsonNode u:answer.path("units"))if(u.path("prompt").isTextual()&&!u.path("prompt").asText().isBlank())written.putIfAbsent(u.path("no").asInt(),u);
+         ObjectNode plan=OM.createObjectNode();
+         plan.put("summary",text(answer.path("summary"),"按原片的分段和节奏复刻，换成你的素材",1000));
+         var approach=plan.putArray("approaches").addObject().put("id","remake").put("title","照原片分段复刻")
+-                .put("summary","按拉片的真实镜头分段，每段带上原片这一段做动作和节奏参考，换成你的素材。")
++                .put("summary","按拉片的真实镜头分段，原片的场景、动作和节奏写进每段的提示词，人和商品换成你的素材。")
+                 .put("rationale","分段、时长和每段用哪些素材由系统按拉片结果定，模型只写每段的提示词。");
+         approach.set("preserve",strings(answer.path("keep")));approach.set("change",strings(answer.path("change")));
+         plan.put("recommendedApproachId","remake");
+@@ -204,6 +227,7 @@
+         var clipOrder=OM.createArrayNode();
+         var captions=OM.createArrayNode();
+         double last=0;
++        Map<String,Integer> checkedKeyframes=texts==null?Map.of():keyframeChecks(task);
+         for(JsonNode u:task.path("units")) {
+             int no=u.path("no").asInt();
+             JsonNode w=written.get(no);
+@@ -211,7 +235,7 @@
+                     "missing unit "+no+" of "+task.path("units").size());
+             String id="v"+no;
+             // 开场画面：每张一个出图步骤，以原片这一镜的截图为构图基准，参照写提示词的模型挑的素材
+-            boolean makeKeyframes=keyframePrompt!=null&&u.path("keyframes").size()>0;
++            boolean makeKeyframes=texts!=null&&u.path("keyframes").size()>0;
+             List<String> keyframeSteps=new ArrayList<>();
+             if(makeKeyframes) {
+                 Map<Integer,JsonNode> asked=new HashMap<>();
+@@ -238,8 +262,23 @@
+                     Map<String,Object> vars=new LinkedHashMap<>();
+                     vars.put("layout",k.path("layout").asText(""));vars.put("trick",k.path("trick").asText(""));
+                     vars.put("refs",refs);vars.put("instruction",instruction.length()>600?instruction.substring(0,600):instruction);
+-                    image.put("prompt",keyframePrompt.apply(vars).strip());
++                    image.put("prompt",texts.render(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_KEYFRAME,vars).strip());
+                     keyframeSteps.add(k.path("stepId").asText());
++                    // 改好的开场画面先看一遍再出片：人换对了没有、有没有留着原片人物的帽子衣服、远处的人有没有被画大。不合格只重出这一张图
++                    // （StudioSegmentedRun），比等视频出完再发现便宜得多（2026-11-10 美食那条：第 6 镜的开场画面戴着原片的贝雷帽，带进了成片）。
++                    // 这些检查是可省的（optionalRank）：报价放不下页面批准的上限时，进入制作前按名次从后往前省掉（StudioPlanExecutionService）。
++                    Integer rank=checkedKeyframes.get(k.path("stepId").asText());
++                    if(rank!=null) {
++                        String checkId="c"+k.path("stepId").asText();
++                        ObjectNode check=steps.addObject().put("id",checkId).put("operation","check").put("title","第 "+shot+" 镜开场画面 · 检查")
++                                .put("prompt",library.render(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_KEYFRAME_CHECK,Map.of()).strip()).put("execution","auto");
++                        check.putObject("strategy").put("approachId","remake").put("method","keyframe-rebuild").put("reason","检查第 "+shot+" 镜的开场画面");
++                        check.putArray("dependsOn").add(k.path("stepId").asText());check.putArray("referenceNodeIds");
++                        ObjectNode checkSettings=check.putObject("settings").put("operation","check").put("targetStepId",k.path("stepId").asText()).put("compareReferences",true)
++                                .put("optionalRank",rank);
++                        var ids=checkSettings.putArray("checkIds");KEYFRAME_CHECK_IDS.forEach(ids::add);
++                        keyframeSteps.add(checkId);
++                    }
+                 }
+             }
+             ObjectNode step=steps.addObject().put("id",id).put("operation","video").put("title",text(w.path("title"),u.path("title").asText("第 "+no+" 段"),60))
+@@ -261,11 +300,12 @@
+             // 出片后自动看一遍：替换的人和物有没有当主体出现、原片的动作和看点做出来没有（不合格自动重出一次，StudioSegmentedRun）
+             {
+                 ObjectNode check=steps.addObject().put("id","c"+no).put("operation","check").put("title",text(w.path("title"),u.path("title").asText("第 "+no+" 段"),50)+" · 检查")
+-                        .put("prompt","对照这段的提示词检查成片：用户要换的人和商品有没有换成参考素材里的样子、在对应的镜头里是不是画面主体；原片的动作、构图和看点有没有做出来；画面里有没有水印和多余的文字。")
++                        .put("prompt",videoCheck(library,u,makeKeyframes))
+                         .put("execution","auto");
+                 check.putObject("strategy").put("approachId","remake").put("method",makeKeyframes?"keyframe-rebuild":"remake-subject").put("reason","检查第 "+no+" 段");
+                 check.putArray("dependsOn").add(id);check.putArray("referenceNodeIds");
+-                ObjectNode checkSettings=check.putObject("settings").put("operation","check").put("targetStepId",id);
++                // 按镜头抽帧，并带上这段交给视频模型的参考图：均匀抽 4 帧又不给素材，「第 3 镜端的是不是炒饭」查不出来
++                ObjectNode checkSettings=check.putObject("settings").put("operation","check").put("targetStepId",id).put("sampling","shots").put("compareReferences",true);
+                 var ids=checkSettings.putArray("checkIds");CHECK_IDS.forEach(ids::add);
+             }
+             // 字幕：这段生成的秒数内、时间按成片算；越界的截掉，重叠的顺延。
+@@ -299,6 +339,75 @@
+         return plan;
+     }
+ 
++    /** 检查改好的开场画面时看的几项。 */
++    static final List<String> KEYFRAME_CHECK_IDS=List.of("subject-replaced","old-subject-residue","scene-and-action");
++
++    /**
++     * 哪些开场画面出完要检查，以及省掉时的先后（名次 1 最后省）。每查一张多一步，步数有上限（{@code task.maxSteps}，技能定的）：
++     * 先保证开场画面本身，剩下的步数才给检查，有视觉把戏的镜头优先，其次按镜号。没有记步数上限的（老调用和测试）不检查。
++     */
++    static Map<String,Integer> keyframeChecks(JsonNode task) {
++        int maxSteps=task.path("maxSteps").asInt(0);
++        List<JsonNode> all=new ArrayList<>();
++        for(JsonNode u:task.path("units"))u.path("keyframes").forEach(all::add);
++        // 已经用掉的：每张开场画面一步，每段视频和检查两步，最后合成一步
++        int spare=maxSteps-all.size()-task.path("units").size()*2-1;
++        if(spare<=0||all.isEmpty())return Map.of();
++        all.sort(Comparator.<JsonNode>comparingInt(k->k.path("hasTrick").asBoolean(false)?0:1).thenComparingInt(k->k.path("shot").asInt()));
++        Map<String,Integer> out=new HashMap<>();
++        int rank=1;
++        for(JsonNode k:all.subList(0,Math.min(spare,all.size())))out.put(k.path("stepId").asText(),rank++);
++        return out;
++    }
++
++    /**
++     * 报价放不下时省掉一个可省的检查（{@code settings.optionalRank} 名次最大的那个），连同别的步骤对它的等待。
++     * 每个检查按文字模型的最大冻结额报价（Sonnet 约 110 积分，实际用量只有几积分），开场画面的检查全加上，美食那条的报价
++     * 就从约 587 涨到约 1433（不含视频），超过页面批准的上限，任务在分析完成后停住（2026-11-10 审查）。
++     *
++     * @return 省掉的步骤编号；没有可省的返回 null
++     */
++    public static String dropOptionalCheck(ObjectNode plan) {
++        ArrayNode steps=(ArrayNode)plan.path("steps");
++        int victim=-1,worst=0;
++        for(int i=0;i<steps.size();i++) {
++            JsonNode s=steps.get(i);
++            int rank=s.path("settings").path("optionalRank").asInt(0);
++            if("check".equals(s.path("operation").asText())&&rank>worst){worst=rank;victim=i;}
++        }
++        if(victim<0)return null;
++        String id=steps.get(victim).path("id").asText();
++        steps.remove(victim);
++        for(JsonNode s:steps) {
++            if(!(s.path("dependsOn") instanceof ArrayNode deps))continue;
++            for(int i=deps.size()-1;i>=0;i--)if(id.equals(deps.get(i).asText()))deps.remove(i);
++        }
++        return id;
++    }
++
++    /**
++     * 每段成片的检查要点（提示词库 stage-recreation-video-check）：按这段的镜头和参考图写成逐镜的是非题，不写笼统的「有没有做出来」。
++     * suggestion 要求写成「第N镜：这一镜应该是什么画面」：不合格重出时这些句子会接到视频提示词后面（StudioSegmentedRun），
++     * 提示词可能原样交给视频模型，所以只能是画面描述，不能是写给系统的话。
++     */
++    static String videoCheck(Texts library,JsonNode unit,boolean keyframes) {
++        List<Map<String,Object>> shots=new ArrayList<>();
++        if(keyframes)for(JsonNode k:unit.path("keyframes"))
++            shots.add(Map.of("shot",k.path("shot").asInt(),"at",StudioVideoBreakdown.fmt(k.path("atSec").asDouble()),"label",k.path("label").asText()));
++        Map<String,Object> vars=new LinkedHashMap<>();
++        vars.put("hasRefs",unit.path("refs").size()>0);vars.put("keyframes",shots);
++        vars.put("sameFrames",keyframes?sameFrames(unit):List.of());
++        return library.render(com.aistareco.aep.ipstudio.prompt.StudioPromptCallPoints.RECREATION_VIDEO_CHECK,vars).strip();
++    }
++
++    /** 一段里重复用的画面，给提示词库的变量：{@code [{shot, at（这段里约第几秒）, of（是哪一镜的开场）, label（图N）}]}。 */
++    static List<Map<String,Object>> sameFrames(JsonNode unit) {
++        List<Map<String,Object>> out=new ArrayList<>();
++        for(JsonNode s:unit.path("sameFrames"))out.add(Map.of("shot",s.path("shot").asInt(),"at",StudioVideoBreakdown.fmt(s.path("atSec").asDouble()),
++                "of",s.path("of").asInt(),"label",s.path("label").asText()));
++        return out;
++    }
++
+     /** 写提示词的模型按名称点的素材（「」、空格、大小写不计），只认这次的素材，重复的只算一次。 */
+     static List<JsonNode> materialsNamed(JsonNode task,JsonNode names) {
+         List<JsonNode> out=new ArrayList<>();

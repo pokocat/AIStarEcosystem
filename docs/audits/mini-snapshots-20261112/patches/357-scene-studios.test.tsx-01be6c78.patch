@@ -1,0 +1,35 @@
+--- a/apps/web-aiavatar/src/ip/scenes/scene-studios.test.tsx
++++ b/apps/web-aiavatar/src/ip/scenes/scene-studios.test.tsx
+@@ -654,6 +654,32 @@
+   expect(api.taskStart.mock.calls[0][1]).toMatchObject({ kind: "direct", video: { model: "ep-h3" } });
+ });
+ 
++// 2026-11-11 用户定：直接点「生成视频」而开着的草稿里已经有视频，新视频进一份新草稿，带上页面上的设置；
++// 不相关的视频不归成同一批，删一条也不连带别的。「再次生成」留在原草稿（见上「完成任务再次生成时沿用同一草稿」）。
++test("视频：草稿里已有视频时再点「生成视频」，新视频进新草稿，带上页面上的设置，不带旧任务记录", async () => {
++  let n = 0;
++  const docs = new Map<string, IpProject["doc"]>();
++  api.createProject.mockImplementation(async ({ name, sceneId }: { name: string; sceneId?: string }) => project({ id: `IPP-${++n}`, name, sceneId }));
++  api.updateProject.mockImplementation(async (id: string, { doc: next }: { doc: IpProject["doc"] }) => { docs.set(id, next); return project({ id, doc: next, docVersion: "v2" }); });
++  const go = await readyDirect();
++  api.videoPrice.mockResolvedValue({ ...POOR, canAfford: true, unavailableCode: undefined });
++  await act(async () => { fireEvent.click(go()); });
++  await waitFor(() => expect(api.taskStart).toHaveBeenCalledTimes(1));
++  expect(api.taskStart.mock.calls[0][0]).toBe("IPP-1");
++  await waitFor(() => expect(docs.get("IPP-1")?.sceneVideoTasks).toEqual(["PEX-task"]));
++
++  await waitFor(() => expect(go().disabled).toBe(false));
++  await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
++  await act(async () => { fireEvent.click(go()); });
++  await waitFor(() => expect(api.taskStart).toHaveBeenCalledTimes(2));
++  expect(api.createProject).toHaveBeenCalledTimes(2);
++  expect(api.taskStart.mock.calls[1][0]).toBe("IPP-2");
++  const seeded = api.updateProject.mock.calls.find(([id]: [string]) => id === "IPP-2")![1].doc;
++  expect(seeded.sceneVideoTasks).toBeUndefined();
++  expect(seeded.sceneVideoState).toMatchObject({ text: "两个人在咖啡店对话" });
++  expect(docs.get("IPP-1")?.sceneVideoTasks).toEqual(["PEX-task"]);
++});
++
+ test("视频：报价读不到不拦生成，由服务端和任务面板说话", async () => {
+   const go = await readyDirect();
+   api.videoPrice.mockRejectedValue(new Error("网络中断"));

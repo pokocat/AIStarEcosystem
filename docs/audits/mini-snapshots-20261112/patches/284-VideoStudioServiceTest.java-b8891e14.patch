@@ -1,0 +1,26 @@
+--- a/apps/server/src/test/java/com/aistareco/aep/videostudio/VideoStudioServiceTest.java
++++ b/apps/server/src/test/java/com/aistareco/aep/videostudio/VideoStudioServiceTest.java
+@@ -236,6 +236,23 @@
+         verify(videoJobs,never()).submit(any(),anyString(),anyString());
+     }
+ 
++    @Test void priceUsesTheConfiguredTotalWhenThirtyImagesAreCombinedWithThreeVoices() {
++        String mode = "universal_reference_video";
++        var rules = new VideoStudioReferenceRules(
++                new VideoStudioMediaLimit("image", 30, 1024, List.of("PNG"), null, null),
++                new VideoStudioMediaLimit("video", 0, 0, List.of(), null, null),
++                new VideoStudioMediaLimit("audio", 3, 1024, List.of("WAV"), 2, 15), 0, 33, 1, 15);
++        var contract = new VideoStudioContract(List.of(new VideoStudioModeSpec(mode, false, false, null, rules)),
++                List.of(new VideoStudioTier("720p", List.of(new VideoStudioCanvas("9:16", 720, 1280)))), 5, 15, 7000, 0L);
++        h3.setVideoRequestSpecJson(new com.aistareco.aep.model.AiVideoRequestSpec("seedance", contract,
++                "/videos/generations", "/videos/generations/{id}", Map.of()).json());
++
++        var quoted = svc.priceCanvas("ep-h3", mode, "720p", "9:16", 5, 30, 0, 3, "celebrity");
++        assertEquals(33, quoted.spec().references().size());
++        assertEquals("VIDEO_STUDIO_INPUT_INVALID", assertThrows(BusinessException.class,
++                () -> svc.priceCanvas("ep-h3", mode, "720p", "9:16", 5, 31, 0, 3, "celebrity")).getCode());
++    }
++
+     // ── 请求构造 ──────────────────────────────────────────────────────────
+ 
+     static VideoStudioJobRequest jr(String endpointId, String mode, String prompt, String tier, String aspect,

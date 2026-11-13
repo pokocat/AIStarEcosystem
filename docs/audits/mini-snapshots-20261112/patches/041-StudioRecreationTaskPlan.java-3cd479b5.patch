@@ -1,0 +1,72 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/ipstudio/execution/StudioRecreationTaskPlan.java
++++ b/apps/server/src/main/java/com/aistareco/aep/ipstudio/execution/StudioRecreationTaskPlan.java
+@@ -19,6 +19,15 @@
+  * 拼出来的方案仍走 {@code StudioPlanValidator.validateSkillPlan}、报价和指纹，和模型写的方案同一条路。
+  */
+ public final class StudioRecreationTaskPlan {
++    public static final int MAX_IMAGES = 18;
++    public static final int MAX_VOICES = 1;
++    public static final int MAX_MATERIALS = MAX_IMAGES + MAX_VOICES;
++
++    public static boolean acceptsVoice(VideoStudioModeSpec mode, boolean clip) {
++        var refs=mode.references();
++        return refs!=null&&refs.audio()!=null&&refs.audio().maxCount()>0
++                &&(refs.maxTotal()<=0||refs.maxTotal()>(clip?1:0));
++    }
+     private static final ObjectMapper OM=new ObjectMapper();
+     private StudioRecreationTaskPlan() {}
+ 
+@@ -113,17 +122,19 @@
+                 // 带参考视频时图片张数另有上限
+                 if(clip&&refs.maxImagesWithVideo()>0)imageLimit=Math.min(imageLimit,refs.maxImagesWithVideo());
+                 int total=refs.maxTotal()>0?refs.maxTotal():Integer.MAX_VALUE;
++                boolean useVoice=!voices.isEmpty()&&acceptsVoice(mode,clip);
++                int visualTotal=total-(useVoice?MAX_VOICES:0);
+                 int n=1;
+                 // 开场画面在前：原片每个镜头的开场截图改成用户的人物和商品，视频模型从这张图开始拍（2026-11-10 美食那条实测，
+                 // 「手指捏住远处很小的人」这类借位靠文字写不出来，靠图就摆出来了）。放不下时，有视觉把戏的镜头和长镜头优先。
+                 // 深度复刻：后面几段不再做新图，带上第一段做的那张场景图
+-                if(depthScene&&sceneStep!=null&&n<=imageLimit&&order<total) {
++                if(depthScene&&sceneStep!=null&&n<=imageLimit&&order<visualTotal) {
+                     bindings.addObject().put("stepId",sceneStep).put("role","reference-image").put("order",order++).put("label","图"+n)
+                             .put("what","场景图：原片开场画面换成了用户的人物和商品，人物外观、穿着、商品、场景和光线都照它");
+                     unit.put("sceneStepId",sceneStep);
+                     n++;
+                 }
+-                int limit=Math.min(Math.min(imageLimit,total),keyframesLeft);
++                int limit=Math.min(Math.min(imageLimit-n+1,visualTotal-order),keyframesLeft);
+                 // 场景图取第一段最开头那一镜（不按视觉把戏、镜头长短挑）
+                 List<Integer> picked=depthScene?keyframeShots(shots,segment,framed,Integer.MAX_VALUE).stream().limit(limit).toList()
+                         :keyframeShots(shots,segment,framed,limit);
+@@ -142,17 +153,15 @@
+                     n++;keyframesLeft--;
+                 }
+                 for(Material m:pictures) {
+-                    if(n>imageLimit||order>=total)break;
++                    if(n>imageLimit||order>=visualTotal)break;
+                     bindings.addObject().put("nodeId",m.nodeId()).put("role","character".equals(m.slot())?"character":"reference-image").put("order",order++)
+                             .put("label","图"+n).put("what",(blank(m.title())?"素材":m.title())+"（"+slotLabel(m.slot())+"）");
+                     n++;
+                 }
+-                int audioLimit=refs.audio()==null?0:refs.audio().maxCount();n=1;
+-                for(Material m:voices) {
+-                    if(n>audioLimit||order>=total)break;
+-                    bindings.addObject().put("nodeId",m.nodeId()).put("role","reference-audio").put("order",order++)
+-                            .put("label","音频"+n).put("what",(blank(m.title())?"声音":m.title())+"（说话的声音）");
+-                    n++;
++                if(useVoice) {
++                    Material voice=voices.get(0);
++                    bindings.addObject().put("nodeId",voice.nodeId()).put("role","reference-audio").put("order",order)
++                            .put("label","音频1").put("what",(blank(voice.title())?"声音":voice.title())+"（说话的声音）");
+                 }
+             }
+             // 这段里重复用的画面：某一镜推到某一刻的画面，就是这段另一镜的开场画面（StudioVideoBreakdown.markSameFrames）。
+@@ -545,7 +554,7 @@
+     private static String normalizeName(String v){return v.replaceAll("[「」『』\"“”\\s]","").toLowerCase(Locale.ROOT);}
+ 
+     /** 有参考的模式优先（全能参考）；没有就用不需要首尾帧的模式，只按文字出片。 */
+-    static VideoStudioModeSpec mode(VideoStudioContract contract,boolean hasMaterials) {
++    public static VideoStudioModeSpec mode(VideoStudioContract contract,boolean hasMaterials) {
+         if(!hasMaterials)for(var m:contract.modes())if(m.references()==null&&!m.needsFirstFrame()&&!m.needsLastFrame())return m;
+         for(var m:contract.modes())if(m.references()!=null&&!m.needsFirstFrame()&&!m.needsLastFrame())return m;
+         for(var m:contract.modes())if(!m.needsFirstFrame()&&!m.needsLastFrame())return m;

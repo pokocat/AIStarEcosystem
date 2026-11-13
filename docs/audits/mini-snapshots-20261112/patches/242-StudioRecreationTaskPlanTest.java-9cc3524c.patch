@@ -1,0 +1,28 @@
+--- a/apps/server/src/test/java/com/aistareco/aep/ipstudio/execution/StudioRecreationTaskPlanTest.java
++++ b/apps/server/src/test/java/com/aistareco/aep/ipstudio/execution/StudioRecreationTaskPlanTest.java
+@@ -86,6 +86,25 @@
+         var assemble=final_.path("settings");
+         assertEquals(2,assemble.path("clipOrder").size());
+         assertEquals(12+1.0,assemble.path("captions").get(1).path("start").asDouble(),"第二段的字幕按成片时间顺延");
++    }
++
++    @Test
++    void eighteenImagesRemainInScopeAndOneVoiceFitsWithinEachSegmentsLimit() throws Exception {
++        var materials=new ArrayList<StudioRecreationTaskPlan.Material>();
++        for(int i=1;i<=18;i++)materials.add(new StudioRecreationTaskPlan.Material("image-"+i,"商品图 "+i,"image"));
++        materials.add(new StudioRecreationTaskPlan.Material("voice","参考声音","voice"));
++        var task=StudioRecreationTaskPlan.prepare(film(),materials,"ai-h3",h3(),"768p","9:16",null);
++        for(JsonNode unit:task.path("units")) {
++            var refs=unit.path("refs");
++            assertEquals(4,refs.size(),"当前模型总量上限包括音频");
++            assertEquals("reference-audio",refs.get(3).path("role").asText());
++        }
++        var plan=StudioRecreationTaskPlan.build(task,om.readTree("""
++            {"units":[{"no":1,"prompt":"第一段"},{"no":2,"prompt":"第二段"}]}"""));
++        var allowed=materials.stream().map(StudioRecreationTaskPlan.Material::nodeId).toList();
++        assertEquals(19,StudioPlanValidator.validateSkillPlan(plan,rules(),"production",allowed,
++                StudioRecreationTaskPlan.MAX_MATERIALS).path("materialNodeIds").size());
++        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(plan,rules(),"production",allowed));
+     }
+ 
+     /** 2026-11-09 真跑：原作者的抖音号被写进字幕；原片一条字幕挂满全片时被拆成几条一样的。 */

@@ -1,5 +1,7 @@
 # 文档索引 · INDEX
 
+Mac mini 编译快照：[源码差异审阅（仅审计，不应用补丁）](audits/mini-snapshots-20261112/README.md)，last-reviewed：2026-11-12。
+
 AI 编导模型生成修改建议：[真模型与浏览器验收](releases/script-ai-suggestions-release-20261109.md)，last-reviewed：2026-11-09。
 
 AI 编导对话与修改建议：[浏览器验收及发布记录](releases/script-chat-suggestions-release-20261109.md)，last-reviewed：2026-11-09。

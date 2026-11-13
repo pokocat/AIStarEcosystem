@@ -1,0 +1,51 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/ipstudio/execution/StudioPlanExecutor.java
++++ b/apps/server/src/main/java/com/aistareco/aep/ipstudio/execution/StudioPlanExecutor.java
+@@ -396,9 +396,13 @@
+         stageBudget.remove("shortfall");
+         String requestId=StudioPlanExecutionIds.requestId(e.getId(),stage,ready.path("id").asText(),ready.path("attempt").asInt(1));
+         RunRequest request;
+-        try {request=compile(e,state,ready,requestId);}
++        try {
++            request=compile(e,state,ready,requestId);
++            if(state.has("videoTask")&&"video".equals(request.operation()))
++                ready.set("videoRequest",mapper.valueToTree(request));
++        }
+         catch(BusinessException error) {
+-            ready.put("status","needs_user").put("reason",error.getMessage());
++            ready.put("status","needs_user").put("reason",error.getMessage()).put("errorCode",error.getCode());
+             return needsUser(e,state,"「"+ready.path("title").asText()+"」还不能开始："+error.getMessage());
+         }
+         // Persist the request identity and the conservative budget occupation before the native call.
+@@ -413,6 +417,12 @@
+                 &&"failed".equals(step.path("status").asText())
+                 &&com.aistareco.aep.service.materialvideo.MaterialVideoWorker.PORTRAIT_REVIEW_TIMEOUT.equals(step.path("errorCode").asText())
+                 &&PlanState.stageSteps(state,stage).stream().filter(s->"video".equals(s.path("operation").asText())).count()>1;
++    }
++
++    static boolean isVideoReferenceUploadFailure(JsonNode state,JsonNode step) {
++        return state.has("videoTask")&&"video".equals(step.path("operation").asText())
++                &&"failed".equals(step.path("status").asText())
++                &&"VIDEO_REF_UPLOAD_FAILED".equals(step.path("errorCode").asText());
+     }
+ 
+     private Submission needsUser(IpPlanExecution e,ObjectNode state,String reason) {
+@@ -528,6 +538,19 @@
+ 
+     /** Compile a step into its native request with real keys from canvas nodes and earlier accepted/successful runs. */
+     private RunRequest compile(IpPlanExecution e,ObjectNode state,ObjectNode step,String requestId) {
++        if(state.has("videoTask")&&"video".equals(step.path("operation").asText())) {
++            JsonNode saved=step.path("videoRequest");
++            if(!saved.isObject()&&step.path("retryVideoInputs").asBoolean())
++                saved=outputs.previousVideoInputs(e,step);
++            if(saved instanceof ObjectNode snapshot) {
++                ObjectNode request=snapshot.deepCopy();
++                if(!requestId.equals(request.path("clientRequestId").asText()))request.remove("modelBilling");
++                request.put("clientRequestId",requestId).put("nodeId",StudioPlanExecutionIds.stepNodeId(e.getId(),step))
++                        .put("executionId",e.getId()).put("maxCost",step.path("quotedCost").asLong()).put("stage",e.getStage());
++                request.set("billing",mapper.valueToTree(billing(e)));
++                return mapper.convertValue(request,RunRequest.class);
++            }
++        }
+         if(state.path("videoTask").path("direct").isObject()) {
+             ObjectNode direct=state.path("videoTask").path("direct").deepCopy();
+             direct.put("clientRequestId",requestId).put("nodeId",StudioPlanExecutionIds.stepNodeId(e.getId(),step))

@@ -1,0 +1,9 @@
+--- a/apps/server/src/main/resources/studio/prompts/scenes/scene-drama-emotional.md
++++ b/apps/server/src/main/resources/studio/prompts/scenes/scene-drama-emotional.md
+@@ -20,4 +20,5 @@
+   - 情绪突兀
+   - 用力过猛
+ ---
+-围绕一段关系（亲情、友情、爱情）讲一个小事，情绪慢慢推进，结尾有一个让人动容的瞬间。
++用一个正在办的具体手续、家务或交接让两人有事可做。他们各自用一个生活动作回避真话；让一个人在准备继续敷衍时，看到对方曾为自己做过的、此前没有察觉的事。痕迹要小且可拍，观众能自己拼出关系和时间。
++情绪由对方看到之后改变的动作兑现：手停一下、换一种收拾方法、把本要带走的东西留下。关键一拍留给沉默、视线或物件声，台词照常说生活里的话。尾镜落在两人关系发生的小变化。

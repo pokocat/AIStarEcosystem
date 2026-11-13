@@ -1,0 +1,131 @@
+--- a/apps/web-aiavatar/src/ip/library-media-picker.tsx
++++ b/apps/web-aiavatar/src/ip/library-media-picker.tsx
+@@ -6,7 +6,7 @@
+ // 图片位分「我的资产 / 官方形象」。选中免费官方人物时引用主形象，需授权的人物仅展示。
+ import { useEffect, useRef, useState, type ReactNode } from 'react';
+ import { Button, ConfigProvider, Input, Modal, Select, Skeleton } from 'antd';
+-import { AudioLines, Check, Folder, LayoutGrid, Mic, Search, Upload } from 'lucide-react';
++import { AudioLines, Check, Folder, LayoutGrid, LoaderCircle, Maximize2, Mic, Search, Upload } from 'lucide-react';
+ import type { IpSavedAsset, LibraryFolder, LibraryObject } from '@ai-star-eco/types';
+ import type { StudioIpAsset } from '@ai-star-eco/types/ip-studio-workflow';
+ import { canvasLibraryFolder, libraryFolders, libraryMaterials, libraryObjects, uploadLibraryMedia } from '@/canvas-bridge/asset-library';
+@@ -14,6 +14,8 @@
+ import { listStudioIpAssets } from '@/canvas-bridge/studio-api';
+ import { groupStudioIpAssets } from '@/canvas-bridge/studio-ip-library';
+ import { SignedAudio } from '@/canvas-bridge/signed-audio';
++import { SignedImage } from '@/canvas-bridge/signed-image';
++import { SignedVideo } from '@/canvas-bridge/signed-video';
+ import { AssetThumb } from './asset-thumb';
+ import { AudioRecorderDialog } from './audio-recorder-dialog';
+ import { inOfficialCategory, isOfficialAsset, OFFICIAL_LICENSE_REASON, officialAccessLabel, officialCategoryOptions, officialUsable } from './official-avatars';
+@@ -32,6 +34,7 @@
+ };
+ type PickerTab = 'files' | 'character' | 'scene' | 'prop';
+ type PickerSource = 'mine' | 'official';
++type VisualAsset = Extract<IpSavedAsset, { kind: 'image' | 'video' }>;
+ const OBJECT_TABS: { key: Exclude<PickerTab, 'files'>; label: string }[] = [{ key: 'character', label: '人物' }, { key: 'scene', label: '场景' }, { key: 'prop', label: '道具' }];
+ const ACCEPT = { image: IMAGE_UPLOAD_ACCEPT, video: '.mp4', audio: '.mp3,.wav,.m4a' };
+ const NOUN = { image: '图片', video: '视频', audio: '音频' };
+@@ -52,6 +55,8 @@
+   const [busy, setBusy] = useState(false);
+   const [uploading, setUploading] = useState(false);
+   const [recording, setRecording] = useState(false);
++  const [hoveredVideo, setHoveredVideo] = useState<string>();
++  const [preview, setPreview] = useState<VisualAsset>();
+   const [selected, setSelected] = useState<Record<string, IpSavedAsset>>({});
+   const [error, setError] = useStudioErrorState();
+   const [revision, setRevision] = useState(0);
+@@ -59,7 +64,7 @@
+   const withPeople = people && mediaType === 'image';
+ 
+   useEffect(() => {
+-    if (!open) { setRecording(false); return; }
++    if (!open) { setRecording(false); setHoveredVideo(undefined); setPreview(undefined); return; }
+     setSelected({}); setKeyword(''); setTab('files'); setSource('mine'); setCategory('all'); setError(''); setLibrary(undefined);
+     const remembered = lastLibrary();
+     setLast(remembered);
+@@ -102,7 +107,7 @@
+   useEffect(() => {
+     if (!open || !library) return;
+     const id = ++epoch.current;
+-    setLoading(true); setItems([]); setPage(0); setHasMore(false);
++    setLoading(true); setItems([]); setPage(0); setHasMore(false); setHoveredVideo(undefined);
+     const timer = setTimeout(() => {
+       fetchPage(0).then(r => {
+         if (id !== epoch.current) return;
+@@ -153,6 +158,9 @@
+ 
+   const picked = Object.values(selected);
+   const official = withPeople && source === 'official';
++  const canUpload = upload && !official;
++  const uploadTile = canUpload && mediaType !== 'audio';
++  const uploadLabel = library && library !== 'all' && library !== AI_LIBRARY ? '上传到此资产库' : uploadTile ? `上传${NOUN[mediaType]}` : '上传';
+   const libRow = (id: string, label: string, icon: ReactNode, note?: string) =>
+     <button key={id} type="button" className="lmp-lib" aria-current={library === id ? 'true' : undefined} disabled={busy} onClick={() => { setLibrary(id); setPage(0); }}>{icon}<span>{label}</span>{note && <small>{note}</small>}</button>;
+   // 按钮字不加空格（antd 默认把两个汉字的按钮写成「取 消」）。
+@@ -177,31 +185,43 @@
+             {OBJECT_TABS.map(t => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} disabled={busy} onClick={() => setTab(t.key)}>{t.label}</button>)}
+           </div>}
+           <Input className="lmp-search" prefix={<Search size={14}/>} allowClear aria-label="搜索资产" placeholder="搜索名称" value={keyword} disabled={busy} onChange={e => setKeyword(e.target.value)}/>
+-          <span className="lmp-gap"/>
+-          {upload && !official && <><Button icon={<Upload size={14}/>} loading={uploading} disabled={busy} onClick={() => fileInput.current?.click()}>{library && library !== 'all' && library !== AI_LIBRARY ? '上传到此资产库' : '上传'}</Button>
+-            {mediaType === 'audio' && <Button icon={<Mic size={14}/>} disabled={busy || uploading || !library} onClick={() => setRecording(true)}>录音</Button>}
+-            <input ref={fileInput} type="file" hidden aria-label="选择要上传到资产库的文件" accept={ACCEPT[mediaType]} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void putInLibrary(file).catch(() => {}); }}/></>}
++          {canUpload && mediaType === 'audio' && <>
++            <span className="lmp-gap"/>
++            <Button icon={<Upload size={14}/>} loading={uploading} disabled={busy} onClick={() => fileInput.current?.click()}>{uploadLabel}</Button>
++            <Button icon={<Mic size={14}/>} disabled={busy || uploading || !library} onClick={() => setRecording(true)}>录音</Button>
++          </>}
+         </div>
++        {canUpload && <input ref={fileInput} type="file" hidden aria-label="选择要上传到资产库的文件" accept={ACCEPT[mediaType]} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void putInLibrary(file).catch(() => {}); }}/>}
+         {error && <p className="lmp-error"><StudioErrorNotice error={error}/><Button size="small" onClick={() => setRevision(n => n + 1)}>重试</Button></p>}
+-        {loading && !items.length ? <Skeleton active/> : error && !items.length ? null : !items.length
+-          ? !official && library === AI_LIBRARY && tab !== 'files' ? <div className="lmp-empty"><p>AI 生成库仅保存图片、视频和音频。请在「全部」中选择{OBJECT_TABS.find(t => t.key === tab)?.label}。</p><Button onClick={() => setLibrary('all')}>查看全部{OBJECT_TABS.find(t => t.key === tab)?.label}</Button></div>
+-            : <p className="lmp-empty">{official ? keyword.trim() || category !== 'all' ? '没有找到匹配的官方形象。' : '暂无官方形象。' : tab !== 'files' ? `暂无带图的${OBJECT_TABS.find(t => t.key === tab)?.label}。` : library === AI_LIBRARY ? `还没有 AI 生成的${NOUN[mediaType]}。` : keyword.trim() ? '没有找到匹配的素材，请尝试其他名称。' : upload ? `暂无${NOUN[mediaType]}，可点击「上传」添加。` : `暂无${NOUN[mediaType]}。`}</p>
+-          : <ul className={`lmp-grid${mediaType === 'audio' ? ' is-list' : ''}`}>{items.map(a => {
++        {(uploadTile || items.length > 0) && <ul className={`lmp-grid${mediaType === 'audio' ? ' is-list' : ''}`}>
++          {uploadTile && <li><button type="button" className="assets-upload lmp-upload" disabled={busy || uploading || !library} onClick={() => fileInput.current?.click()}>
++            <span className="assets-upload-plus" aria-hidden="true">{uploading ? <LoaderCircle size={21} className="animate-spin"/> : <Upload size={21}/>}</span>
++            {uploading ? '正在上传…' : uploadLabel}
++          </button></li>}
++          {items.map(a => {
+             const on = !!selected[a.id], unavailable = a.metadata?.unavailable === true;
+             const access = typeof a.metadata?.officialAccess === 'string' ? a.metadata.officialAccess : undefined;
+             const full = !on && max > 1 && picked.length >= max;
+-            return <li key={a.id}>
++            return <li key={a.id} className="lmp-cell"
++              onPointerEnter={a.kind === 'video' ? e => { if (e.pointerType === 'mouse') setHoveredVideo(a.id); } : undefined}
++              onPointerLeave={a.kind === 'video' ? () => setHoveredVideo(undefined) : undefined}>
+               <button type="button" className="lmp-item" aria-pressed={on} aria-label={`选择 ${a.title}`} title={unavailable && access ? `${a.title}（${OFFICIAL_LICENSE_REASON}）` : a.title} disabled={busy || unavailable || full} onClick={() => choose(a)}>
+                 {a.kind === 'image' ? <span className="lmp-thumb"><AssetThumb kind="image" src={a.data.dataUrl} storageKey={a.data.storageKey}/></span>
+-                  : a.kind === 'video' ? <span className="lmp-thumb"><AssetThumb kind="video" src={a.data.url} storageKey={a.data.storageKey}/></span>
++                  : a.kind === 'video' ? <span className="lmp-thumb"><AssetThumb kind="video" src={a.data.url} storageKey={a.data.storageKey} playing={open && !preview && hoveredVideo === a.id}/></span>
+                   : <span className="lmp-voice-icon">{on ? <Check size={15} strokeWidth={2.4}/> : <AudioLines size={16} strokeWidth={1.6}/>}</span>}
+                 {on && a.kind !== 'audio' && <span className="lmp-check"><Check size={11} strokeWidth={2.6}/></span>}
+                 {access && <span className={`lmp-access${unavailable ? ' is-locked' : ''}`}>{access}</span>}
+                 <span className="lmp-text"><strong>{a.title}</strong><small>{access ? unavailable ? OFFICIAL_LICENSE_REASON : '官方形象' : a.metadata?.ipReference ? `我的 IP · ${a.metadata.assetRole}` : a.metadata?.libraryReference ? OBJECT_TABS.find(t => t.key === tab)?.label : sourceLabel(a.source)}</small></span>
+               </button>
++              {(a.kind === 'image' || a.kind === 'video') && (a.data.storageKey || (a.kind === 'image' ? a.data.dataUrl : a.data.url)) &&
++                <button type="button" className="lmp-preview-action" aria-label={`放大预览 ${a.title}`} title="放大预览" disabled={busy}
++                  onClick={() => { setHoveredVideo(undefined); setPreview(a); }}><Maximize2 size={16}/></button>}
+               {a.kind === 'audio' && <SignedAudio className="lmp-audio" quiet src={a.data.url} storageKey={a.data.storageKey} controls preload="none"/>}
+             </li>;
+           })}</ul>}
++        {!items.length && (loading ? <Skeleton active/> : error ? null
++          : !official && library === AI_LIBRARY && tab !== 'files' ? <div className="lmp-empty"><p>AI 生成库仅保存图片、视频和音频。请在「全部」中选择{OBJECT_TABS.find(t => t.key === tab)?.label}。</p><Button onClick={() => setLibrary('all')}>查看全部{OBJECT_TABS.find(t => t.key === tab)?.label}</Button></div>
++          : <p className="lmp-empty">{official ? keyword.trim() || category !== 'all' ? '没有找到匹配的官方形象。' : '暂无官方形象。' : tab !== 'files' ? `暂无带图的${OBJECT_TABS.find(t => t.key === tab)?.label}。` : library === AI_LIBRARY ? `还没有 AI 生成的${NOUN[mediaType]}。` : keyword.trim() ? '没有找到匹配的素材，请尝试其他名称。' : canUpload && !uploadTile ? `暂无${NOUN[mediaType]}，可点击「上传」添加。` : `暂无${NOUN[mediaType]}。`}</p>)}
+         {hasMore && <div className="lmp-more"><Button loading={loading} disabled={busy} onClick={() => void loadMore()}>加载更多</Button></div>}
+       </div>
+     </div>
+@@ -210,6 +230,11 @@
+       <Button disabled={busy} onClick={onClose}>取消</Button>
+       <Button type="primary" className="lmp-use" loading={busy} disabled={!picked.length || uploading} onClick={() => void confirm()}>{confirmLabel}</Button>
+     </footer>
++    <Modal open={open && !!preview} title={preview?.title} footer={null} width={1040} centered getContainer={studioOverlayContainer} className="lmp-preview" onCancel={() => setPreview(undefined)} destroyOnHidden>
++      {open && preview && <div className="library-full-preview">{preview.kind === 'image'
++        ? <SignedImage src={preview.data.dataUrl} storageKey={preview.data.storageKey} alt={preview.title}/>
++        : <SignedVideo src={preview.data.url} storageKey={preview.data.storageKey} controls playsInline preload="metadata" aria-label={preview.title}/>}</div>}
++    </Modal>
+   </Modal><AudioRecorderDialog open={open && recording} onClose={() => setRecording(false)} onSave={putInLibrary}/></ConfigProvider>;
+ }
+ 

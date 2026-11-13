@@ -1,0 +1,23 @@
+--- a/apps/server/src/main/java/com/aistareco/aep/service/AiModelUsageService.java
++++ b/apps/server/src/main/java/com/aistareco/aep/service/AiModelUsageService.java
+@@ -248,6 +248,20 @@
+                 requestId, upstreamId, latencyMs, errorCode, errorMessage,
+                 requestBodyJson, responseBodyJson, replayOfRecordId,
+                 billingMode, billableUnits, billableSeconds);
++    }
++
++    /** Downloading an existing image receipt again is still one successful provider call. */
++    @Transactional(propagation = Propagation.REQUIRES_NEW)
++    public void recordImageSuccess(String providerId, String providerName, String model, String purpose,
++                                   String userId, String appCode, String requestId, String upstreamId,
++                                   String requestBodyJson) {
++        if (requestId != null && !requestId.isBlank()) {
++            endpointRepo.lockById(providerId);
++            if (repo.existsByProviderIdAndPurposeAndRequestIdAndSuccessTrue(providerId, purpose, requestId)) return;
++        }
++        saveRecord(providerId, providerName, model, purpose, 0L, 0L, 0L, true,
++                userId, null, appCode, requestId, upstreamId, null, null, null,
++                requestBodyJson, null, null, AiModelBillingMode.PER_CALL, 1L, 0L);
+     }
+ 
+     /** One observation per successful vendor optimization key; retries must not multiply reported consumption. */
