@@ -23,6 +23,8 @@ import { StudioAiIcon } from './studio-ai-icon';
 import { StudioErrorNotice, useStudioErrorState, useStudioApp } from './studio-errors';
 import { StudioAnalysisDocument } from './studio-analysis-document';
 import { studioTaskLabel } from '@/canvas-bridge/studio-task-status';
+import { StudioVideoClip, STUDIO_REFERENCE_SECONDS } from './studio-video-clip';
+import { studioVideoInfo } from '@/canvas-bridge/studio-media-jobs';
 
 type Props={actions?:ReactNode;mode?:"segments";projectId:string;initialNodeId?:string;nodes:CanvasNodeData[];capabilities?:StudioCapabilities;
  setNodes:Dispatch<SetStateAction<CanvasNodeData[]>>;setConnections:Dispatch<SetStateAction<CanvasConnection[]>>;
@@ -35,6 +37,8 @@ export function StudioRecreation({actions,mode,projectId,initialNodeId,nodes,cap
  const initial=selectedInitial?.type===CanvasNodeType.Video
    ?nodes.find(n=>studioGenerationPending(n)&&(n.metadata?.studio?.recreation?.mode==='segments')===segments&&n.metadata?.studio?.recreation?.sourceNodeId===selectedInitial.id&&n.metadata.studio.recreation.sourceStorageKey===selectedInitial.metadata?.storageKey)||selectedInitial:selectedInitial;
  const sourceBound=selectedInitial?.type===CanvasNodeType.Video||selectedInitial?.metadata?.studio?.kind==='recreation';
+ const [trimming,setTrimming]=useState(false);
+ const [measured,setMeasured]=useState<{key:string;seconds:number}>();
  const savedRequest=initial?.metadata?.studio?.request?.operation==='recreation'?initial.metadata.studio.request:undefined;
  const [targetId,setTargetId]=useState(initial?.metadata?.studio?.kind==='recreation'?initial.id:undefined);
  const [sourceId,setSourceId]=useState(recreationSource(initial,nodes)?.id);
@@ -46,6 +50,15 @@ export function StudioRecreation({actions,mode,projectId,initialNodeId,nodes,cap
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  const target=nodes.find(n=>n.id===targetId),report=target?.metadata?.studio?.recreation?.report,document=target?.metadata?.studio?.recreation?.document||!!target?.metadata?.studio?.recreation?.study&&target.metadata.status==='success';
  const source=nodes.find(n=>n.id===sourceId&&n.type===CanvasNodeType.Video&&n.metadata?.storageKey&&(!target?.metadata?.studio?.recreation||n.metadata.storageKey===target.metadata.studio.recreation.sourceStorageKey));
+ const sourceKey=source?.metadata?.storageKey;
+ const duration=source?.metadata?.durationMs ? source.metadata.durationMs/1000 : measured?.key===sourceKey ? measured?.seconds : undefined;
+ const tooLong=duration!=null&&duration>STUDIO_REFERENCE_SECONDS;
+ useEffect(()=>{
+   if(!sourceKey||duration!=null)return;
+   let active=true;
+   void studioVideoInfo(sourceKey).then(info=>{if(active)setMeasured({key:sourceKey,seconds:info.durationSec});}).catch(()=>undefined);
+   return()=>{active=false;};
+ },[sourceKey,duration]);
  const options=capabilities?.textModels||[];
  const fixed=capabilities?.textModelMode==='fixed';
  const selected=(fixed?options.find(m=>m.isDefault)||options[0]:options.find(m=>m.endpointId===model)||options.find(m=>m.isDefault&&m.supportsVision)||options.find(m=>m.supportsVision));
@@ -55,19 +68,21 @@ export function StudioRecreation({actions,mode,projectId,initialNodeId,nodes,cap
  const patch=(id:string,fn:(node:CanvasNodeData)=>CanvasNodeData)=>setNodes(list=>list.map(n=>n.id===id?fn(n):n));
  const currentNodes=()=>useCanvasStore.getState().projects.find(p=>p.id===projectId)?.nodes||nodes;
  const save=async()=>{await saveStudioDocument(projectId);};
+ const useVideo=async(media:import('@ai-star-eco/types').StudioMediaImportResult)=>{
+   if(!alive.current)return;
+   const picked=attachmentNode({kind:'video',url:media.url,storageKey:media.key,width:media.width,height:media.height,
+     title:media.fileName.replace(/\.[^.]+$/,''),durationSec:media.durationSec},currentNodes());
+   const node:CanvasNodeData={...picked,metadata:{...picked.metadata,origin:picked.metadata?.origin??'upload'}};
+   imported.current=node.id;setNodes(list=>list.some(n=>n.id===node.id)?list:[...list,placeStudioNode(node,list)]);setSourceId(node.id);setTargetId(undefined);
+   await save();imported.current=undefined;onFocus(node.id);
+ };
  const importVideo=async(file:File)=>{
    if(guard.current)return;guard.current=true;setImporting(true);setError('');
-   try {
-     const media=await importStudioMedia(projectId,file,'video');
-     if(!alive.current)return;
-     const picked=attachmentNode({kind:'video',url:media.url,storageKey:media.key,width:media.width,height:media.height,title:file.name.replace(/\.[^.]+$/,'')},currentNodes());
-     const node:CanvasNodeData={...picked,metadata:{...picked.metadata,origin:picked.metadata?.origin??'upload'}};
-     imported.current=node.id;setNodes(list=>list.some(n=>n.id===node.id)?list:[...list,placeStudioNode(node,list)]);setSourceId(node.id);
-     await save();imported.current=undefined;onFocus(node.id);
-   }catch(e){if(alive.current)setError(e);}finally{guard.current=false;if(alive.current)setImporting(false);}
+   try { await useVideo(await importStudioMedia(projectId,file,'video')); }
+   catch(e){if(alive.current)setError(e);}finally{guard.current=false;if(alive.current)setImporting(false);}
  };
  const submit=async(confirm=false)=>{
-   if(guard.current||!confirm&&(!source||!allowed))return;
+   if(guard.current||!confirm&&(!source||!allowed||tooLong))return;
    guard.current=true;setBusy(true);setError('');let posted=false,received=false;
    let node=target;
    try {
@@ -104,9 +119,9 @@ export function StudioRecreation({actions,mode,projectId,initialNodeId,nodes,cap
    footer={<>
      <div className="studio-generation-toolbar"><StudioModelPicker label="复刻分析模型" value={selected?.endpointId} disabled={busy||pending||fixed||options.filter(m=>fixed||m.supportsVision).length<=1} onChange={setModel} options={options.filter(m=>fixed||m.supportsVision).map(m=>({value:m.endpointId,label:m.name,disabled:!m.supportsVision}))}/>
        <StudioSettingsPopover label="分析参数" summary={focus.trim()?'已添加分析重点':'分析重点'} disabled={busy||pending}><div className="studio-director-form studio-parameter-form"><label>分析重点（选填）<Input.TextArea aria-label="复刻分析重点" value={focus} disabled={busy||pending} onChange={e=>setFocus(e.target.value)} maxLength={2000} autoSize={{minRows:2,maxRows:3}} placeholder="例如：重点分析氛围、动作推进和结尾反转"/></label>     {!allowed&&<p role="status">{capabilities?.mock?'解析需要真实视频分析，请关闭测试响应。':'暂无可用的视频分析模型，请联系管理员配置。'}</p>}
-     <p className="studio-recreation-boundary">支持 60 秒、128 MB 内的 MP4。有音轨时自动提取原声，不转写字幕。</p></div></StudioSettingsPopover></div>
+     <p className="studio-recreation-boundary">每次分析最多 60 秒。有音轨时自动提取原声。</p></div></StudioSettingsPopover></div>
      <span>{pending?studioTaskLabel(target?.metadata?.studio?.task):'按实际用量消耗积分'}</span>
-     {pending?<Button loading={busy} onClick={()=>void submit(true)}>{known?'刷新任务':'确认原任务'}</Button>:<Button type="primary" icon={<StudioAiIcon/>} disabled={!source||!allowed||importing||!!imported.current} loading={busy} onClick={()=>void submit()} title="AI 分析，将消耗积分">{target?.metadata?.status==='error'?segments?'继续拉片':'重新解析':segments?'开始拉片':'开始解析'}</Button>}
+     {pending?<Button loading={busy} onClick={()=>void submit(true)}>{known?'刷新任务':'确认原任务'}</Button>:<Button type="primary" icon={<StudioAiIcon/>} disabled={!source||!allowed||importing||!!imported.current||tooLong||trimming} loading={busy} onClick={()=>void submit()} title="AI 分析，将消耗积分">{target?.metadata?.status==='error'?segments?'继续拉片':'重新解析':segments?'开始拉片':'开始解析'}</Button>}
    </>}>
    {actions}
    {error&&<StudioErrorNotice error={error}/>}
@@ -117,6 +132,10 @@ export function StudioRecreation({actions,mode,projectId,initialNodeId,nodes,cap
      {!sourceBound&&!targetId&&<><input ref={upload} type="file" accept="video/mp4,.mp4" hidden onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void importVideo(file);}}/><Button disabled={busy||pending} loading={importing} icon={<Upload size={15}/>} onClick={()=>upload.current?.click()}>上传参考视频</Button></>}
      {imported.current&&<Button onClick={()=>void save().then(()=>{imported.current=undefined;setError('');}).catch(setError)}>重试保存视频</Button>}
      {source&&<details className="studio-recreation-source-preview"><summary>预览原片</summary><div className="studio-recreation-preview"><SignedVideo src={source.metadata?.content} storageKey={source.metadata?.storageKey} controls preload="none"/></div></details>}
+     {sourceKey&&!pending&&<Button disabled={busy||importing} onClick={()=>setTrimming(true)}>截取片段</Button>}
+     {tooLong&&!pending&&<p role="status">这段视频超过 60 秒，请先截取要分析的片段。</p>}
+     {trimming&&source&&sourceKey&&<StudioVideoClip key={sourceKey} storageKey={sourceKey} src={source.metadata?.content}
+       title={source.title} durationSec={duration} onUse={useVideo} onClose={()=>setTrimming(false)}/>}
      {sourceUnavailable&&<p role="alert">原参考视频已删除或替换，请选择新的视频重新解析。</p>}
 
    </>

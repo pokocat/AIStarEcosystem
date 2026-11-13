@@ -50,6 +50,8 @@ public class DeploymentRuntime {
         pending.put("video_asset_person",persons==null?-1:persons);
         Long portraits=jdbc.queryForObject("SELECT count(*) FROM video_asset_portrait WHERE status IS NULL OR lower(status) IN ('uploading','processing')",Long.class);
         pending.put("video_asset_portrait",portraits==null?-1:portraits);
+        Long media=jdbc.queryForObject("SELECT count(*) FROM studio_media_job WHERE state IN ('receiving','queued','processing')",Long.class);
+        pending.put("studio_media_job",media==null?-1:media);
         boolean drained=quiescing.get()&&requests.get()==0&&active==0&&queued==0&&scheduledActive==0&&pending.values().stream().allMatch(v->v==0);
         return Map.of("quiescing",quiescing.get(),"in_flight",requests.get(),"executor_active",active,"executor_queued",queued,"scheduled_active",scheduledActive,"pending_work",pending,"drained",drained);
     }

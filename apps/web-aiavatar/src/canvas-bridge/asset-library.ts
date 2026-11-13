@@ -1,9 +1,10 @@
 import { prepareStudioImageUpload } from './studio-image-file';
 import { studioMediaUploadForm } from './media-upload-form';
+import { finishStudioMediaUpload, type StudioUploadResponse } from './studio-media-jobs';
 import { withStudioBilling } from "./studio-billing";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { apiFetch, apiFetchPaginated } from '@ai-star-eco/api-client';
-import type { LibraryFolder, LibraryObject, LibraryObjectEdit, LibraryPage, LibraryMaterial, LibraryCandidate, LibraryExtraction, LibraryGenerateRequest, LibrarySaveMediaRequest, LibrarySourceOption, IpRun, StudioMediaImportResult } from '@ai-star-eco/types';
+import type { LibraryFolder, LibraryObject, LibraryObjectEdit, LibraryPage, LibraryMaterial, LibraryCandidate, LibraryExtraction, LibraryGenerateRequest, LibrarySaveMediaRequest, LibrarySourceOption, IpRun } from '@ai-star-eco/types';
 const LIBRARY_BASE='/v1/ip-studio/library';
 export const libraryFolders=()=>apiFetch<LibraryFolder[]>(`${LIBRARY_BASE}/folders`);
 export const createLibraryFolder=(name:string)=>apiFetch<LibraryFolder>(`${LIBRARY_BASE}/folders`,{method: "POST",body:{name}});
@@ -26,7 +27,9 @@ export async function uploadLibraryMedia(file: File, mediaType: 'image' | 'video
   const body = studioMediaUploadForm(mediaType === 'image' ? await prepareStudioImageUpload(file) : file);
   body.append('mediaType', mediaType);
   if (folderId) body.append('folderId', folderId);
-  return apiFetch<StudioMediaImportResult>(`${LIBRARY_BASE}/uploads`, { method: "POST", body });
+  if (mediaType === 'video') body.append('background', 'true');
+  const result = await apiFetch<StudioUploadResponse>(`${LIBRARY_BASE}/uploads`, { method: "POST", body });
+  return finishStudioMediaUpload(result, file.name);
 }
 export const mainLibraryVersion=(asset:LibraryObject)=>asset.versions.find(v=>v.id===asset.mainVersionId);
 

@@ -18,6 +18,7 @@ import { cancelRun, fetchStudioVideoModels, readRun, signKeys } from "@/canvas-b
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
 import { SignedAudio } from "@/canvas-bridge/signed-audio";
+import { StudioVideoClip } from "../studio-video-clip";
 import { getStudioPlanExecution } from "@/canvas-bridge/studio-plan-execution";
 import type { StudioPlanExecution, StudioSegmentedVideoPrice, StudioSegmentedVideoRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { describeSegmentedPrice, segmentedRecords, segmentedVideoPrice, startSegmentedVideo, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
@@ -153,6 +154,7 @@ export function SceneVideoStudio() {
   // 草稿与保存队列（换草稿时旧回包不改这一页，见 scene-draft-store.ts）。
   const { draft, current: draftRef, session, begin, remember, show, onPage, persist, settled } = useSceneDraftStore();
   const [picking, setPicking] = useState<Slot>();
+  const [trimming, setTrimming] = useState<Media>();
   const [imagePurpose, setImagePurpose] = useState<string>();
   const input = useRef<ScenePromptEditorHandle>(null);
   const revisionInput = useRef<HTMLTextAreaElement>(null);
@@ -442,6 +444,12 @@ export function SceneVideoStudio() {
         ...(a.kind !== "audio" ? { width: a.data.width, height: a.data.height } : {}) }] : [];
     });
     if (!chosen.length) throw new Error(type === "image" ? "请选择一张图片" : type === "video" ? "请选择一段视频" : "请选择一段声音");
+    await addMedia(kind, chosen);
+  };
+
+  const addMedia = async (kind: Slot, chosen: Media[], propagateError = false) => {
+    if (!scene) return;
+    const type = kind === "voice" ? "audio" : kind === "video" ? "video" : "image";
     const ticket = session.current;
     setUploading(kind);
     try {
@@ -476,9 +484,11 @@ export function SceneVideoStudio() {
           ? kind === "voice" || kind === "video" || (recreation && kind === "image") ? { ...next, nodes: nodes.map(n => n.id === made.id ? { ...n, title: media.title } : n) } : next
           : { ...next, nodes: [...nodes, made] };
         return withSceneInput(placed, kind, media.key, "add", imageCapacity);
-      }, doc), projectId).catch(() => undefined);
-    } catch (e) { showFailure({ action: "添加素材", error: e }); }
-    finally { setUploading(undefined); }
+      }, doc), projectId);
+    } catch (e) {
+      if (propagateError) throw e;
+      showFailure({ action: "添加素材", error: e });
+    } finally { setUploading(undefined); }
   };
   /**
    * 从 AI 图片「做成视频」带过来的那张图（地址里的 ref，是本人的文件 key）：当一张场景图放进来，和上传的一样记进草稿。
@@ -578,7 +588,7 @@ export function SceneVideoStudio() {
     : scene.images.required && !images.length ? `请添加${scene.images.label}`
     : scene.textRequired && !text.trim() ? "请填写要求"
     // 三种方式都按原片分段出片，参考视频整条最长 60 秒（每段多长由服务端按模型定）
-    : video?.durationSec && video.durationSec > MAX_SECONDS + .05 ? `参考视频最长 ${MAX_SECONDS} 秒，请先裁剪` : '';
+    : video?.durationSec && video.durationSec > MAX_SECONDS ? `参考视频最长 ${MAX_SECONDS} 秒，请先截取片段` : '';
 
   /**
    * 让编导写第一版（ask 是编辑框里的想法）或改一版（ask 是「修改意见」）。
@@ -1298,10 +1308,15 @@ export function SceneVideoStudio() {
   const recreationMedia = <div className="scene-recreation-media">
     <section aria-label="参考视频">
       {video ? <div className="scene-recreation-source">
-        <SignedVideo key={video.key} src={video.url} storageKey={video.key} controls playsInline preload="metadata" aria-label="已选择参考视频"/>
+        <SignedVideo key={video.key} src={video.url} storageKey={video.key} controls playsInline preload="metadata" aria-label="已选择参考视频"
+          onLoadedMetadata={event => {
+            const seconds = event.currentTarget.duration;
+            if (Number.isFinite(seconds) && seconds > 0) setVideo(current => current?.key === video.key && !current.durationSec ? { ...current, durationSec: seconds } : current);
+          }}/>
         <div className="scene-recreation-file">
           <span title={video.fileName || video.title}>{video.fileName || video.title}</span>
           <Button size="small" loading={uploading === "video"} disabled={busy || !!uploading} onClick={() => choose("video")} title={video.fileName || video.title}>更换参考视频</Button>
+          <Button size="small" disabled={busy || !!uploading} onClick={() => setTrimming(video)}>截取片段</Button>
           <Button size="small" type="text" icon={<X size={15}/>} disabled={busy || !!uploading} onClick={removeVideo} aria-label="移除参考视频"/>
         </div>
       </div> : <Button className="scene-recreation-add-video" type="text" aria-label="从资产库选择参考视频"
@@ -1502,6 +1517,9 @@ export function SceneVideoStudio() {
       title={`选择${picking === "image" ? imagePurpose ?? scene.images.label : picking === "character" ? "出镜人物" : picking === "voice" ? "声音" : scene.video?.label ?? "参考视频"}`}
       intro="从资产库选择，也可上传新文件。"
       onClose={() => setPicking(undefined)} onAssets={assets => addFromLibrary(picking, assets)}/></div>}
+    {trimming && <StudioVideoClip key={trimming.key} storageKey={trimming.key} src={trimming.url} title={trimming.title}
+      durationSec={trimming.durationSec} onClose={() => setTrimming(undefined)}
+      onUse={clip => addMedia("video", [{ ...clip, title: clip.fileName }], true)}/>}
     {taskOpen && moreFor === selectedTask!.id && <VideoMoreDialog key={selectedTask!.id} task={selectedTask!} modelName={taskModelName(selectedTask!)}
       free={!!caps?.mock} busy={busy} textBlocker={!caps ? '正在加载模型…' : !caps.mock && !textModel?.tokenPricing ? 'AI 编导暂时不可用，请联系平台处理。' : undefined}
       nodes={draft?.id === selectedTask!.projectId ? draft.doc.nodes as CanvasNodeData[] : []}

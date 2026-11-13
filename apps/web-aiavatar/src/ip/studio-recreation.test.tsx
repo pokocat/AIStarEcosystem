@@ -5,7 +5,14 @@ import { beforeEach,afterEach,expect,test,vi } from 'vitest';
 import { ApiError } from '@ai-star-eco/api-client';
 import { StudioRecreation } from './studio-recreation';
 import type { CanvasNodeData,CanvasConnection } from '@/canvas/types/canvas';
-const api=vi.hoisted(()=>({submit:vi.fn(),save:vi.fn(),read:vi.fn(),onRun:vi.fn(),close:vi.fn(),error:vi.fn(),success:vi.fn()}));
+const api=vi.hoisted(()=>({submit:vi.fn(),save:vi.fn(),read:vi.fn(),onRun:vi.fn(),close:vi.fn(),error:vi.fn(),success:vi.fn(),videoInfo:vi.fn()}));
+vi.mock('@/canvas-bridge/studio-media-jobs',()=>({studioVideoInfo:api.videoInfo}));
+vi.mock('./studio-video-clip',()=>({
+ STUDIO_REFERENCE_SECONDS:60,
+ StudioVideoClip:({onUse,onClose}:any)=><button onClick={async()=>{
+  await onUse({key:'owned-clip.mp4',url:'/clip.mp4',fileName:'选段.mp4',durationSec:25});onClose();
+ }}>使用截取片段</button>,
+}));
 vi.mock('@/canvas-bridge/studio-api',()=>({submitStudioRun:api.submit,importStudioMedia:vi.fn()}));
 vi.mock('@/canvas-bridge/api',()=>({readRun:api.read}));
 vi.mock('@/canvas-bridge/studio-save',()=>({saveStudioDocument:api.save}));
@@ -18,13 +25,26 @@ const video:CanvasNodeData={id:'video',type:'video' as never,title:'恐龙',posi
 const capabilities={mock:false,operations:[],imageCost:0,textCost:0,videoCost:null,textModels:[{endpointId:'vision',name:'画面模型',isDefault:true,supportsVision:true,tokenPricing:{inputCreditsPerK:.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]};
 let nodes:CanvasNodeData[]=[],edges:CanvasConnection[]=[];
 function Host({caps=capabilities,initial=[video],mode}:any){const[list,setNodes]=useState<CanvasNodeData[]>(initial);nodes=list;const[connections,setConnections]=useState<CanvasConnection[]>([]);edges=connections;return <StudioRecreation mode={mode} projectId="p" initialNodeId={initial[0].id} nodes={list} capabilities={caps} setNodes={setNodes} setConnections={setConnections} onClose={api.close} onFocus={()=>{}} onRun={api.onRun}/>;}
-beforeEach(()=>{vi.clearAllMocks();api.save.mockResolvedValue('saved');api.submit.mockImplementation(async(_:string,r:any)=>({id:'r',nodeId:r.nodeId,status:'running',stage:'queued',pct:0,kind:'studio-recreation',inputs:r,output:{}}));});afterEach(cleanup);
+beforeEach(()=>{vi.clearAllMocks();api.save.mockResolvedValue('saved');api.videoInfo.mockResolvedValue({durationSec:30});api.submit.mockImplementation(async(_:string,r:any)=>({id:'r',nodeId:r.nodeId,status:'running',stage:'queued',pct:0,kind:'studio-recreation',inputs:r,output:{}}));});afterEach(cleanup);
 test('opening a video fixes the source without upload or replacement; start saves a linked report',async()=>{
  render(<Host/>);expect(screen.queryByRole('button',{name:'上传参考视频'})).toBeNull();expect(screen.queryByRole('combobox',{name:'复刻参考视频'})).toBeNull();expect(api.submit).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'开始解析'}));
  await waitFor(()=>expect(api.onRun).toHaveBeenCalledTimes(1));expect(api.save.mock.invocationCallOrder[0]).toBeLessThan(api.close.mock.invocationCallOrder[0]);expect(api.close.mock.invocationCallOrder[0]).toBeLessThan(api.submit.mock.invocationCallOrder[0]);
  expect(nodes).toHaveLength(2);expect(nodes[0]).toEqual(video);expect(edges).toHaveLength(1);
  expect(api.submit.mock.calls[0][1]).toMatchObject({operation:'recreation',contextNodeIds:['video'],model:'vision',maxCost:21});
  expect(edges[0]).toMatchObject({fromNodeId:'video',toNodeId:api.submit.mock.calls[0][1].nodeId});
+});
+test('analysis of a long canvas video uses the saved excerpt and keeps the original node',async()=>{
+ const original={...video,metadata:{...video.metadata,durationMs:122_000}};
+ render(<Host initial={[original]}/>);
+ expect(screen.getByRole('button',{name:'开始解析'}).hasAttribute('disabled')).toBe(true);
+ fireEvent.click(screen.getByRole('button',{name:'截取片段'}));
+ fireEvent.click(screen.getByRole('button',{name:'使用截取片段'}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'开始解析'}).hasAttribute('disabled')).toBe(false));
+ const clip=nodes.find(node=>node.metadata?.storageKey==='owned-clip.mp4');
+ expect(clip?.metadata?.durationMs).toBe(25_000);
+ expect(nodes[0]).toEqual(original);
+ fireEvent.click(screen.getByRole('button',{name:'开始解析'}));
+ await waitFor(()=>expect(api.submit.mock.calls[0][1].contextNodeIds).toEqual([clip?.id]));
 });
 test('unknown response confirms original identity without creating another report or charge request',async()=>{
  api.submit.mockRejectedValueOnce(new TypeError('network lost'));

@@ -33,6 +33,7 @@ import "../styles/inspiration.css";
 import "../styles/studio-next-pages.css";
 import "../styles/assets-hub.css";
 import { StudioNotifications } from '@/ip/studio-errors';
+import { StudioMediaNotices } from '@/ip/studio-media-notices';
 import { TestAccountBanner } from "@/shell/test-account-banner";
 import { AppChrome } from "@/shell/app-chrome";
 import { AntdTheme } from "@/shell/antd-theme";
@@ -92,6 +93,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {/* 桌面顶栏（桌面形态才显示；公开名片页与登录页不挂）—— 见 shell/app-chrome.tsx */}
         <ImpersonationBridge><AntdTheme>
           <StudioNotifications />
+          <StudioMediaNotices />
           <AppChrome />
           <TestAccountBanner />
           <ImpersonationBar />

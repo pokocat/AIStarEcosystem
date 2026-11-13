@@ -3,7 +3,6 @@ package com.aistareco.aep.ipstudio.service;
 import com.aistareco.aep.config.MixcutProperties;
 import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.FileStorageService;
-import com.aistareco.aep.service.storage.StorageQuotaService;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -29,18 +28,18 @@ class StudioVideoCompatibilityTest {
         if(codec.equals("libx265"))args.addAll(List.of("-x265-params","pools=1:frame-threads=1"));
         args.addAll(List.of("-c:a","libmp3lame",source.toString()));ffmpeg.runFfmpeg(args,30_000);
         var input=ffmpeg.probeMedia(source.toFile());assertEquals("mp3",input.audioCodec());
-        var storage=mock(FileStorageService.class);var quota=mock(StorageQuotaService.class);
-        when(storage.store(any(),anyString(),anyString(),anyString(),anyString())).thenAnswer(call->{
-            byte[] bytes=call.getArgument(0);Files.write(normalized,bytes);
-            return new FileStorageService.StoredFile("own/normalized.mp4",null,null,null,bytes.length,"video/mp4");
+        var storage=mock(FileStorageService.class);
+        when(storage.storePath(any(),anyString(),anyString(),anyString(),anyString())).thenAnswer(call->{
+            Path file=call.getArgument(0);Files.copy(file,normalized);
+            return new FileStorageService.StoredFile("own/normalized.mp4",null,null,null,Files.size(normalized),"video/mp4");
         });
         when(storage.signedUrl(anyString())).thenReturn("/signed.mp4");
-        var result=new StudioMediaImportService(storage,quota,ffmpeg).upload("owner",
-                new MockMultipartFile("file","my-video.mp4","video/mp4",Files.readAllBytes(source)),"video");
+        var result=new StudioMediaImportService(storage,ffmpeg).accept("owner",
+                new MockMultipartFile("file","my-video.mp4","video/mp4",Files.readAllBytes(source)),"video",null,false,null);
         var output=ffmpeg.probeMedia(normalized.toFile());
         assertTrue(output.readable());assertEquals("h264",output.videoCodec());assertEquals("aac",output.audioCodec());
         assertEquals(input.durationSec(),output.durationSec(),.5);assertEquals("video/mp4",result.mimeType());
         assertEquals(Files.size(normalized),result.bytes());assertEquals(320,output.width());
-        verify(quota).record(eq("aiavatar"),eq("owner"),eq("画布附件"),isNull(),eq(result.key()),eq(result.bytes()));
+        verify(storage).storePath(any(),eq("ipstudio/source"),eq("owner"),eq("mp4"),eq("video/mp4"));
     }
 }

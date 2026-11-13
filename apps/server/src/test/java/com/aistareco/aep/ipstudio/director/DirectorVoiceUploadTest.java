@@ -99,7 +99,7 @@ class DirectorVoiceUploadTest {
         String u=owner(),id=work(u);
         var uploaded=director.uploadAudio(u,id,audio(30));
         assertEquals(30,uploaded.durationSec(),.001);
-        var original=imports.upload(u,audio(30),"audio");
+        var original=imports.accept(u,audio(30),"audio",null,false,null);
         assertEquals(30,original.durationSec(),.001);
         var contract=new VideoStudioContract(List.of(new VideoStudioModeSpec("universal_reference_video",false,false,null,null)),List.of(),5,15,7000,100);
         when(models.models()).thenReturn(List.of(new VideoStudioModel("h3","H3",true,true,false,contract,null)));

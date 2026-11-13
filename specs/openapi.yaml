@@ -15041,7 +15041,7 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioMediaImport
-      description: '本人项目附件导入免费。JPG/PNG 8MiB/24Mpx/8000px；MP4 128MiB/60秒（可读的非H.264画面或非AAC音轨自动兼容为H.264/AAC，音轨存在性与时长须保持，失败不存储）；MP3/WAV/M4A 25MiB/600秒且不能含画面。按实际字节、ImageIO头/ffprobe校验，再计aiavatar存储用量；key沿用ipstudio_source本人空间；返回短期签名URL，画布持久化只存key。音频助手只读文字设定，不代表语音理解。'
+      description: '本人项目附件导入免费。JPG/PNG 8MiB/24Mpx/8000px；MP4 128MiB；MP3/WAV/M4A 25MiB 且不能含画面。校验文件字节、尺寸、流和可读时长。兼容素材直接返回；background=true 的非 H.264/AAC 视频返回 jobId，由后台保留原片并处理预览。时长上限由拉片、复刻等具体用途检查。'
       requestBody:
         required: true
         content:
@@ -15052,11 +15052,59 @@ paths:
               properties:
                 file: { type: string, format: binary }
                 mediaType: { type: string, enum: [image, video, audio] }
+                background: { type: boolean, default: false }
       responses:
-        '200': { description: 'ApiResponse<StudioMediaImportResult>：key/url/mediaType/mimeType/bytes/fileName/width?/height?/durationSec?' }
+        '200': { description: 'ApiResponse<StudioMediaImportResult>：key/url/mediaType/mimeType/bytes/fileName/width?/height?/durationSec?，或待兼容处理的 jobId' }
         '400': { description: STUDIO_MEDIA_INVALID }
         '404': { description: IP_PROJECT_NOT_FOUND }
         '402': { description: STORAGE_QUOTA_EXCEEDED }
+  /v1/ip-studio/media/video-info:
+    get:
+      tags: [ipstudio]
+      operationId: studioMediaVideoInfo
+      parameters: [{ in: query, name: key, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: '本人可用视频的实测 durationSec' }
+        '400': { description: STUDIO_MEDIA_INVALID }
+  /v1/ip-studio/media/clips:
+    post:
+      tags: [ipstudio]
+      operationId: studioMediaClip
+      description: '从本人可用视频按起止秒数截取 0.5 到 60 秒。免费后台处理，片段以独立素材保存。'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [storageKey, start, end]
+              properties:
+                storageKey: { type: string }
+                title: { type: string }
+                start: { type: number }
+                end: { type: number }
+                requestId: { type: string, format: uuid, description: '相同用户与范围重试时复用任务' }
+      responses:
+        '200': { description: '媒体处理任务 id/status' }
+        '400': { description: STUDIO_MEDIA_RANGE_INVALID }
+        '429': { description: STUDIO_MEDIA_QUEUE_FULL }
+  /v1/ip-studio/media/jobs/{id}:
+    get:
+      tags: [ipstudio]
+      operationId: studioMediaJobStatus
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: '本人任务 id/status/result?/errorCode?/errorMessage?，成功结果中的 URL 按需签发' }
+        '404': { description: STUDIO_MEDIA_JOB_NOT_FOUND }
+  /v1/ip-studio/media/jobs/{id}/retry:
+    post:
+      tags: [ipstudio]
+      operationId: studioMediaJobRetry
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: '用原输入重新排队，进行中或成功时返回现有状态' }
+        '404': { description: STUDIO_MEDIA_JOB_NOT_FOUND }
+        '429': { description: STUDIO_MEDIA_QUEUE_FULL }
   /v1/ip-studio/projects/{id}/story-import:
     parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
     post:
@@ -16445,9 +16493,25 @@ paths:
   /v1/ip-studio/library/uploads:
     post:
       tags: [ip-studio]
-      summary: Personal library post library/uploads
-      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object } } } }
-      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+      summary: 上传到个人资产库
+      description: '校验同 media-import。通用上传按文件大小和可读性验收，素材时长由后续使用入口校验。'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                mediaType: { type: string, enum: [image, video, audio], default: image }
+                folderId: { type: string }
+                background: { type: boolean, default: false }
+      responses:
+        '200': { description: 'ApiResponse<StudioMediaImportResult> 或待处理的 jobId' }
+        '400': { description: STUDIO_MEDIA_INVALID }
+        '404': { description: IP_LIBRARY_NOT_FOUND }
+        '429': { description: STUDIO_MEDIA_QUEUE_FULL }
 
   /v1/ip-studio/projects/{id}/library/folder:
     put:
