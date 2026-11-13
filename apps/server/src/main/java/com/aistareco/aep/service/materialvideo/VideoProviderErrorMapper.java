@@ -22,6 +22,9 @@ final class VideoProviderErrorMapper {
     static final String VIDEO_REFERENCE_PERSON_RESTRICTED = "VIDEO_REFERENCE_PERSON_RESTRICTED";
     /** The supplier failed an accepted task on its own side (2026-11-07 OneToken Seedance 2.0). A new attempt can work. */
     static final String VIDEO_PROVIDER_INTERNAL = "VIDEO_PROVIDER_INTERNAL";
+    static final String VIDEO_AUDIO_COPYRIGHT_RESTRICTED = "VIDEO_AUDIO_COPYRIGHT_RESTRICTED";
+    private static final MappedError AUDIO_COPYRIGHT_RESTRICTED = new MappedError(VIDEO_AUDIO_COPYRIGHT_RESTRICTED,
+            "服务方提示生成的音频可能涉及版权限制。请调整提示词后再生成。");
     private static final MappedError PROVIDER_INTERNAL = new MappedError(VIDEO_PROVIDER_INTERNAL,
             "模型服务临时出错，未生成的视频不扣积分。请重新生成。");
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -52,6 +55,12 @@ final class VideoProviderErrorMapper {
             if (body == null || !body.isObject()) return Optional.empty();
             String code = body.path("error").path("code").asText(body.path("code").asText(""));
             String category = body.path("error").path("category").asText("");
+            // OneToken Seedance 2.5 (2026-11-13): this explicit rejection also carries InternalServiceError.
+            // Match the structured envelope, never message keywords; ordinary busy/unknown failures keep their handling.
+            if ("InternalServiceError".equalsIgnoreCase(code.trim())
+                    && "service_rejected".equals(category)
+                    && "copyright_audio".equals(body.path("error").path("reason").asText("")))
+                return Optional.of(AUDIO_COPYRIGHT_RESTRICTED);
             return "internalserviceerror".equals(code.trim().toLowerCase(Locale.ROOT)) || "internal".equals(category.trim().toLowerCase(Locale.ROOT))
                     ? Optional.of(PROVIDER_INTERNAL) : Optional.empty();
         } catch (Exception ignored) {

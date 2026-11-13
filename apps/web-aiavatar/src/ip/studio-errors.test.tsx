@@ -64,6 +64,18 @@ it('shows corrected cause and input guidance together for the original moderatio
   expect(screen.queryByText(/该提示可能违反/)).toBeNull();
   expect(screen.getAllByText(/ABCDEF234567/).length).toBeGreaterThan(0);
 });
+it('shows audio copyright attribution and corrective guidance in the failure dialog', async () => {
+  render(<StudioNotifications/>);
+  const reason = '视频生成失败：服务方提示生成的音频可能涉及版权限制。请调整提示词后再生成。';
+  reportStudioError({ code: 'VIDEO_AUDIO_COPYRIGHT_RESTRICTED', message: reason, logId: 'ABCDEF234567' }, { action: '生成视频' });
+  await waitFor(() => expect(modal.error).toHaveBeenCalledTimes(1));
+  render((modal.error.mock.lastCall![0] as { content: import('react').ReactNode }).content);
+  expect(screen.getAllByText(reason).length).toBeGreaterThan(0);
+  expect(screen.getByText(/根据上述原因调整后重试/)).toBeTruthy();
+  expect(screen.getByText('VIDEO_AUDIO_COPYRIGHT_RESTRICTED')).toBeTruthy();
+  expect(screen.getAllByText(/ABCDEF234567/).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/模型服务临时出错/)).toBeNull();
+});
 it('keeps structured code, safe message and the real lookup ID while supporting old server suffixes', () => {
   const error = normalizeStudioError(new ApiError({code: 'PROVIDER_REJECTED', message: '图片不可用 · 追查号 ABCDEF234567', logId: 'ABCDEF234567'}, 400));
   expect(error).toEqual({code: 'PROVIDER_REJECTED', message: '图片不可用', logId: 'ABCDEF234567', taskId: undefined});

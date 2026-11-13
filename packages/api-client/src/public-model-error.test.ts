@@ -69,6 +69,13 @@ test('a model chatting, supplier logic and our own code prefix read as a retry a
   expect(publicModelErrorMessage('InternalServiceError', 'VIDEO_PROVIDER_INTERNAL')).toBe(retry);
 });
 
+test('audio copyright guidance survives DTO filtering with the lookup ID and supplier attribution', () => {
+  const message = '视频生成失败：服务方提示生成的音频可能涉及版权限制。请调整提示词后再生成。 · 追查号 ABCDEF234567';
+  const source = { errorCode: 'VIDEO_AUDIO_COPYRIGHT_RESTRICTED', errorMessage: message };
+  expect(sanitizeModelErrorFields(source).errorMessage).toBe(message);
+  expect(publicModelErrorMessage(message, source.errorCode)).toBe(message);
+});
+
 test('our own Chinese sentence that mentions an API Key is left alone', () => {
   const own = '未为「视频生成」绑定 AI 模型端点。请到管理后台绑定一个端点（端点需含 baseUrl 与有效 API Key）。';
   expect(publicModelErrorMessage(own, 'VIDEO_NOT_CONFIGURED')).toBe(own);
