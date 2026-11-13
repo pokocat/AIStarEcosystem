@@ -1,5 +1,7 @@
 # 文档索引 · INDEX
 
+Studio 字幕导出：[内存修复与原任务补导出](releases/studio-video-export-memory-release-20261113.md)，last-reviewed：2026-11-13（北京时间）。
+
 Studio 多段视频导出：[原任务恢复、时间基修复与生产验收](releases/studio-video-export-time-base-release-20261113.md)，last-reviewed：2026-11-13（北京时间）。
 
 AI 编导模型生成修改建议：[真模型与浏览器验收](releases/script-ai-suggestions-release-20261109.md)，last-reviewed：2026-11-09。
