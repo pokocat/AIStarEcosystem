@@ -171,8 +171,7 @@ public class StudioPackagingService {
         if(captions!=null&&!captions.isEmpty()) {
             Path track=captionTrack(work,captions,probe.width(),probe.height(),probe.durationSec());
             args.addAll(List.of("-f","concat","-safe","0","-threads:v","1","-i",track.toString()));
-            // Framesync holds each PNG until the next cue. Keep the subtitle stream sparse.
-            filter.append(";[").append(next).append(":v]format=rgba[ct];").append(video).append("[ct]overlay=0:0:eof_action=pass[v2]");
+            filter.append(";[").append(next).append(":v]fps=30,format=rgba[ct];").append(video).append("[ct]overlay=0:0:eof_action=pass[v2]");
             video="[v2]";
         }
         Path out=work.resolve("studio-captioned.mp4");
