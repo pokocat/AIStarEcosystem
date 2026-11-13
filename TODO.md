@@ -112,7 +112,7 @@
 - [ ] 推荐门槛（最多 2 个镜头或平均每个镜头 ≥6 秒推荐深度复刻）是估的：拿评测集和线上原片看推荐对不对，再调。
 - [ ] `StudioCloneTaskIntegrationTest` 是单段直出那版的真实链路测试，已加 `@Disabled`；按「先拉片、再分段」重写，拉片那步用确定性响应。
 - [ ] 元素替换会把原片里提到旧商品的字幕、水印一起保留（视频模型照抄原片）；要不要先去字幕水印再交给模型，等真跑结果再定。
-- [ ] 元素替换改成不拉片、用模型原生编辑（2026-11-12 已发布，`ai-onetoken-seedance25` 已加 `edit` 配置，见 `docs/releases/studio-replacement-edit-release-20261112.md`）。还要拿「直播切片-面霜」真跑一条，确认 OneToken 认这几个字段、输出画幅和时长跟原片、声音怎么处理、实际扣费。OneToken 不认的话 2.5 不配 `edit`，元素替换改选 2.0。不拉片后认不出原作者账号片尾、台词里的旧商品名不会改，真跑后看要不要补一步不调模型的检测。
+- [ ] 元素替换改成不拉片、用模型原生编辑（2026-11-12 已发布，见 `docs/releases/studio-replacement-edit-release-20261112.md`）。**2026-11-12 真跑**：OneToken 不收 2.5 的编辑任务（400 `edit/extend billing is not verified for this model`），`ai-onetoken-seedance25` 的 `edit` 已按备份撤掉；2.0 跑通一条（`PEX-13e70c2790ee4fabb089`，两段 7+8 秒，OneToken 素材库 503 和上游内部错误各一次后自动重试成功，结算 1200 积分）。还要：看这条 2.0 成片人换没换、动作口型和声音保没保持；2.5 不带编辑字段做元素替换会不会异步失败（会的话页面上先不给 2.5 选）；OneToken 开了 2.5 编辑计费再把 `edit` 加回去。不拉片后认不出原作者账号片尾、台词里的旧商品名不会改，看完成片再定要不要补一步不调模型的检测。
 - [x] ~~深度复刻每段只给动作参考和用户素材，没有开场画面~~ **2026-11-11 完成，未发布**：本机真跑第三段换了房间，改成第一段开场截图换好人和商品做一张场景图，每段都带上（`StudioRecreationTaskPlan`）。效果还要再真跑一条看。
 
 - [ ] 画布上「修改后重试」对任务里的节点不对：打开的是通用出图面板，显示交给模型的英文说明，参考图没带上，比例变成 3:4（2026-11-11 本机真跑，分镜复刻第 1 镜开场画面）。视频页已经能一直重试，画布这条路要么照原步骤重做（同参考图、比例和提示词），要么对任务节点不给这个按钮。
@@ -128,7 +128,7 @@
 - [x] ~~模型聊天回复、厂商接口说法显示给用户~~ **2026-11-07 修复**：`PublicModelErrorPolicy` 和 `public-model-error.ts` 换成引导重试的文案，旧记录读取时也换。
 - [x] ~~Seedance 2.0 内部错误没有错误码、未识别错误没有兜底~~ **2026-11-07 修复**：`VIDEO_PROVIDER_INTERNAL`；失败任务错误码不再为空；前端不显示浏览器和代码抛的英文。
 - [x] ~~画布返回不到 AI 视频~~ **2026-11-07 修复**：`shell/canvas-return.ts`，场景页按地址恢复草稿。
-- [ ] OneToken Seedance 2.0 的 `InternalServiceError`：把 `sdn_e7f6fe1298fb478ba5bc4b6e135f4cee`、`sdn_3f9fd45e7d2241948e39938345625505` 发给 OneToken 查原因（两次都带 9 张图）。
+- [ ] OneToken Seedance 2.0 的 `InternalServiceError`：把 `sdn_e7f6fe1298fb478ba5bc4b6e135f4cee`、`sdn_3f9fd45e7d2241948e39938345625505` 发给 OneToken 查原因（两次都带 9 张图）。2026-11-12 又两次（`sdn_4d7947b649af4c72a2cec1eb7f339636`、`sdn_e190a172eff54332909fc5e48da5aff3`，元素替换，各带 1 段参考视频和 1 张图，原话「provider failure confirmed by administrator」），同样的请求 2 分钟后重交就成功了，看着是上游临时故障，不是请求本身的问题。
 - [ ] 优化稿超长仍直接退回原文并收优化费（`StudioWorkflowWorker.rewriteVideo`），编导脚本平均约 3000 字（`stage-scene-script.md`）。
 - [ ] 优化稿自己加语速词、没台词也写说话（`H3PromptRewrite` 约定「how they speak」）；提交前没有台词量检查（11:52 那条 206 字要 15 秒说完）。
 - [x] ~~出镜人物位看不到三视图，「存为人物」和导演台进资产库都没有~~ **2026-11-07 完成，未发布**：导演台有图的资产自动进库（`IpLibraryDirectorSync`），图片可「存为资产」（`library-save-dialog.tsx`），选择框加了场景、道具。

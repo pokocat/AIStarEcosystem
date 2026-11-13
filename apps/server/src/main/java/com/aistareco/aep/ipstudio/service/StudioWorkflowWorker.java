@@ -125,6 +125,7 @@ public class StudioWorkflowWorker {
             ObjectNode output=preservedOutput; output.put("mock",mock);
             String operation=input.path("operation").asText();
             boolean cutsOnly=input.path("_exec").path("cutsOnly").asBoolean(false);
+            if("recreation".equals(operation)&&!mock&&!trimSource(id,run,input))return;
             if("recreation".equals(operation)&&!mock&&!cutsOnly) {
                 if(!progress(id,12,"recreation.audio"))return;
                 var audio=StudioSourceAudio.extract(input.path("_exec").path("recreationSource"),input.path("_exec").path("resumeSourceAudio"),storage,run.getOwnerUserId());
@@ -394,6 +395,29 @@ public class StudioWorkflowWorker {
         output.putObject("billing").put("inputTokens",used[0][0]).put("outputTokens",used[0][1]).put("credits",rate.settle(used[0][0],used[0][1])).put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
         finish(id,output,null);
     }
+    /**
+     * 页面上自己定了比原片短的时长（{@code recreationSource.limitSec}）：先截出原片的前 N 秒存成本人的文件，之后的拉片、切分、截图和原声
+     * 都用这一段（只改这次运行读到的 recreationSource，受理记录不变）。重来时再截一次，便宜。返回 false = 任务已停止。
+     */
+    private boolean trimSource(String id,IpRun run,JsonNode input) throws Exception {
+        JsonNode node=input.path("_exec").path("recreationSource");
+        if(!(node instanceof ObjectNode source))return true;
+        double limit=source.path("limitSec").asDouble(0),duration=source.path("durationSec").asDouble();
+        if(!(limit>0&&limit<duration-.05))return true;
+        if(!progress(id,11,"recreation.trim"))return false;
+        java.nio.file.Path directory=java.nio.file.Files.createTempDirectory("studio-trim-");
+        try {
+            ObjectNode segment=mapper.createObjectNode().put("no",0).put("startSec",0).put("endSec",limit);
+            StudioFilmStudy.cut(storage.openForRead(source.path("storageKey").asText()),directory,segment,storage,run.getOwnerUserId());
+            log.info("[studio-workflow] source trimmed run={} from={} to={} key={}",id,duration,segment.path("durationSec").asDouble(),segment.path("storageKey").asText());
+            source.put("originalStorageKey",source.path("storageKey").asText()).put("storageKey",segment.path("storageKey").asText())
+                    .put("durationSec",segment.path("durationSec").asDouble(limit));
+            return true;
+        } finally {
+            try(var paths=java.nio.file.Files.walk(directory)){for(java.nio.file.Path path:paths.sorted(java.util.Comparator.reverseOrder()).toList())java.nio.file.Files.deleteIfExists(path);}catch(Exception ignored){}
+        }
+    }
+
     /**
      * 元素替换的「切分原片」（2026-11-12）：不看视频、不调模型，按 ffmpeg 找到的真实切镜点把原片切成几段，
      * 每段不超过所选模型编辑（或参考视频）的时长上限、尽量不短于下限，比上限还长的镜头均分。产物和拉片 v2 同一种形状

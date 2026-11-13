@@ -294,6 +294,11 @@ public class StudioWorkflowService {
             // 切分原片只用 ffmpeg 找切镜、切片，不抽帧读图
             if(!cutsOnly)hypitMedia.requireReady();
             recreationSource=StudioRecreation.snapshot(projects.readDoc(project),request.contextNodeIds(),projects,userId,recreationStorage);
+            // AI 视频页的复刻可以自己定时长（比原片短）：只用原片的前 N 秒，worker 先截出这一段再分析或切分（StudioWorkflowWorker#trimSource）
+            if(executionBinding!=null) {
+                int wanted=executionBinding.state().path("videoTask").path("request").path("configuration").path("duration").asInt(0);
+                if(wanted>0&&wanted<Math.round(recreationSource.path("durationSec").asDouble()))recreationSource.put("limitSec",wanted);
+            }
         }
         // 深度复刻 / 元素替换要把每段原片交给视频模型：每段还不能短于参考视频的下限（StudioCloneVideoPlan.clip）
         boolean clipMethod=executionBinding!=null&&com.aistareco.aep.ipstudio.execution.StudioCloneVideoPlan.nativeClone(executionBinding.state().path("videoTask").path("kind").asText());
@@ -893,7 +898,7 @@ public class StudioWorkflowService {
             if(cap>contract.maxSeconds())throw bad("STUDIO_INPUT_INVALID","每段时长上限不能超过所选模型的 "+contract.maxSeconds()+" 秒");
         }
         int maxSegments=skill==null?8:skill.maxSegments();
-        double duration=source==null?0:source.path("durationSec").asDouble();
+        double duration=source==null?0:source.path("limitSec").asDouble(source.path("durationSec").asDouble());
         double referenceMin=contract.modes().stream().filter(m->m.references()!=null&&m.references().video()!=null&&m.references().video().maxCount()>0)
                 .mapToDouble(m->m.references().video().minDurationSec()==null?0:m.references().video().minDurationSec()).min().orElse(0);
         var limit=new StudioFilmStudy.SegmentCap(cap,maxSegments,referenceMin);

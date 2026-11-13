@@ -444,6 +444,54 @@ public final class StudioRecreationTaskPlan {
     }
 
     /**
+     * 原片整条作为一段（元素替换的原片能直接交给视频模型时，不切分，见 {@link StudioCloneVideoPlan#directSource}）：
+     * 和切分原片产出的 filmStudy 同一种形状，只有一个按原片时长建的空白镜头和一段。
+     */
+    public static ObjectNode wholeSource(double seconds) {
+        ObjectNode film=OM.createObjectNode();
+        film.set("breakdown",StudioVideoBreakdown.normalize(OM.createObjectNode(),seconds,List.of()));
+        film.putArray("segments").addObject().put("no",1).put("title","原片").put("startSec",0).put("endSec",round(seconds))
+                .put("firstShot",0).put("lastShot",film.path("breakdown").path("shots").size()-1);
+        return film;
+    }
+
+    /**
+     * 元素替换、原片能直接用：不切分，视频1 就是用户放进来的原片节点（受理时冻结的文件，{@code videoTask.cloneKeys}），
+     * 一段视频、按开关检查，不需要合成。返回和 {@link #build} 同一种方案，调用方照常校验、报价。
+     */
+    public static ObjectNode directReplacement(List<Material> materials,String model,VideoStudioContract contract,String tier,String ratio,
+                                               Boolean optimize,String requirement,String sourceNodeId,double seconds,boolean autoCheck) {
+        ObjectNode task=prepare(wholeSource(seconds),materials,model,contract,tier,ratio,optimize,null,0,requirement,"replacement","whole-source-");
+        for(JsonNode u:task.path("units")) {
+            ((ObjectNode)u).put("clipNodeId",sourceNodeId);
+            for(JsonNode r:u.path("refs"))if("reference-video".equals(r.path("role").asText()))((ObjectNode)r).put("nodeId",sourceNodeId);
+        }
+        if(!autoCheck)task.put("autoCheck",false);
+        return build(task,replacementAnswer(task,null),null);
+    }
+
+    /** 页面上选的模型、清晰度、画幅、提示词优化，以及元素替换的编辑标记：写进方案里每个视频步骤（校验会重建 settings）。返回视频总秒数和段数。 */
+    public static int[] applyPageSettings(ObjectNode plan,JsonNode config,String kind,boolean edit,String ratio) {
+        int seconds=0,videos=0;
+        for(JsonNode raw:plan.path("steps")) {
+            ObjectNode step=(ObjectNode)raw;step.put("execution","auto");
+            if(!"video".equals(step.path("operation").asText()))continue;
+            videos++;
+            ObjectNode settings=(ObjectNode)step.path("settings");
+            if(config.hasNonNull("model"))settings.put("model",config.path("model").asText());
+            settings.put("aspectRatio",ratio!=null?ratio:config.path("ratio").asText("9:16"));
+            ObjectNode video=(ObjectNode)settings.path("video");
+            video.put("resolutionTier",config.path("tier").asText());
+            if(config.path("optimize").isBoolean())video.put("optimize",config.path("optimize").asBoolean());
+            // 深度复刻总是先优化提示词（StudioCloneVideoPlan.optimize）
+            if("depth".equals(kind))video.put("optimize",true);
+            if(edit)video.put("edit",true);
+            seconds+=settings.path("durationSec").asInt();
+        }
+        return new int[]{seconds,videos};
+    }
+
+    /**
      * 元素替换不调模型写提示词（2026-11-12）：每段都是提示词库 stage-recreation-replace-edit 的同一段话，按用户的要求和这段交给视频模型的素材拼。
      * 返回和写提示词的模型同一种形状（{@code {units:[{no, prompt}]}}），交给 {@link #build}。用户没写要求时给一句默认的。
      *

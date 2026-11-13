@@ -19,7 +19,8 @@ class StudioCloneVideoPlanTest {
     final StudioVideoService videos=mock(StudioVideoService.class);
     final StudioDepthVideoService depth=mock(StudioDepthVideoService.class);
     final StudioPlanQuoter quoter=mock(StudioPlanQuoter.class);
-    final StudioCloneVideoPlan service=new StudioCloneVideoPlan(videos,depth,quoter,mock(FileStorageService.class),om);
+    final FileStorageService storage=mock(FileStorageService.class);
+    final StudioCloneVideoPlan service=new StudioCloneVideoPlan(videos,depth,quoter,storage,om);
     final AtomicReference<ObjectNode> quoted=new AtomicReference<>();
 
     VideoStudioModel model(int contractMax,Integer referenceMin,Integer referenceMax) throws Exception {
@@ -46,6 +47,7 @@ class StudioCloneVideoPlanTest {
         var model=(ObjectNode)om.valueToTree(model(30,2,15));
         ((ObjectNode)model.path("contract").path("modes").get(0)).putObject("edit").put("minSourceSec",4).put("maxSourceSec",30).put("followSource",true)
                 .putObject("requestFields").put("omni_reference_task_type","edit");
+        ((ObjectNode)model.path("contract").path("modes").get(0).path("references").path("video")).put("maxBytes",50L*1024*1024).putArray("formats").add("MP4");
         ArrayNode tiers=((ObjectNode)model.path("contract")).putArray("tiers");
         var canvases=tiers.addObject().put("tier","720p").putArray("canvases");
         canvases.addObject().put("aspectRatio","9:16").put("width",720).put("height",1280);
@@ -64,6 +66,41 @@ class StudioCloneVideoPlanTest {
         service.price("u","depth","selected-channel","720p",45,"9:16",1,false,false,false);
         assertFalse(quoted.get().path("steps").toString().contains("\"edit\""),"深度复刻不编辑原视频");
         assertFalse(StudioCloneVideoPlan.edits("replacement",model(15,2,10)),"没配编辑的模型照常用全能参考");
+    }
+    /** 一段带 MP4 文件头的「原片」：只看头几个字节判格式。 */
+    java.nio.file.Path mp4(String brand) throws Exception {
+        var file=java.nio.file.Files.createTempFile("clone-source-",".mp4");
+        byte[] head=new byte[64];
+        System.arraycopy(new byte[]{0,0,0,32,'f','t','y','p'},0,head,0,8);
+        System.arraycopy(brand.getBytes(java.nio.charset.StandardCharsets.US_ASCII),0,head,8,4);
+        java.nio.file.Files.write(file,head);
+        file.toFile().deleteOnExit();
+        return file;
+    }
+    @Test void replacementUsesTheSourceDirectlyOnlyWhenItFitsOneSegmentAsIs() throws Exception {
+        var editing=editingModel();
+        when(depth.source("u","k")).thenReturn(new StudioDepthVideoService.Source("k",24.4,720,1280));
+        when(storage.openForRead("k")).thenReturn(mp4("isom"));
+        assertNotNull(service.directSource("u","replacement",editing,"k",24),"24 秒原片在编辑的 30 秒上限内，直接交给模型");
+        assertNull(service.directSource("u","replacement",editing,"k",20),"自己定了更短的时长要先截取");
+        assertNull(service.directSource("u","depth",editing,"k",24),"深度复刻要先转成动作参考");
+        assertNull(service.directSource("u","replacement",editingModelWithout(),"k",24),"普通参考视频最长 15 秒，24 秒要切分");
+        when(storage.openForRead("k")).thenReturn(mp4("qt  "));
+        assertNull(service.directSource("u","replacement",editing,"k",24),"MOV 不是参考视频收的格式，要转码");
+    }
+    /** 同一份模型去掉编辑配置。 */
+    VideoStudioModel editingModelWithout() throws Exception {
+        var node=(ObjectNode)om.valueToTree(editingModel());
+        ((ObjectNode)node.path("contract").path("modes").get(0)).remove("edit");
+        return om.treeToValue(node,VideoStudioModel.class);
+    }
+    @Test void theShortestDurationFollowsTheModelAndTheSegmentFloor() throws Exception {
+        var editing=editingModel();
+        assertEquals(4,service.minimumSeconds("recreation",editing),"分镜复刻：模型单段下限");
+        assertEquals(4,service.minimumSeconds("replacement",editing));
+        var strict=(ObjectNode)om.valueToTree(editing);
+        ((ObjectNode)strict.path("contract").path("modes").get(0).path("edit")).put("minSourceSec",6);
+        assertEquals(6,service.minimumSeconds("replacement",om.treeToValue(strict,VideoStudioModel.class)),"元素替换走编辑：按编辑的下限");
     }
     @Test void anEditThatFollowsTheSourceUsesTheSourceShape() throws Exception {
         var selected=editingModel();

@@ -404,6 +404,36 @@ class StudioRecreationTaskPlanTest {
     }
 
     @Test
+    void aSourceThatFitsIsEditedWholeWithoutCuttingOrAssembling() throws Exception {
+        var plan=StudioRecreationTaskPlan.directReplacement(List.of(new StudioRecreationTaskPlan.Material("cup","保温杯","image")),"ai-h3",h3(),"768p","9:16",null,
+                "把杯子换成图1的保温杯","source-video",12.4,true);
+        var validated=StudioPlanValidator.validateSkillPlan(plan,rules(),"production",Set.of("source-video","cup"));
+        var video=step(validated,"v1");
+        assertEquals("source-video",video.path("settings").path("referenceBindings").get(0).path("nodeId").asText(),"视频1 就是原片节点");
+        assertEquals("reference-video",video.path("settings").path("referenceBindings").get(0).path("role").asText());
+        assertEquals(12,video.path("settings").path("durationSec").asInt());
+        assertTrue(video.path("prompt").asText().startsWith("编辑视频：以视频1为基础，把杯子换成图1的保温杯。"));
+        assertEquals("check",step(validated,"c1").path("operation").asText());
+        assertTrue(StreamSupport.stream(validated.path("steps").spliterator(),false).noneMatch(st->Set.of("assemble","recreation","video-control").contains(st.path("operation").asText())),
+                "一段原片：不切分、不合成");
+        var unchecked=StudioRecreationTaskPlan.directReplacement(List.of(),"ai-h3",h3(),"768p","9:16",null,"","source-video",12.4,false);
+        assertTrue(StreamSupport.stream(unchecked.path("steps").spliterator(),false).noneMatch(st->"check".equals(st.path("operation").asText())),"关了自动检查就不检查");
+    }
+
+    @Test
+    void pageSettingsReachEveryVideoStepIncludingTheEditFlag() throws Exception {
+        var plan=StudioRecreationTaskPlan.directReplacement(List.of(),"ai-h3",h3(),"768p","9:16",null,"","source-video",12.4,true);
+        var config=om.createObjectNode().put("model","ai-seedance25").put("ratio","9:16").put("tier","720p").put("optimize",false);
+        int[] totals=StudioRecreationTaskPlan.applyPageSettings(plan,config,"replacement",true,"16:9");
+        assertArrayEquals(new int[]{12,1},totals);
+        var settings=step(plan,"v1").path("settings");
+        assertEquals("ai-seedance25",settings.path("model").asText());
+        assertEquals("16:9",settings.path("aspectRatio").asText(),"画幅跟原片走时用原片的画幅");
+        assertTrue(settings.path("video").path("edit").asBoolean());
+        assertEquals("720p",settings.path("video").path("resolutionTier").asText());
+    }
+
+    @Test
     void clipMethodsDropAnEndCardOnlySegmentButStoryboardKeepsIt() throws Exception {
         var b=StudioVideoBreakdown.normalize(om.readTree("""
             {"summary":"门店","shots":[{"start":0,"end":7,"visual":"排队"},{"start":7,"end":13,"visual":"老板说话"},{"start":13,"end":17,"visual":"账号片尾","caption":"抖音号 123456789"}]}"""),17,List.of(7.0,13.0));
