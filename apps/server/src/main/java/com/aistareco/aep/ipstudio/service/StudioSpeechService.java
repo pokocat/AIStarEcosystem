@@ -89,6 +89,7 @@ public class StudioSpeechService {
         if(request.instruct()!=null&&!request.instruct().isBlank())body.put("instruct",request.instruct());
         input.putObject("_exec").put("endpointId",resolved.endpoint().getId()).put("baseUrl",resolved.endpoint().getBaseUrl().replaceAll("/$",""))
                 .put("requestBody",write(body)).put("holdTotal",price);
+        com.aistareco.aep.service.alerts.ModelTaskOrigin.save(input.withObject("/_exec"), com.aistareco.aep.service.alerts.ModelTaskOrigin.currentPage());
         if(rate!=null)((ObjectNode)input.path("_exec")).set("pointPricing",mapper.valueToTree(rate));
         long reservedUnits=rate==null?1:StudioPointPricing.speechReservationSeconds(request.text().trim());
         var charge=new ModelChargeContext(new ModelBillingTarget("aiavatar","speech",resolved.endpoint().getId(),

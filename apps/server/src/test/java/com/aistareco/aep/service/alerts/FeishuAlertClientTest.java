@@ -35,6 +35,27 @@ class FeishuAlertClientTest {
         }
         verifyNoInteractions(http);
     }
+    @Test @SuppressWarnings("unchecked") void webhookSendsAnInteractiveTaskCardAndKeepsLinksWhenResponseIsLong() throws Exception {
+        var config=new FeishuAlertConfig();config.setWebhook(WEBHOOK);
+        var http=mock(HttpClient.class);HttpResponse<String> response=mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);when(response.body()).thenReturn("{\"code\":0}");
+        var card=new FeishuTaskCard();
+        card.field("用户","测试用户");
+        String page="https://aiavatar.aibuzz.cn/video?scene=recreation&draft=IPP-1";
+        card.field("报错操作链接",page);
+        when(http.send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class))).thenAnswer(call->{
+            String payload=body(call.getArgument(0));
+            assertTrue(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=20000);
+            var wire=new ObjectMapper().readTree(payload);
+            assertEquals("interactive",wire.path("msg_type").asText());
+            var content=wire.path("card");
+            assertEquals("【模型任务告警】",content.at("/header/title/content").asText());
+            assertTrue(content.toString().contains("完整内容见后台请求日志"));
+            assertEquals(page,content.at("/body/elements/4/behaviors/0/default_url").asText());
+            return response;
+        });
+        assertEquals("webhook:key",new FeishuAlertClient(config,new ObjectMapper(),http).send("key",card.finish("告警😀".repeat(10000),page)));
+    }
     @Test @SuppressWarnings("unchecked") void webhookErrorsAreRedactedAndLongUnicodeAlertsFitThePayloadLimit() throws Exception {
         var config=new FeishuAlertConfig();config.setWebhook(WEBHOOK);
         var http=mock(HttpClient.class);HttpResponse<String> response=mock(HttpResponse.class);

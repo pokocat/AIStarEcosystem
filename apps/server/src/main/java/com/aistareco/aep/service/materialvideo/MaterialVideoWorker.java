@@ -80,6 +80,7 @@ public class MaterialVideoWorker {
     private final MaterialVideoCover cover;
     private final HttpClient downloadHttp;
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.storage.FileStorageService files;
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.mixcut.FfmpegRunner ffmpeg;
 
     public MaterialVideoWorker(MaterialVideoJobRepository jobRepo,
                                MaterialVideoModelClient modelClient,
@@ -516,6 +517,14 @@ public class MaterialVideoWorker {
                         jobId, poll.rawStatus(), submit.taskId(), poll.failReason());
                 String message=reason.isEmpty() ? GENERATION_FAILED_MESSAGE : "视频生成失败" + reason;
                 String code=poll.failCode()!=null?poll.failCode():GENERATION_FAILED_CODE;
+                if (VideoProviderErrorMapper.VIDEO_PROVIDER_INTERNAL.equals(code) && "seedance-2.0".equalsIgnoreCase(submit.modelUsed())) {
+                    var resolution = SeedanceReferenceResolution.diagnose(
+                            VideoGenSpec.fromVariantConfigJson(job.getVariantConfigJson()), files, ffmpeg);
+                    if (resolution.isPresent()) {
+                        message = "视频生成失败：" + resolution.get();
+                        code = SeedanceReferenceResolution.CODE;
+                    }
+                }
                 var error=new BusinessException(HttpStatus.BAD_GATEWAY,code,message);
                 if(poll.diagnostics()!=null)poll.diagnostics().attachTo(error);
                 markFailed(jobId, code, message, error);

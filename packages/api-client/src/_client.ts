@@ -237,6 +237,18 @@ export async function apiFetch<T>(
   }
 
   const url = `${__identityService ? idIssuer() : API_BASE_URL}${path}${buildQuery(query)}`;
+  let page: string | undefined;
+  if (!__identityService && method !== "GET" && typeof window !== "undefined") {
+    const location = window.location;
+    const currentParams = new URLSearchParams(location.search);
+    const routeParams = new URLSearchParams();
+    for (const key of ["scene", "draft", "task", "tool", "tab", "project", "projectId"]) {
+      const value = currentParams.get(key);
+      if (value && /^[A-Za-z0-9_-]{1,96}$/.test(value)) routeParams.set(key, value);
+    }
+    const query = routeParams.toString();
+    page = location.origin + location.pathname + (query ? `?${query}` : "");
+  }
 
   const token = getAuthToken();
   // FormData 支持 multipart 上传：不设 Content-Type，让浏览器自动加 boundary
@@ -247,6 +259,7 @@ export async function apiFetch<T>(
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(appCode && !__identityService ? { "X-App-Code": appCode } : {}),
+      ...(page ? { "X-Aibuzz-Page": page } : {}),
       ...(headers || {}),
     },
     // 已经是字符串的 body 原样发，不再 stringify 一遍（v0.178）。

@@ -24,16 +24,18 @@ public class FeishuModelAlerts {
     public FeishuModelAlerts(JdbcTemplate db,FeishuAlertConfig config,FeishuAlertClient client){this.db=db;this.config=config;this.client=client;}
     @Transactional(propagation=Propagation.REQUIRES_NEW)
     public void enqueue(String taskId,String code,String logId,Throwable error) {
+        enqueue(taskId,code,logId,error,null);
+    }
+    @Transactional(propagation=Propagation.REQUIRES_NEW)
+    public void enqueue(String taskId,String code,String logId,Throwable error,String ownerId) {
         if(!config.ready()||logId==null||"IP_RUN_CANCELLED".equals(code))return;
         String actualCode=code==null?"MODEL_TASK_FAILED":code;
         String id=UUID.nameUUIDFromBytes((taskId+"\n"+actualCode).getBytes(StandardCharsets.UTF_8)).toString();
         // MySQL and H2 MySQL mode both support INSERT IGNORE; the primary key is the cross-process dedupe gate.
         Instant occurredAt=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
-        String text=message(taskId,actualCode,logId,error,occurredAt);
-        if(modelContext!=null) {
-            String context=modelContext.describeForAlert(taskId);
-            if(!context.isBlank())text=text.replace("\n后台：","\n"+context+"\n后台：");
-        }
+        var details = modelContext == null ? ModelAlertContext.TaskDetails.EMPTY : modelContext.taskDetails(taskId);
+        String user = modelContext == null ? ownerId : modelContext.userLabel(ownerId);
+        String text=message(taskId,actualCode,logId,error,occurredAt,details,user);
         Boolean postgres=db.execute((org.springframework.jdbc.core.ConnectionCallback<Boolean>) c -> "PostgreSQL".equals(c.getMetaData().getDatabaseProductName()));
         String insert=Boolean.TRUE.equals(postgres)?"INSERT INTO ":"INSERT IGNORE INTO ";
         String conflict=Boolean.TRUE.equals(postgres)?" ON CONFLICT (id) DO NOTHING":"";
@@ -79,6 +81,10 @@ public class FeishuModelAlerts {
         return message(task,code,logId,error,Instant.now());
     }
     static String message(String task,String code,String logId,Throwable error,Instant occurredAt) {
+        return message(task,code,logId,error,occurredAt,ModelAlertContext.TaskDetails.EMPTY,null);
+    }
+    private static String message(String task,String code,String logId,Throwable error,Instant occurredAt,
+                                  ModelAlertContext.TaskDetails details,String user) {
         Integer status=null, legacyStatus=null;
         Set<String> ids=new LinkedHashSet<>(), responses=new LinkedHashSet<>(), reasons=new LinkedHashSet<>();
         Set<Throwable> visited=Collections.newSetFromMap(new IdentityHashMap<>());
@@ -104,18 +110,22 @@ public class FeishuModelAlerts {
             }
         }
         if(status==null)status=legacyStatus;
-        var text=new StringBuilder("【模型任务告警】\n告警时间（北京时间）：").append(BEIJING_TIME.format(occurredAt));
-        if(!reasons.isEmpty()) {
-            String reason=ProviderAlertText.sanitize(String.join("\n",reasons));
-            // Leave enough room for the response body in the existing UTF-8 TEXT delivery column.
-            if(reason.length()>2000)reason=reason.substring(0,Character.isHighSurrogate(reason.charAt(1998))?1998:1999)+"…";
-            text.append("\n错误原因：").append(reason);
-        }
-        text.append("\n我方错误码：").append(code);
-        if(status!=null)text.append("\n远端 HTTP 状态：HTTP ").append(status);
-        if(!ids.isEmpty())text.append("\n远端追踪号：").append(String.join("；",ids.stream().limit(8).toList()));
-        if(!responses.isEmpty())text.append("\n服务方返回：\n").append(ProviderAlertText.sanitize(String.join("\n",responses)));
-        text.append("\n我方任务：").append(task).append("\n我方追查号：").append(logId);
-        return text.append("\n后台：https://admin.aibuzz.cn/admin/platform/ai-models").toString();
+        String reason=ProviderAlertText.sanitize(String.join("\n",reasons));
+        if(reason.codePointCount(0, reason.length())>1200) reason=reason.substring(0,reason.offsetByCodePoints(0,1200))+"…";
+        var card = new FeishuTaskCard();
+        card.field("告警时间（北京时间）", BEIJING_TIME.format(occurredAt));
+        card.field("错误原因", reason);
+        card.field("我方错误码", code);
+        card.field("远端 HTTP 状态", status == null ? "" : "HTTP " + status);
+        card.field("远端追踪号", String.join("；",ids.stream().limit(8).toList()));
+        card.field("我方任务", task);
+        card.field("我方追查号", logId);
+        card.field("远端任务 ID", details.remoteTask());
+        card.field("供应商 / 端点", details.endpoint());
+        card.field("模型", details.model());
+        card.field("用户", user);
+        card.field("操作", details.operation());
+        card.field("报错操作链接", details.page());
+        return card.finish(ProviderAlertText.sanitize(String.join("\n",responses)), details.page());
     }
 }

@@ -86,6 +86,7 @@ public class StudioLipSyncService {
         String id="IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20);ObjectNode input=mapper.valueToTree(request);
         input.putObject("_exec").put("endpointId",endpoint.getId()).put("baseUrl",endpoint.getBaseUrl().replaceAll("/$",""))
                 .put("holdTotal",price.cost()).put("billableSeconds",price.billableSeconds()).put("audioDurationSec",price.audioDurationSec()).put("creditCostPerSecond",p.rate());
+        com.aistareco.aep.service.alerts.ModelTaskOrigin.save(input.withObject("/_exec"), com.aistareco.aep.service.alerts.ModelTaskOrigin.currentPage());
         if(p.snapshot()!=null)((ObjectNode)input.path("_exec")).set("pointPricing",mapper.valueToTree(p.snapshot()));
         var charge=new ModelChargeContext(new ModelBillingTarget("aiavatar","lip-sync",endpoint.getId(),ModelBillingTarget.providerModelOf(endpoint),"standard","second"),
                 new ModelBillingMath.Usage(java.math.BigDecimal.valueOf(price.billableSeconds()),null),p.rate(),null,

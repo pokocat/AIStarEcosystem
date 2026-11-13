@@ -566,6 +566,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         input.put("prompt", excerpt(inputs.get(inputs.size() - 1).getText(), 500));
         ObjectNode exec = input.putObject("_exec").put("holdTotal", cost).put("unitCost", cost).put("billingUnit", mock ? "per_call" : "per_token")
                 .put("assistantMessageId", assistantId).put("maxTokens", perCall);
+        com.aistareco.aep.service.alerts.ModelTaskOrigin.save(exec, com.aistareco.aep.service.alerts.ModelTaskOrigin.currentPage());
         // A typed 「继续」 is an ordinary message now; nothing is unlocked by it (docs/ip-studio-dialogue-no-continue.md §3).
         var ids = exec.putArray("userMessageIds");
         inputs.forEach(m -> ids.add(m.getId()));

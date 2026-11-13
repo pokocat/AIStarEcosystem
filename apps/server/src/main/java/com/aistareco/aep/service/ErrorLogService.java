@@ -77,7 +77,7 @@ public class ErrorLogService {
             var tx = new org.springframework.transaction.support.TransactionTemplate(taskTransactions);
             tx.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
             String logId=tx.execute(status -> recordContext(ex, errorCode, ex instanceof BusinessException business ? business.getStatus().value() : 500, null, ownerUserId, null, "async:" + taskId));
-            try {if(modelAlerts!=null)modelAlerts.enqueue(taskId,errorCode,logId,ex);}
+            try {if(modelAlerts!=null)modelAlerts.enqueue(taskId,errorCode,logId,ex,ownerUserId);}
             catch(Exception failure){log.warn("[model-alert] enqueue failed task={} logId={}",taskId,logId);}
             return logId;
         } catch (Exception failure) {

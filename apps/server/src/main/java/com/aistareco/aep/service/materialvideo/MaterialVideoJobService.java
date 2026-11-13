@@ -1,5 +1,6 @@
 package com.aistareco.aep.service.materialvideo;
 
+import com.aistareco.aep.service.alerts.ModelTaskOrigin;
 import com.aistareco.aep.dto.EndpointCapabilityDto;
 import com.aistareco.aep.dto.MaterialVideoModelsDto;
 import com.aistareco.aep.model.AiModelEndpoint;
@@ -279,6 +280,12 @@ public class MaterialVideoJobService {
     @Transactional
     public List<JsonNode> submit(JsonNode body, String userId, String app,
             com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        return submit(body, userId, app, billing, ModelTaskOrigin.currentPage());
+    }
+
+    @Transactional
+    public List<JsonNode> submit(JsonNode body, String userId, String app,
+            com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing, String page) {
         if (billing != null && !"personal".equals(billing.mode()) && !APP_IPSTUDIO.equals(normalizeApp(app)))
             throw BusinessException.badRequest("ENTERPRISE_BILLING_SCOPE_INVALID", "企业积分仅用于 Studio 创作");
         List<JsonNode> items = new ArrayList<>();
@@ -312,7 +319,7 @@ public class MaterialVideoJobService {
                     ? text(body, "_video_studio_job_id") : null;
             if (assignedId != null && !assignedId.matches("mvjs_[a-f0-9]{48}"))
                 throw BusinessException.badRequest("VIDEO_STUDIO_REQUEST_ID_INVALID", "生成请求编号无效");
-            MaterialVideoJob job = buildJob(p.item(), userId, app, assignedId);
+            MaterialVideoJob job = buildJob(p.item(), userId, app, assignedId, page);
             MaterialVideoBilling.store(job,charge);
             job.setUpstreamBaseUrlSnapshot(p.route().baseUrl());
             job.setVideoRequestSpecSnapshotJson(p.route().requestSpecJson());
@@ -600,7 +607,7 @@ public class MaterialVideoJobService {
         return kind != null && kind.startsWith("drama-") ? APP_DRAMA : APP_CELEBRITY;
     }
 
-    private MaterialVideoJob buildJob(JsonNode item, String userId, String app, String assignedId) {
+    private MaterialVideoJob buildJob(JsonNode item, String userId, String app, String assignedId, String page) {
         String id = assignedId != null ? assignedId : "mvj_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         String kind = orDefault(text(item, "kind"), "baseline");
         int durationSec = item.path("duration_sec").asInt(0);
@@ -621,6 +628,7 @@ public class MaterialVideoJobService {
         if (vc != null && vc.isObject()) payload.set("variant_config", vc);
         payload.put("cover_color", pickColor(id));
         payload.put("created_at", now.toString());
+        ModelTaskOrigin.save(payload, page);
         // 记账文案随任务存下来：worker 扣 / 退积分时读它，与上面冻结那一笔同一个说法（toCard 不外露）。
         String creditLabel = text(item, PAYLOAD_CREDIT_LABEL);
         if (creditLabel != null && !creditLabel.isBlank()) payload.put(PAYLOAD_CREDIT_LABEL, creditLabel);
@@ -664,6 +672,7 @@ public class MaterialVideoJobService {
         card.remove(PAYLOAD_NOT_ACCEPTED_PROOF);
         card.remove(MaterialVideoBilling.PAYLOAD_KEY);
         card.remove("_studio_request_digest");
+        card.remove(ModelTaskOrigin.KEY);
         // 厂商改写后的提示词：画布经 IpRun 投影读（VideoPromptRewrite.wire），不属于 MaterialVideo 契约。
         card.remove(VideoPromptRewrite.PAYLOAD_KEY);
         card.put("id", job.getId());

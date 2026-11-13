@@ -71,12 +71,12 @@ class FeishuModelAlertsTest {
     }
     @Test void missingHttpEvidenceDoesNotInventAStatusAndProviderStatusWinsWhenPresent() {
         String missing=FeishuModelAlerts.message("task","VIDEO_SUBMISSION_UNKNOWN","ABCDEF234567",new IllegalStateException("historical submission"));
-        assertFalse(missing.contains("远端 HTTP 状态"));assertFalse(missing.contains("HTTP 500"));
+        assertTrue(missing.contains("远端 HTTP 状态：—"));assertFalse(missing.contains("HTTP 500"));
         var error=new BusinessException(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN","safe",null,"provider HTTP 503");
         assertTrue(FeishuModelAlerts.message("task",error.getCode(),"ABCDEF234567",error).contains("HTTP 503"));
         var localOnly=new BusinessException(HttpStatus.BAD_GATEWAY,"FAIL","safe");
         String local=FeishuModelAlerts.message("task","FAIL","trace",localOnly);
-        assertFalse(local.contains("远端 HTTP 状态"));
+        assertTrue(local.contains("远端 HTTP 状态：—"));
         assertFalse(local.contains("我方 HTTP 状态"));
     }
     @Test void timeIsExplicitAndPersistedOnceEvenWhenDeliveryRetries() throws Exception {
@@ -105,34 +105,36 @@ class FeishuModelAlertsTest {
         assertTrue(text.contains("private-prompt"),"supplier error.message must reach the alert");
         assertFalse(text.contains("hidden-secret"));
     }
-    @Test void legacyDiagnosticsKeepIdNamesAndRejectSecretsOrTruncatedIds() {
+    @Test void legacyDiagnosticsKeepIdNamesAndRejectSecretsOrTruncatedIds() throws Exception {
         String text=FeishuModelAlerts.message("task","FAIL","trace",new IllegalStateException(
                 "status=503 log_id=abc.123 requestId=req_456 x-tt-logid: 789ABC trace_id=trace:789 request_id=sk-secret-value logid="+"a".repeat(257)));
         for(String id:java.util.List.of("log_id=abc.123","requestId=req_456","x-tt-logid=789ABC","trace_id=trace:789"))assertTrue(text.contains(id),text);
         assertTrue(text.contains("远端 HTTP 状态：HTTP 503"));
         assertFalse(text.contains("sk-secret"));
-        String ids=text.lines().filter(line->line.startsWith("远端追踪号：")).findFirst().orElseThrow();
-        assertFalse(ids.contains("a".repeat(100)));
+        var fields=new com.fasterxml.jackson.databind.ObjectMapper().readTree(text).at("/body/elements");
+        assertFalse(fields.get(4).at("/text/content").asText().contains("a".repeat(100)));
     }
     @Test void modelContextIsPersistedInTheOutgoingMessage() {
         var context=mock(ModelAlertContext.class);
-        when(context.describeForAlert("task")).thenReturn("供应商 / 端点：聚算\nAPI 基础地址：https://api.example/v1\n模型：minimax-h3\n任务参数：duration_sec=13");
+        when(context.taskDetails("task")).thenReturn(new ModelAlertContext.TaskDetails("remote-task","聚算","minimax-h3","全能参考生视频","https://aiavatar.aibuzz.cn/video?draft=IPP-1"));
+        when(context.userLabel("owner")).thenReturn("创作者（owner）");
         org.springframework.test.util.ReflectionTestUtils.setField(alerts,"modelContext",context);
-        alerts.enqueue("task","VIDEO_SUBMISSION_UNKNOWN","ABCDEF234567",new IllegalStateException());
+        alerts.enqueue("task","VIDEO_SUBMISSION_UNKNOWN","ABCDEF234567",new IllegalStateException(),"owner");
         String text=db.queryForObject("SELECT message_text FROM model_alert_delivery",String.class);
-        assertTrue(text.contains("https://api.example/v1"));assertTrue(text.contains("minimax-h3"));assertTrue(text.contains("duration_sec=13"));
+        for(String value:java.util.List.of("远端任务 ID：remote-task","模型：minimax-h3","用户：创作者（owner）",
+                "操作：全能参考生视频","报错操作链接：https://aiavatar.aibuzz.cn/video?draft=IPP-1","打开报错页面"))assertTrue(text.contains(value),text);
     }
     @Test void completeProviderErrorIsIncludedAndEmptyBoilerplateIsOmitted() {
         var error=ProviderResponseDiagnostics.attach(new IllegalStateException("模型返回内容不符合格式"),400,null,
                 "{\"error\":{\"code\":\"invalid_parameter\",\"message\":\"max_tokens 超过模型上限\",\"details\":{\"limit\":8192,\"actual\":16000}},\"request_id\":\"remote-123\"}");
         String text=FeishuModelAlerts.message("task","STUDIO_RUN_FAILED","TRACE123",error);
-        for(String value:java.util.List.of("模型返回内容不符合格式","invalid_parameter","max_tokens 超过模型上限","\"limit\":8192","\"actual\":16000","remote-123","服务方返回："))assertTrue(text.contains(value),text);
+        for(String value:java.util.List.of("模型返回内容不符合格式","invalid_parameter","max_tokens 超过模型上限","\\\"limit\\\":8192","\\\"actual\\\":16000","remote-123","服务方返回："))assertTrue(text.contains(value),text);
         for(String value:java.util.List.of("Unix","未获取","未记录","请查看后台详情","最终状态及积分","我方 HTTP 状态"))assertFalse(text.contains(value),text);
     }
     @Test void localFailureIncludesTheActualNestedCauseWithoutInventingAProviderResponse() {
         String text=FeishuModelAlerts.message("task","STUDIO_RUN_FAILED","TRACE123",new IllegalStateException("无法解析模型结果",new java.io.IOException("unexpected end of JSON")));
         assertTrue(text.contains("无法解析模型结果"));assertTrue(text.contains("unexpected end of JSON"));
-        assertFalse(text.contains("服务方返回："));assertFalse(text.contains("远端 HTTP 状态"));
+        assertTrue(text.contains("服务方返回：—"));assertTrue(text.contains("远端 HTTP 状态：—"));
     }
     private String state(){return db.queryForObject("SELECT state FROM model_alert_delivery",String.class);}
 }

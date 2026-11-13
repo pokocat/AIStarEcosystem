@@ -27,26 +27,44 @@ public class ModelAlertContext {
 
     /** Diagnostic enrichment is best effort; it cannot prevent a failure/refund or the original alert. */
     public String describe(String taskId) {
-        try { return resolve(taskId, false); }
+        try { return resolve(taskId).diagnostics(); }
         catch (Exception unavailable) { return "模型信息：暂时无法读取，请按任务号查看后台原始记录"; }
     }
 
-    /** Compact bot context: omit empty fields and request summaries, retaining the route needed to diagnose the response. */
-    public String describeForAlert(String taskId) {
-        try { return resolve(taskId, true); }
-        catch (Exception unavailable) { return ""; }
+    record TaskDetails(String remoteTask, String endpoint, String model, String operation, String page) {
+        static final TaskDetails EMPTY = new TaskDetails("", "", "", "", "");
     }
 
-    private String resolve(String taskId, boolean compact) {
+    private record Context(TaskDetails task, String diagnostics) {}
+
+    TaskDetails taskDetails(String taskId) {
+        try { return resolve(taskId).task(); }
+        catch (Exception unavailable) { return TaskDetails.EMPTY; }
+    }
+
+    String userLabel(String ownerId) {
+        if (ownerId == null || ownerId.isBlank()) return "";
+        String id = label(ownerId);
+        try {
+            var users = db.queryForList("SELECT display_name FROM aep_users WHERE id=?", ownerId);
+            String name = users.isEmpty() ? "" : value(users.get(0), "display_name");
+            if (!name.isBlank()) return label(name) + "（" + id + "）";
+        } catch (Exception unavailable) { /* The task already identifies the user. */ }
+        return id;
+    }
+
+    private Context resolve(String taskId) {
         String endpointId = "", name = "", model = "", base = "", paramsSource = "任务参数（非完整上游请求）";
-        String remoteTask = "";
+        String remoteTask = "", operation = "", page = "";
         JsonNode params = JSON.createObjectNode();
-        var videos = db.queryForList("SELECT provider_used,model_used,upstream_base_url_snapshot,variant_config_json,duration_sec,aspect_ratio,external_task_id FROM material_video_job WHERE id=?", taskId);
+        var videos = db.queryForList("SELECT provider_used,model_used,upstream_base_url_snapshot,variant_config_json,duration_sec,aspect_ratio,external_task_id,app,kind,payload_json FROM material_video_job WHERE id=?", taskId);
         if (!videos.isEmpty()) {
             var video = videos.get(0);
             name = value(video, "provider_used"); model = value(video, "model_used"); base = value(video, "upstream_base_url_snapshot");
             remoteTask = value(video, "external_task_id");
             var variant = parse(value(video, "variant_config_json")); endpointId = variant.path("endpoint_id").asText("");
+            page = ModelTaskOrigin.read(parse(value(video, "payload_json")));
+            operation = videoOperation(value(video, "app"), value(video, "kind"), variant, page);
             ObjectNode selected = variant.isObject() ? ((ObjectNode) variant).deepCopy() : JSON.createObjectNode();
             selected.put("duration_sec", ((Number) video.get("duration_sec")).intValue());
             selected.put("aspect_ratio", value(video, "aspect_ratio")); params = selected;
@@ -54,6 +72,8 @@ public class ModelAlertContext {
             var runs = db.queryForList("SELECT kind,input_json,output_json FROM ip_run WHERE id=?", taskId);
             if (!runs.isEmpty()) {
                 var run = runs.get(0); var input = parse(value(run, "input_json")); var exec = input.path("_exec");
+                page = ModelTaskOrigin.read(exec);
+                operation = runOperation(value(run, "kind"));
                 endpointId = exec.path("endpointId").asText("");
                 int completed = parse(value(run, "output_json")).path("candidates").size();
                 var checkpoint = exec.path("imageJobs").path(completed);
@@ -82,20 +102,53 @@ public class ModelAlertContext {
                 if (base.isBlank()) { base = value(endpoint, "base_url"); baseSource = "当前端点配置，原调用未记录"; }
             }
         }
-        if (compact) {
-            var lines = new java.util.ArrayList<String>();
-            if (ProviderResponseDiagnostics.safeId(remoteTask) != null) lines.add("远端任务 ID：" + remoteTask);
-            if (!name.isBlank() || !endpointId.isBlank()) lines.add("供应商 / 端点：" +
-                    (name.isBlank() ? label(endpointId) : label(name) + (endpointId.isBlank() ? "" : "（" + label(endpointId) + "）")));
-            if (!model.isBlank()) lines.add("模型：" + label(model) + (modelSource.startsWith("当前") ? "（当前配置）" : ""));
-            return String.join("\n", lines);
-        }
-        return "远端任务 ID：" + (ProviderResponseDiagnostics.safeId(remoteTask) == null ? "未获取" : remoteTask)
+        String remote = ProviderResponseDiagnostics.safeId(remoteTask) == null ? "" : remoteTask;
+        String endpoint = name.isBlank() ? endpointId : label(name) + (endpointId.isBlank() ? "" : "（" + label(endpointId) + "）");
+        String alertModel = model.isBlank() ? "" : label(model) + (modelSource.startsWith("当前") ? "（当前配置）" : "");
+        var task = new TaskDetails(remote, endpoint, alertModel, operation, page);
+        return new Context(task, "远端任务 ID：" + (remote.isEmpty() ? "未获取" : remote)
                 + "\n供应商 / 端点：" + label(name) + "（" + label(endpointId) + "）"
                 + "\nAPI 基础地址：" + safeUrl(base) + "（" + baseSource + "）"
                 + "\n模型：" + label(model) + "（" + modelSource + "）"
                 + "\n" + paramsSource + "：" + parameters(params)
-                + "\n完整参数 / 原始响应：后台 → 请求日志；提示词和素材内容不发送到群。";
+                + "\n完整参数 / 原始响应：后台 → 请求日志；提示词和素材内容不发送到群。");
+    }
+
+    private static String videoOperation(String app, String kind, JsonNode variant, String page) {
+        if (page.matches(".*[?&]tool=replacement(?:&.*)?")) return "元素替换";
+        if (page.matches(".*[?&]tool=depth(?:&.*)?")) return "深度复刻";
+        if (variant.path("edit_source").asBoolean()) return "编辑参考视频";
+        if ("drama".equals(app) || kind.startsWith("drama-")) return "短剧视频生成";
+        if ("variant".equals(kind)) return "生成派生视频";
+        if ("dap".equals(app)) return "生成数字人视频";
+        return switch (variant.path("generation_mode").asText()) {
+            case "t2v" -> "文生视频";
+            case "i2v" -> "首帧生视频";
+            case "first_last_frame_video" -> "首尾帧生视频";
+            case "universal_reference_video" -> "全能参考生视频";
+            default -> "生成视频";
+        };
+    }
+
+    private static String runOperation(String kind) {
+        return switch (kind) {
+            case "generate", "studio-image" -> "生成图片";
+            case "identity" -> "提取人物特征";
+            case "studio-video" -> "生成视频";
+            case "studio-audio" -> "生成配音";
+            case "studio-lip-sync" -> "生成口型同步视频";
+            case "studio-script" -> "生成剧本";
+            case "studio-storyboard" -> "生成分镜";
+            case "studio-assistant", "studio-dialogue" -> "使用创作助手";
+            case "studio-recreation" -> "分析参考视频";
+            case "studio-check" -> "检查生成结果";
+            case "studio-asset-extract" -> "提取素材";
+            case "studio-director" -> "使用短剧导演台";
+            case "studio-text" -> "生成文字";
+            case "studio-assemble" -> "合成视频";
+            case "studio-video-control" -> "提取视频动作";
+            default -> "";
+        };
     }
 
     static String parameters(JsonNode input) {

@@ -1,5 +1,6 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.aep.service.alerts.ModelTaskOrigin;
 import com.aistareco.aep.billing.service.*;
 import java.math.BigDecimal;
 import com.aistareco.aep.dap.service.DapAccountService;
@@ -310,10 +311,21 @@ public class IpRunService {
         return generateVideoBatch(userId, projectId, req, count, false);
     }
 
+    @Transactional
+    public VideoBatch generateVideoBatch(String userId, String projectId, IpVideoRequest req, int count, String page) {
+        return generateVideoBatch(userId, projectId, req, count, false, page);
+    }
+
     private VideoBatch generateVideoBatch(String userId, String projectId, IpVideoRequest req, int count, boolean hostChecked) {
+        return generateVideoBatch(userId, projectId, req, count, hostChecked, "");
+    }
+
+    private VideoBatch generateVideoBatch(String userId, String projectId, IpVideoRequest req, int count, boolean hostChecked, String page) {
         var prepared=prepareVideo(userId,projectId,req,count,hostChecked,false);
         var body=prepared.body();
-        List<JsonNode> created = req.billing()==null
+        List<JsonNode> created = !page.isBlank()
+                ? videoJobs.submit(body,userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO,req.billing(),page)
+                : req.billing()==null
                 ? videoJobs.submit(body,userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO)
                 : videoJobs.submit(body,userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO,req.billing());
         if (created.size() != count) {
@@ -484,6 +496,7 @@ public class IpRunService {
         execSnapshot.put("unitCost", baseUnit);
         execSnapshot.put("holdTotal", total);
 
+        ModelTaskOrigin.save(execSnapshot, ModelTaskOrigin.currentPage());
         IpRun run = IpRun.builder()
                 .id(runId)
                 .projectId(projectId)

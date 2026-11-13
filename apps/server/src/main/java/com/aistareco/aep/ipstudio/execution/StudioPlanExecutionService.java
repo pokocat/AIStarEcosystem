@@ -1,5 +1,6 @@
 package com.aistareco.aep.ipstudio.execution;
 
+import com.aistareco.aep.service.alerts.ModelTaskOrigin;
 import com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection;
 import com.aistareco.aep.enterprise.service.EnterpriseBillingService;
 import com.aistareco.aep.ipstudio.dialogue.StudioDialogueApprovals;
@@ -150,6 +151,7 @@ public class StudioPlanExecutionService {
         Instant now=Instant.now();
         ObjectNode state=mapper.createObjectNode();
         // The confirmed rules (with the method text) drive every later planning and check run of this execution.
+        ModelTaskOrigin.save(state, ModelTaskOrigin.currentPage());
         state.set("skill",StudioSkillRules.snapshot(loaded.rules()));
         ArrayNode canvas=state.putArray("canvasContextIds");
         loaded.contextNodeIds().forEach(canvas::add);
@@ -209,6 +211,7 @@ public class StudioPlanExecutionService {
         String planRunId="SEG-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         Instant now=Instant.now();
         ObjectNode state=mapper.createObjectNode();
+        ModelTaskOrigin.save(state, ModelTaskOrigin.currentPage());
         state.set("skill",StudioSkillRules.snapshot(rules));
         if(segmented!=null)state.set("segmented",segmented);
         if(videoTask!=null)state.set("videoTask",videoTask);
@@ -361,6 +364,7 @@ public class StudioPlanExecutionService {
             throw new BusinessException(HttpStatus.CONFLICT,"BILLING_SELECTION_CONFLICT","付款账户与本次制作已确认的不一致。如需更换付款账户，请结束本次制作后重新开始");
         if(!IpPlanExecution.active(e.getStatus()))throw stale("这次制作已结束，请重新开始");
         ObjectNode state=PlanState.parse(mapper,e.getStepsJson());
+        ModelTaskOrigin.save(state, ModelTaskOrigin.currentPage());
         Instant now=Instant.now();
         if(req.stage().equals(e.getStage())) {
             // Same stage, another plan: the user changed course mid-stage (steering → revised plan → its card).
@@ -728,6 +732,7 @@ public class StudioPlanExecutionService {
             default -> throw new IllegalArgumentException(action);
         }
         remember(budget,req.clientRequestId(),action,detail);
+        if ("resume".equals(action)) ModelTaskOrigin.save(state, ModelTaskOrigin.currentPage());
         e.setStepsJson(write(state));e.setBudgetJson(write(budget));e.setUpdatedAt(now);bumpLease(e);
         executions.save(e);
         wakeAfterCommit(e.getId());

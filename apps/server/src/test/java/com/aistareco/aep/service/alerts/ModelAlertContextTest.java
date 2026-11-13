@@ -10,7 +10,8 @@ class ModelAlertContextTest {
     JdbcTemplate db; ModelAlertContext context;
     @BeforeEach void setup() throws Exception {
         db = new JdbcTemplate(new DriverManagerDataSource("jdbc:h2:mem:context-"+java.util.UUID.randomUUID()+";MODE=MySQL;DB_CLOSE_DELAY=-1","sa",""));
-        db.execute("CREATE TABLE material_video_job(id VARCHAR PRIMARY KEY,provider_used VARCHAR,model_used VARCHAR,upstream_base_url_snapshot VARCHAR,variant_config_json VARCHAR,duration_sec INT,aspect_ratio VARCHAR,external_task_id VARCHAR)");
+        db.execute("CREATE TABLE material_video_job(id VARCHAR PRIMARY KEY,provider_used VARCHAR,model_used VARCHAR,upstream_base_url_snapshot VARCHAR,variant_config_json VARCHAR,duration_sec INT,aspect_ratio VARCHAR,external_task_id VARCHAR,app VARCHAR,kind VARCHAR,payload_json VARCHAR)");
+        db.execute("CREATE TABLE aep_users(id VARCHAR PRIMARY KEY,display_name VARCHAR)");
         db.execute("CREATE TABLE ip_run(id VARCHAR PRIMARY KEY,kind VARCHAR,input_json VARCHAR,output_json VARCHAR)");
         db.execute("CREATE TABLE ai_generation_queue(id INT,task_id VARCHAR,endpoint_id VARCHAR)");
         // Use the entity's actual mapping, so a query using a Java property as a SQL column fails here too.
@@ -21,10 +22,17 @@ class ModelAlertContextTest {
         context = new ModelAlertContext(db);
     }
     @Test void videoUsesOriginalRouteModelAndTaskParametersEvenAfterEndpointChanges() {
-        db.update("INSERT INTO material_video_job VALUES (?,?,?,?,?,?,?,?)","video","原供应商","minimax-h3","https://old.example:10443/v1?token=secret","{\"endpoint_id\":\"ep\",\"generation_mode\":\"i2v\",\"seed\":42,\"first_frame_key\":\"private/key\"}",13,"9:16","vendor-job-123");
+        db.update("INSERT INTO material_video_job VALUES (?,?,?,?,?,?,?,?,?,?,?)","video","原供应商","minimax-h3","https://old.example:10443/v1?token=secret","{\"endpoint_id\":\"ep\",\"generation_mode\":\"i2v\",\"seed\":42,\"first_frame_key\":\"private/key\"}",13,"9:16","vendor-job-123",
+                "ipstudio","ipstudio-clip","{\"alertPage\":\"https://aiavatar.aibuzz.cn/video?draft=IPP-1&token=secret#private\"}");
         String text = context.describe("video");
         for(String value: new String[]{"原供应商","minimax-h3","https://old.example:10443/v1","duration_sec\":13","i2v","9:16","seed\":42","非完整上游请求","远端任务 ID：vendor-job-123"}) assertTrue(text.contains(value),text);
         for(String value: new String[]{"new-model","new.example","secret","private/key"}) assertFalse(text.contains(value),text);
+        var details=context.taskDetails("video");
+        assertEquals("首帧生视频", details.operation());
+        assertEquals("https://aiavatar.aibuzz.cn/video?draft=IPP-1", details.page());
+        db.update("INSERT INTO aep_users VALUES ('u-1','创作者')");
+        assertEquals("创作者（u-1）", context.userLabel("u-1"));
+        assertEquals("u-2", context.userLabel("u-2"));
     }
     @Test void imageUsesFailedItemCheckpointRatherThanPreviouslyCompletedImage() throws Exception {
         var json = new ObjectMapper(); var input = json.createObjectNode(); var exec = input.putObject("_exec").put("endpointId","ep");
@@ -46,14 +54,18 @@ class ModelAlertContextTest {
         db.execute("DROP TABLE material_video_job");assertTrue(context.describe("absent").contains("暂时无法读取"));
     }
     @Test void botContextOmitsEmptyFieldsAndRequestBoilerplate() {
-        assertEquals("",context.describeForAlert("absent"));
+        assertEquals(ModelAlertContext.TaskDetails.EMPTY,context.taskDetails("absent"));
         db.update("INSERT INTO ai_generation_queue VALUES (1,'task','ep')");
-        String text=context.describeForAlert("task");
-        assertTrue(text.contains("当前端点（ep）"));assertTrue(text.contains("new-model（当前配置）"));
-        for(String value:new String[]{"未获取","未记录","任务参数","原始响应","API 基础地址"})assertFalse(text.contains(value),text);
-        db.execute("DROP TABLE material_video_job");assertEquals("",context.describeForAlert("task"));
+        var details=context.taskDetails("task");
+        assertEquals("当前端点（ep）",details.endpoint());assertEquals("new-model（当前配置）",details.model());
+        assertEquals("",details.remoteTask());assertEquals("",details.page());
+        db.execute("DROP TABLE material_video_job");assertEquals(ModelAlertContext.TaskDetails.EMPTY,context.taskDetails("task"));
     }
     @Test void urlsDropUserInfoQueryAndFragmentAndUnsafeParameterValuesAreNotForwarded() throws Exception {
+        assertEquals("", ModelTaskOrigin.safePage("https://aiavatar.aibuzz.cn.evil.example/video"));
+        assertEquals("", ModelTaskOrigin.safePage("https://secret@aiavatar.aibuzz.cn/video"));
+        assertEquals("https://aiavatar.aibuzz.cn/video?task=PEX-1", ModelTaskOrigin.safePage(
+                "https://aiavatar.aibuzz.cn/video?task=PEX-1&ref=private%2Fkey&token=secret#token"));
         assertEquals("https://api.example:8443/v1",ModelAlertContext.safeUrl("https://user:password@api.example:8443/v1?key=secret#token"));
         assertEquals("未记录",ModelAlertContext.safeUrl("file:///secret"));
         String text=ModelAlertContext.parameters(new ObjectMapper().readTree("{\"speaker\":\"Bearer secret\",\"model\":\"https://private?k=secret\",\"authorization\":\"secret\",\"duration\":13}"));

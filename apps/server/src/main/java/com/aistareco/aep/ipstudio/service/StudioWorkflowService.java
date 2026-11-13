@@ -1,5 +1,6 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.aep.service.alerts.ModelTaskOrigin;
 import com.aistareco.aep.dap.dto.DapAssetRequests.CreateIpRequest;
 import com.aistareco.aep.dap.model.DapAvatar;
 import com.aistareco.aep.dap.service.*;
@@ -151,6 +152,7 @@ public class StudioWorkflowService {
         boolean skillPlan="text".equals(request.operation())&&request.skillKey()!=null;
         boolean check="check".equals(request.operation());
         ExecutionBinding executionBinding=executionBinding(userId,projectId,request);
+        String page=originPage(executionBinding);
         com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill=skillRules(request,skillPlan,check,executionBinding);
         if("video-control".equals(request.operation())) {
             if(executionBinding==null||executionBinding.step()==null||!"depth".equals(executionBinding.state().path("videoTask").path("kind").asText())
@@ -223,7 +225,9 @@ public class StudioWorkflowService {
             IpRunDto dto=imageRuns.generate(userId,projectId,imageRequest(request));
             IpRun run=runs.findById(dto.id()).orElseThrow();
             ObjectNode imageInputs=(ObjectNode)projects.parseOrEmptyObject(run.getInputJson());
-            imageInputs.set("studioRequest",mapper.valueToTree(request));run.setInputJson(write(imageInputs));
+            imageInputs.set("studioRequest",mapper.valueToTree(request));
+            ModelTaskOrigin.save(imageInputs.withObject("/_exec"), page);
+            run.setInputJson(write(imageInputs));
             run.setClientRequestId(request.clientRequestId()); run.setInputFingerprint(fingerprint); runs.save(run);
             return projects.toRunDto(run);
         }
@@ -235,7 +239,9 @@ public class StudioWorkflowService {
             var video=videoRequest(request);
             var controlKeys=cloneControls(userId,executionBinding,request.video()).keySet();
             if(!controlKeys.isEmpty())video=studioVideo.prepareControlReferences(userId,video,controlKeys);
-            var batch=imageRuns.generateVideoBatch(userId,projectId,video,request.count()==null?1:request.count());
+            int count=request.count()==null?1:request.count();
+            var batch=page.isEmpty()?imageRuns.generateVideoBatch(userId,projectId,video,count)
+                    :imageRuns.generateVideoBatch(userId,projectId,video,count,page);
             ObjectNode inputs=mapper.valueToTree(request);
             attachCloneInputs(inputs,executionBinding);
             ObjectNode exec=inputs.putObject("_exec");
@@ -308,6 +314,7 @@ public class StudioWorkflowService {
             context.addObject().put("name",avatar.getName()).put("description",avatar.getDescPrompt()).put("version",ref.version()==null?avatar.getVersions():ref.version());
         }
         var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_call");
+        ModelTaskOrigin.save(execution, page);
         var canvasContext=inputs.putArray("appliedCanvasContext");
         if(request.contextNodeIds()!=null) for(String nodeId:request.contextNodeIds()) {
             var node=IpDocs.node(projects.readDoc(project),nodeId);
@@ -492,6 +499,7 @@ public class StudioWorkflowService {
         inputs.put("mock",false);
         var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_token")
                 .put("rewrite",video.rewrite()).put("videoCost",videoCost).put("planBudget",planBudget);
+        ModelTaskOrigin.save(execution, originPage(binding));
         if(autoQuote!=null)execution.put("videoPromptMaxChars",autoQuote.videoPromptMaxChars());
         var h3Meta=com.aistareco.aep.ipstudio.h3.H3PromptRewrite.meta(mapper,h3,built.pictures(),built.videos(),built.audios());
         if(!built.controlVideos().isEmpty())built.controlVideos().forEach(h3Meta.putArray("controlVideos")::add);
@@ -557,6 +565,11 @@ public class StudioWorkflowService {
         var ids=inputs.putArray("canvasInputNodeIds");
         for(JsonNode ref:binding.step().path("definition").path("settings").path("referenceBindings"))
             if(ref.hasNonNull("nodeId"))ids.add(ref.path("nodeId").asText());
+    }
+
+    private static String originPage(ExecutionBinding binding) {
+        String page=ModelTaskOrigin.currentPage();
+        return page.isEmpty() && binding!=null ? ModelTaskOrigin.read(binding.state()) : page;
     }
 
     private AiModelInvocationService.ResolvedEndpoint videoRewriteEndpoint() {
@@ -657,6 +670,7 @@ public class StudioWorkflowService {
         com.fasterxml.jackson.databind.JsonNode promptRecord=director.remove("prompt");
         inputs.set("_director",director);
         var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_call");
+        ModelTaskOrigin.save(execution, ModelTaskOrigin.currentPage());
         execution.put("systemPrompt",systemPrompt).put("userPrompt",userPrompt).put("temperature",0.6);
         if(promptRecord!=null&&promptRecord.isObject())execution.set("prompt",promptRecord);
         if(textEndpoint!=null)execution.put("endpointId",textEndpoint.endpoint().getId());

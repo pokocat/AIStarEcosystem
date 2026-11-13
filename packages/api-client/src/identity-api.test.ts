@@ -18,6 +18,17 @@ beforeEach(() => {
 afterEach(() => { setAppCode(null); vi.unstubAllGlobals(); });
 
 describe("账号接口与产品接口隔离", () => {
+  it("产品写请求只携带可定位页面的参数", async () => {
+    vi.stubGlobal("window", { location: {
+      origin: "https://aiavatar.aibuzz.cn", pathname: "/video",
+      search: "?scene=recreation&draft=IPP-1&token=secret&ref=uploads%2Fprivate",
+    } });
+    fetchMock.mockImplementation(async () => ok({}));
+    await apiFetch("/v1/ip-studio/video-tasks", { method: "POST" });
+    await ensureInvitationCode();
+    expect(fetchMock.mock.calls[0][1].headers["X-Aibuzz-Page"]).toBe("https://aiavatar.aibuzz.cn/video?scene=recreation&draft=IPP-1");
+    expect(fetchMock.mock.calls[1][1].headers["X-Aibuzz-Page"]).toBeUndefined();
+  });
   it("直连 issuer，携带本人令牌但不携带产品头和 Cookie", async () => {
     fetchMock.mockImplementation(async () => ok({ records: [], total: 0 }));
     await getMyInvitations(2);

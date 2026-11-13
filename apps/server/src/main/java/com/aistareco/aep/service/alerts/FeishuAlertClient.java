@@ -24,14 +24,18 @@ public class FeishuAlertClient {
         token=value;expiresAt=System.currentTimeMillis()+Math.max(1,response.path("expire").asLong(7200)-120)*1000;return token;
     }
     public String send(String id,String text) throws Exception {
+        JsonNode card = text.startsWith("{\"schema\":\"2.0\"") ? mapper.readTree(text) : null;
+        String type = card == null ? "text" : "interactive";
         if(config.usesWebhook()) {
             if(!config.validWebhook())throw new IllegalStateException("Feishu webhook invalid");
-            request("POST",URI.create(config.getWebhook()),webhookBody(text),null);
+            Object body = card == null ? webhookBody(text) : Map.of("msg_type",type,"card",card);
+            request("POST",URI.create(config.getWebhook()),body,null);
             // Custom bots return no message_id. This is a local delivery receipt, not a Feishu ID.
             return "webhook:"+id;
         }
-        var result=request("POST","/im/v1/messages?receive_id_type=chat_id",Map.of("receive_id",config.getChatId(),"msg_type","text",
-                "content",mapper.writeValueAsString(Map.of("text",text)),"uuid",id),token());
+        String content = card == null ? mapper.writeValueAsString(Map.of("text",text)) : text;
+        var result=request("POST","/im/v1/messages?receive_id_type=chat_id",Map.of("receive_id",config.getChatId(),"msg_type",type,
+                "content",content,"uuid",id),token());
         String messageId=result.path("data").path("message_id").asText();
         if(!messageId.matches("om_[A-Za-z0-9]+"))throw new IllegalStateException("Feishu message ID missing");return messageId;
     }

@@ -204,6 +204,28 @@ class MaterialVideoWorkerTest {
         assertTrue(job.getErrorMessage().contains("重新生成"),job.getErrorMessage());
     }
 
+    @Test void failedSeedanceTaskReportsMeasuredReferenceDimensions() throws IOException {
+        var submit = new MaterialVideoModelClient.SubmitResult("task_1", null, "OneToken", "seedance-2.0", "seedance", null);
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
+                new MaterialVideoModelClient.PollResult("failed",null,null,"failed",100,"内部错误",null,null,null,null,"VIDEO_PROVIDER_INTERNAL"));
+        job.setVariantConfigJson("""
+                {"reference_inputs":[{"media_type":"video","key":"reference.mp4"}]}
+                """);
+        var files=mock(com.aistareco.aep.service.storage.FileStorageService.class);
+        var ffmpeg=mock(com.aistareco.aep.service.mixcut.FfmpegRunner.class);
+        var reference=Path.of("reference.mp4");
+        when(files.openForRead("reference.mp4")).thenReturn(reference);
+        when(ffmpeg.probeMedia(reference.toFile())).thenReturn(new com.aistareco.aep.service.mixcut.FfmpegRunner.MediaProbe(
+                5, "mp4", "h264", null, 160, 320, 0, 0, true));
+        var worker=worker(new FakeUploader(false));
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"files",files);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"ffmpeg",ffmpeg);
+        worker.generateAsync("mvj_test");
+        assertEquals("VIDEO_REFERENCE_RESOLUTION_INVALID",job.getErrorCode());
+        assertTrue(job.getErrorMessage().contains("160×320"),job.getErrorMessage());
+    }
+
     @Test void aCodeExceptionBeforeTheSupplierAcceptedNeverReachesTheCustomer() {
         when(modelClient.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenThrow(new IllegalStateException("Cannot read field \"x\" because y is null"));
         worker(new FakeUploader(false)).generateAsync("mvj_test");

@@ -1,5 +1,6 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.aep.service.alerts.ModelTaskOrigin;
 import com.aistareco.aep.service.AiModelUsageContext;
 import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
@@ -786,7 +787,11 @@ public class StudioWorkflowWorker {
             Long ceiling=request.maxCost()==null?null:input.path("_exec").path("planBudget").asBoolean(false)?request.maxCost()-run.getCost():request.maxCost();
             var video=new IpRunService.IpVideoRequest(prompt,null,request.durationSec(),request.aspectRatio(),request.model(),ceiling,
                     request.video().submitted(),request.billing(),request.clientRequestId(),request.modelBilling());
-            var batch=videoRuns.getObject().generateVideoBatch(run.getOwnerUserId(),run.getProjectId(),video,request.count()==null?1:request.count());
+            int count=request.count()==null?1:request.count();
+            String page=ModelTaskOrigin.read(input.path("_exec"));
+            var nativeVideos=videoRuns.getObject();
+            var batch=page.isEmpty()?nativeVideos.generateVideoBatch(run.getOwnerUserId(),run.getProjectId(),video,count)
+                    :nativeVideos.generateVideoBatch(run.getOwnerUserId(),run.getProjectId(),video,count,page);
             ObjectNode inputs;
             try {inputs=(ObjectNode)mapper.readTree(run.getInputJson());}catch(Exception invalid){throw new IllegalStateException(invalid);}
             ObjectNode exec=inputs.withObject("/_exec");
