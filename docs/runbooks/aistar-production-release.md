@@ -7,6 +7,7 @@
 | `server` API | [`infra/scripts/deploy.sh server`](../../infra/scripts/deploy.sh)，默认更新正式备用机并切流，`--plan` 展示计划。 |
 | PostgreSQL 结构 | 用迁移角色执行独立的向前兼容 DDL，并验证当前与候选版本；运行账号只做 Flyway 校验，API 滚动不会执行 DDL。 |
 | A 上的后台调度、SAU | 独立验收和角色交接。API 滚动不会更新这两个单元；涉及定时任务、领取逻辑或发布驱动时，把相应组件列入发布范围。SAU 真镜像需通过 `prepare_real_runtime.py` 的四个发布驱动导入，`/healthz` 仅作就绪证据。 |
+| Studio 成片导出 | A 上的 `aistar-studio-export` 独立运行。首次发布先启动并验证专用进程，再切换会写入导出队列的 API 和后台。 |
 | Web、admin、studio-admin | 目标为前端 A/B，发布走独立 ALB 后端组。使用下方前端发布步骤。 |
 | 账号中心、军师及其他应用 | 按各自仓库的发布说明处理。账号中心入口在 [aibuzz-id](https://github.com/pokocat/aibuzz-id/blob/main/deploy/README.md)。 |
 
@@ -53,7 +54,15 @@
 
 新版备用机通过本机就绪及鉴权后接管 100% 流量，再通过两个 VIP 核对实际节点身份、就绪和鉴权。旧承流机保留原版并进入零权重热备，供下次发布或回退。新版切流验收失败时恢复已验证的原承流机。零权重节点仍处于排空时，可从同一入口续跑。回退前确认旧版兼容当前数据库和已受理写入，再用其已验证制品走同一切流入口。
 
-## 3. 前端发布
+## 3. Studio 成片导出进程
+
+生产角色按 [systemd 单元模板](../../infra/cluster/aistar-studio-export.service.example) 启动，使用同一批已验收后端镜像的配置 ID。进程监听 `127.0.0.1:18087`。根用户把已核对的生产 API 环境派生到 `/opt/aistar-cluster/control/env-studio-export`（权限 `0600`），设置 `AEP_IPSTUDIO_EXPORT_WORKER=true`、`AEP_BACKGROUND_ENABLED=false`，使用 `/usr/bin/ffmpeg` 和 `/usr/bin/ffprobe`。关闭视频封面回填和启动时的素材种子。给 `/opt/aistar-cluster/state/studio-export-tmp` 配置独立磁盘目录，容器用户为 `10001:10001`。
+
+进程和 FFmpeg 共用 2 核 CPU、2304 MiB 内存和 128 个进程或线程，JVM 堆上限 768 MiB。PostgreSQL 保留提交记录并保护单一导出槽。同一任务异常退出后自动恢复一次。验收检查 `/internal/ready`、实际 cgroup 限额、排队和渲染阶段、OSS 产物可读性及容器 OOM 计数。
+
+更新专用进程前持有集群发布锁，在该机调用受保护的 `POST /internal/deployment` 暂停领取。连续三次确认 `scheduled_active`、`in_flight`、`executor_active`、`executor_queued` 为零后更换镜像，等待新版就绪。仍在等待的记录由新版继续领取。切回早于独立队列的 API 或后台时，保留能处理已受理导出的专用进程，等队列排空后再停。
+
+## 4. 前端发布
 
 2026-11-12 北京时间 10:41，`aiavatar`、`aistar`、`admin`、`drama`、`music`、`celebrity`、`star`、`incubator`、`ipstudio` 的独立 DNS 记录已指向正式 ALB。`aistar` 同时承接 Studio 管理后台，`ipstudio` 保留跳转和原登录回调提示。前端使用独立后端组 `sgp-chl8uqmlza6yjvdmlj`，同样以一台承流、另一台热备的方式发布。两机的 `aistar-front-*` 服务使用已核对的 Next.js standalone 制品及固定运行镜像。前端同域 `/api/`、`/static/` 和 `/cdn/` 通过严格 TLS 到正式 API ALB。前端和 API 组分别记录承流节点。
 
@@ -62,7 +71,7 @@
 - 切流后的 [前端验收](../../infra/scripts/cluster/frontend.py) 分别记录两个 VIP 的实际响应和目标机的 ALB 健康状态。健康查询仍在收敛时继续观察，两个检查均通过后立即完成；等待超时保留最后一次结果供回退排查。
 - 普通前端版本回退使用上一版制品和前端后端组。首次切流若需回退，按域名恢复原 DNS。多数域名此前由通配 A 记录承接，`ipstudio` 原有独立 A 记录。保留 DNS 缓存期内的旧前端和代理，旧 API/SAU 继续保持停用。
 
-## 4. 验收与恢复
+## 5. 验收与恢复
 
 - 核对两机实际 SHA、release、进程和 ALB 权重。承流机为 100%，原版热备为 0%。在两个 VIP 上记录连续真实请求的 HTTP 结果和节点身份，保留失败样本。核对 SLS 启动与错误日志、OIDC、历史媒体读取和本次受影响的已登录业务。涉及存储时确认两机继续使用原业务 OSS，对原签名 URL 做 Range 和防篡改回归；凭据及完整签名 URL 不进入回执。支付和模型任务按发布范围做签名、状态、隔离回归或单独授权的实测。
 - 发布失败时，以已验证的健康节点承流，先核对现场权重、实际返回、异步任务与资金状态。需要回到上一制品时，先确认它兼容当前 PostgreSQL 结构和已接收写入，再用同一滚动入口恢复。双机均无法安全承流时，暂停新写入并保护 PostgreSQL、支付回执和在途任务后恢复。旧 MySQL 与旧 DNS 不能作为回滚目的地。
