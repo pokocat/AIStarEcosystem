@@ -1,5 +1,6 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings;
 import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.aep.service.storage.MediaBytes;
@@ -9,6 +10,7 @@ import com.aistareco.common.BusinessException;
 import org.springframework.stereotype.Service;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Set;
 
 /** Native video inputs on the canvas. Preparation never calls a provider or freezes credits. */
 @Service
@@ -22,9 +24,11 @@ public class StudioVideoService {
     private final FileStorageService storage;
     private final FfmpegRunner ffmpeg;
     private final StudioAudioReference audioReferences;
+    private final StudioSeedanceControlVideo seedanceControlVideo;
     public StudioVideoService(com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies,VideoStudioService videos,IpProjectService projects,FileStorageService storage,FfmpegRunner ffmpeg) {
         this.scenePolicies=scenePolicies;this.videos=videos;this.projects=projects;this.storage=storage;this.ffmpeg=ffmpeg;
         this.audioReferences=new StudioAudioReference(storage,ffmpeg);
+        this.seedanceControlVideo=new StudioSeedanceControlVideo(storage,ffmpeg);
     }
     public List<VideoStudioModel> models() {
         var allowed=scenePolicies.studioVideoCandidates().stream()
@@ -35,6 +39,25 @@ public class StudioVideoService {
                         m.supportsPromptOptimization() ? Math.max(AUTO_REWRITE_MAX_CHARS, m.contract().promptMaxChars()) : null)).toList();
     }
     private String model(String requested) {return scenePolicies.resolveStudioVideo(requested).endpoint().getId();}
+
+    /** The workflow supplies keys of completed motion extraction steps from the same execution. */
+    IpRunService.IpVideoRequest prepareControlReferences(String userId, IpRunService.IpVideoRequest request, Set<String> controlKeys) {
+        var endpoint = scenePolicies.resolveStudioVideo(request.model()).endpoint();
+        if (!StudioSeedanceControlVideo.appliesTo(endpoint.getModel())) return request;
+
+        var video = request.video();
+        var references = video.references().stream().map(ref -> {
+            if (ref == null || !"video".equals(ref.mediaType()) || !controlKeys.contains(ref.key())) return ref;
+            String key = projects.requireOwnedAssetKey(userId, ref.key());
+            String adapted = seedanceControlVideo.prepare(userId, key);
+            return new VideoStudioReferenceInput(ref.mediaType(), adapted);
+        }).toList();
+        var settings = new VideoSettings(video.mode(), video.resolutionTier(), video.seed(), video.firstFrameKey(),
+                video.lastFrameKey(), references, video.optimizePrompt(), video.rewrite(), video.edit());
+        return new IpRunService.IpVideoRequest(request.prompt(), request.refKey(), request.durationSec(), request.aspectRatio(),
+                endpoint.getId(), request.maxCost(), settings, request.billing(), request.clientRequestId(), request.modelBilling());
+    }
+
     /** 所选模型出片前会不会改写描述（H3）：只有这种模型才走 H3 官方写法的提示词优化。 */
     public boolean rewritable(String requested) {
         String endpointId=model(requested);

@@ -2,18 +2,66 @@ package com.aistareco.aep.ipstudio.service;
 
 import com.aistareco.aep.ipstudio.service.*;
 import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest;
+import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings;
 import com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRunDto;
+import com.aistareco.aep.ipstudio.execution.IpPlanExecution;
+import com.aistareco.aep.ipstudio.execution.IpPlanExecutionRepository;
+import com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds;
 import com.aistareco.aep.ipstudio.model.IpProject;
 import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.common.BusinessException;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class StudioVideoBatchBindingTest {
+    @Test void aCompletedDepthControlIsAdaptedBeforeTheNativeJobIsCreated() throws Exception {
+        var projects = mock(IpProjectService.class);
+        var runs = mock(IpRunRepository.class);
+        var nativeRuns = mock(IpRunService.class);
+        var videos = mock(StudioVideoService.class);
+        var plans = mock(IpPlanExecutionRepository.class);
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String executionId = "PEX-depth";
+        var execution = IpPlanExecution.builder().id(executionId).ownerUserId("owner").projectId("p")
+                .status(IpPlanExecution.RUNNING).billingJson("{}").stepsJson("""
+                {"videoTask":{"kind":"depth"},"steps":[
+                  {"id":"d1","operation":"video-control","stage":"production","runIds":["control-run"]},
+                  {"id":"v1","operation":"video","stage":"production"}]}
+                """).build();
+        when(plans.findById(executionId)).thenReturn(Optional.of(execution));
+        when(projects.requiredForUpdate("owner","p")).thenReturn(IpProject.builder().id("p").build());
+        when(projects.parseOrEmptyObject(anyString())).thenAnswer(call -> mapper.readTree(call.<String>getArgument(0)));
+        when(runs.findByIdAndOwnerUserId("control-run","owner")).thenReturn(Optional.of(IpRun.builder()
+                .projectId("p").kind("studio-video-control").status(IpRun.STATUS_DONE)
+                .outputJson("{\"storageKey\":\"control.mp4\",\"controlType\":\"depth\"}").build()));
+        var raw = new VideoSettings("universal_reference_video","720p",null,null,null,
+                List.of(new VideoStudioReferenceInput("video","control.mp4")));
+        var ready = new VideoSettings(raw.mode(),raw.resolutionTier(),null,null,null,
+                List.of(new VideoStudioReferenceInput("video","adapted.mp4")));
+        String requestId = StudioPlanExecutionIds.requestId(executionId,"production","v1",1);
+        var adapted = new IpRunService.IpVideoRequest("动作",null,5,"9:16","ep",400L,ready,null,requestId);
+        when(videos.prepareControlReferences(eq("owner"),argThat(req -> raw.equals(req.video())),eq(Set.of("control.mp4"))))
+                .thenReturn(adapted);
+        when(nativeRuns.generateVideoBatch("owner","p",adapted,1)).thenReturn(
+                new IpRunService.VideoBatch(List.of(mapper.createObjectNode().put("id","job")),mapper.createObjectNode()));
+        var service = new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),null,null,null,
+                nativeRuns,null,null,null,null,null,mapper,null,null);
+        ReflectionTestUtils.setField(service,"studioVideo",videos);
+        ReflectionTestUtils.setField(service,"planExecutions",plans);
+        service.submit("owner","p",new RunRequest(requestId,StudioPlanExecutionIds.nodeId(executionId,"production","v1"),
+                "video","动作",List.of(),"ep",null,5,"9:16",1,null,null,null,null,null,400L,null,raw,
+                null,null,null,null,null,null,null,null,"production",executionId,null));
+        verify(nativeRuns).generateVideoBatch("owner","p",adapted,1);
+        verify(runs).save(argThat(run -> run.getInputJson().contains("control.mp4") && !run.getInputJson().contains("adapted.mp4")));
+    }
+
     @Test void nativeVideoLetsTheSelectedModeDecideWhetherPromptIsRequired() throws Exception {
         var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);
         var nativeRuns=mock(IpRunService.class);var fixtures=mock(StudioFixtureProvider.class);

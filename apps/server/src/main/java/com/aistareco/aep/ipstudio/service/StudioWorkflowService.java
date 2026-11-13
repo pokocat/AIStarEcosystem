@@ -232,7 +232,10 @@ public class StudioWorkflowService {
             if(request.video()!=null && !references.isEmpty()) throw bad("STUDIO_VIDEO_INPUT_INVALID","请在视频模式中明确选择首帧、尾帧或参考素材");
             // 只用模型赠款（freeOnly）也照常优化：以出片效果为准，改写按文本模型自己的价格扣（界面写明另需少量积分），积分不够用户可以取消（2026-10-27 用户定）。
             if(request.video()!=null && request.video().rewrite()!=null) return submitVideoRewrite(userId,projectId,project,request,fingerprint,executionBinding);
-            var batch=imageRuns.generateVideoBatch(userId,projectId,videoRequest(request),request.count()==null?1:request.count());
+            var video=videoRequest(request);
+            var controlKeys=cloneControls(userId,executionBinding,request.video()).keySet();
+            if(!controlKeys.isEmpty())video=studioVideo.prepareControlReferences(userId,video,controlKeys);
+            var batch=imageRuns.generateVideoBatch(userId,projectId,video,request.count()==null?1:request.count());
             ObjectNode inputs=mapper.valueToTree(request);
             attachCloneInputs(inputs,executionBinding);
             ObjectNode exec=inputs.putObject("_exec");
@@ -526,19 +529,21 @@ public class StudioWorkflowService {
     }
 
     /**
-     * 深度复刻：这一步要交给 H3 的参考视频里，哪段是本次执行里「提取动作」那一步的产物、是深度图还是骨骼图。
+     * 深度复刻：这一步的参考视频里，哪段是本次执行里「提取动作」那一步的产物、是深度图还是骨骼图。
      * 只认同一执行里已完成的 video-control 运行、且产物 key 正好是这一步引用的那段，不按客户端说法。
      */
     private java.util.Map<String,String> cloneControls(String userId,ExecutionBinding binding,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings video) {
         if(binding==null||binding.step()==null||video==null||video.references()==null)return java.util.Map.of();
         if(!"depth".equals(binding.state().path("videoTask").path("kind").asText()))return java.util.Map.of();
         Set<String> referenced=new HashSet<>();
-        for(var r:video.references())if("video".equals(r.mediaType()))referenced.add(r.key());
+        for(var r:video.references())if(r!=null&&"video".equals(r.mediaType()))referenced.add(r.key());
+        if(referenced.isEmpty())return java.util.Map.of();
         java.util.Map<String,String> out=new java.util.HashMap<>();
         for(JsonNode step:binding.state().path("steps")) {
             if(!"video-control".equals(step.path("operation").asText()))continue;
             for(JsonNode runId:step.path("runIds"))runs.findByIdAndOwnerUserId(runId.asText(),userId).ifPresent(run->{
-                if(!IpRun.STATUS_DONE.equals(run.getStatus())||run.getOutputJson()==null)return;
+                if(!"studio-video-control".equals(run.getKind())||!IpRun.STATUS_DONE.equals(run.getStatus())
+                        ||!binding.execution().getProjectId().equals(run.getProjectId())||run.getOutputJson()==null)return;
                 JsonNode output=projects.parseOrEmptyObject(run.getOutputJson());
                 String key=output.path("storageKey").asText(null);
                 if(key!=null&&referenced.contains(key))out.put(key,"pose".equals(output.path("controlType").asText())?"pose":"depth");

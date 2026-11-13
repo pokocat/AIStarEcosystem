@@ -86,6 +86,8 @@ ReShot 保留内存预检，资源不足时明确失败，不使用 `--force` �
 | H3 用固定六段式，把视频1 定义成单独的主体：只迁移动作、时间和机位（attribute_transfer），灰色画面 / 火柴人不迁移 | 中文按原文直发「视频1是深度结构视频」 | 深度复刻的视频步骤总是先走 H3 优化（`StudioCloneVideoPlan.optimize`，编辑器里不再给「按原文生成」）；参考清单里视频1 按实际产物写深度图或骨骼图的英文说明（`H3StudioPrompt.controlNote`）；优化稿把它标成完全保留时改回 attribute_transfer，漏写时按 attribute_transfer 补回 |
 | 不支持优化的模型 | 同上 | 中文说明照 ReShot 给 Seedance 的写法：参考视频1的动作与运镜、顺序一致，画面里不出现深度图或骨骼线条 |
 
+深度复刻提交 Seedance 2.0 系列时，按实际动作参考的宽高检查方舟输入规格。低于总像素 407,696 或单边 300 的控制视频等比放大，宽高比超出 0.4–2.5 时用留边保留完整画面。提交前校验派生文件的尺寸和时长。已完成的低分辨率动作提取可以直接复用，例如 160×320 的控制视频会提交为 452×904。 [方舟参考视频规格](https://console.volcengine.com/ark/region%3Acn-beijing/docs/create-video-generation-task-api)
+
 骨骼还是深度，用 9861 / 9862 原片实测定的规则（每秒一帧的原片 / 骨骼 / 深度对照：`releases/evidence/studio-video-clone-real-20261108/reshot-9861-original-pose-depth.jpg`、`reshot-9862-original-pose-depth.jpg`）：
 
 - 9861 俯拍躺姿：骨骼把每个姿势都画出来了，风扇叶挡住时骨骼正好消失；深度图里人几乎看不见，只剩风扇叶。全身帧占比 0.592（遮挡帧和 3 秒尾卡里没人），所以门槛定 0.5 而不是 0.6。
