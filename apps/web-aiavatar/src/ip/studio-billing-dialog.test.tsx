@@ -70,6 +70,16 @@ test("a balance below the estimate itself still blocks the multi-step task", asy
   await screen.findByRole("alert");
   expect(screen.getByRole("button", { name: "确认账户并生成" }).hasAttribute("disabled")).toBe(true); expect(confirm).not.toHaveBeenCalled();
 });
+test("a director pipeline shows estimate and cap while allowing payment per step", async () => {
+  const confirm = vi.fn();
+  render(<StudioBillingDialog details={{ operation: "director-pipeline", expectedCost: 2208, costCap: 2540, checkBalancePerStep: true }} onConfirm={confirm} onCancel={vi.fn()}/>);
+  await screen.findByText(/预计约 2,208 积分，预算上限 2,540 积分/);
+  fireEvent.click(await screen.findByRole("radio", { name: /创作公司/ }));
+  const submit = screen.getByRole("button", { name: "确认账户并生成" });
+  await waitFor(() => expect(submit.hasAttribute("disabled")).toBe(false));
+  fireEvent.click(submit);
+  expect(confirm).toHaveBeenCalledWith({ mode: "enterprise", enterpriseId: "team" });
+});
 test("text billing says it settles by actual usage and does not show the freeze ceiling", async () => {
   render(<StudioBillingDialog details={{ operation: "assistant", expectedCost: 300, model: "model" }} onConfirm={vi.fn()} onCancel={vi.fn()}/>); await screen.findByText(/按实际用量结算/); expect(screen.queryByText(/300 积分/)).toBeNull(); expect(screen.queryByText(/最多冻结/)).toBeNull();
 });

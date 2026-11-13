@@ -18,6 +18,26 @@ const task = (id: string, kind: StudioVideoTask['kind'] = 'direct') => ({ id, ki
 const props = { enabled: true, onSelect: vi.fn(), onDraft: vi.fn(), drafts: [], railOpen: false, onRail: vi.fn(), persist: vi.fn().mockResolvedValue(undefined), children: <p>尚未制作</p> };
 beforeEach(() => { sessionStorage.clear(); window.history.replaceState(null, '', '/video?scene=drama-twist'); api.list.mockResolvedValue({ items: [], page: 0, hasMore: false }); api.signKeys.mockResolvedValue({}); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
+test('the original video task asks for explicit confirmation of the current budget shortfall', async () => {
+  const saved = task('PEX-budget', 'recreation');
+  const execution = saved.execution!;
+  execution.status = 'needs_user';
+  execution.budgets = [
+    { stage: 'analysis', approvedCap: 10, autoFixCap: 0, spent: 10, inFlight: 0, remaining: 0 },
+    { stage: 'production', approvedCap: 100, autoFixCap: 0, spent: 80, inFlight: 0, remaining: 20, shortfall: 25 },
+  ];
+  api.get.mockResolvedValue(saved);
+  api.resume.mockResolvedValue(execution);
+  render(<SceneVideoWorkspace {...props} taskId={saved.id} selected={saved}/>);
+  fireEvent.click(await screen.findByRole('button', { name: '提高预算并继续' }));
+  const dialog = await screen.findByRole('dialog', { name: '提高任务预算' });
+  expect(within(dialog).getByText(/从 110 提高到 135 积分/)).toBeTruthy();
+  expect(api.resume).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole('button', { name: '提高预算并继续' }));
+  await waitFor(() => expect(api.resume).toHaveBeenCalledWith(saved.projectId, execution.id, expect.objectContaining({
+    expectedStatus: 'needs_user', budgetIncrease: { stage: 'production', approvedCap: 100, shortfall: 25 },
+  })));
+});
 test.each(['direct', 'segmented', 'recreation'] as const)('%s uses the same durable recent-task entry', async kind => {
   const saved = task('PEX-one', kind); api.list.mockResolvedValue({ items: [saved], page: 0, hasMore: false });
   render(<SceneVideoWorkspace {...props}/>); fireEvent.click(await screen.findByRole('button', { name: /PEX-one/ })); expect(props.onSelect).toHaveBeenCalledWith(saved);

@@ -53,7 +53,7 @@ export function describeSegmentedPrice(personal: StudioSegmentedVideoPrice, ente
 
 export async function startSegmentedVideo(projectId: string, request: StudioSegmentedVideoRequest, estimate?: number): Promise<StudioPlanExecution> {
   if (USE_MOCK) return mockSegmentedStart(projectId, request);
-  const body = request.billing ? request : await withStudioBilling(projectId, request, { expectedCost: estimate, costCap: request.budgetCap });
+  const body = request.billing ? request : await withStudioBilling(projectId, request, { expectedCost: estimate, costCap: request.budgetCap, checkBalancePerStep: true });
   return apiFetch<StudioPlanExecution>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/segmented-videos`, { method: "POST", body });
 }
 

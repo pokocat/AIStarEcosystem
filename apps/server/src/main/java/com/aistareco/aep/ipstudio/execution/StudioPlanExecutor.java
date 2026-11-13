@@ -333,6 +333,26 @@ public class StudioPlanExecutor {
             }
         }
         e.setSpent(spent.getOrDefault(e.getStage(),0L));e.setInFlight(inFlight.getOrDefault(e.getStage(),0L)+otherStagesInFlight(inFlight,e.getStage()));
+        refreshVideoShortfall(e,state,budget,out);
+    }
+    /** Settled work may free enough budget for a paused video task or reduce the amount it needs to add. */
+    private void refreshVideoShortfall(IpPlanExecution e,ObjectNode state,ObjectNode budget,List<Event> out) {
+        if(e.getThreadId()!=null||!IpPlanExecution.NEEDS_USER.equals(e.getStatus())||(!state.has("videoTask")&&!state.has("segmented")))return;
+        JsonNode entry=budget.path(e.getStage());
+        if(entry.path("shortfall").asLong()<=0)return;
+        for(JsonNode raw:PlanState.stageSteps(state,e.getStage())) {
+            if(!"needs_user".equals(raw.path("status").asText())||!raw.path("budgetBlocked").asBoolean(false))continue;
+            long committed=entry.path("spent").asLong()+entry.path("inFlight").asLong();
+            long shortfall=Math.max(0,committed+raw.path("quotedCost").asLong()-entry.path("approvedCap").asLong());
+            if(shortfall==entry.path("shortfall").asLong())return;
+            ObjectNode stageBudget=(ObjectNode)entry;
+            String reason=shortfall>0?"本阶段预算还差 "+shortfall+" 积分":"预算已更新，可以继续制作。";
+            if(shortfall>0)stageBudget.put("shortfall",shortfall);else stageBudget.remove("shortfall");
+            ((ObjectNode)raw).put("reason",reason);
+            state.put("needsUserReason",reason);
+            out.add(budgetEvent(e,e.getStage(),stageBudget,shortfall>0?shortfall:null,"actual"));
+            return;
+        }
     }
     private static Instant parseInstant(String value) {
         try {return value==null?null:Instant.parse(value);} catch(RuntimeException e){return null;}

@@ -331,11 +331,16 @@ public class StudioPlanExecutionService {
             quoted=plan.path("budget").path("estimated").asLong();
         }
         if(!dropped.isEmpty())log.info("[plan-exec] optional checks dropped to fit the page cap execution={} dropped={} quoted={} remaining={}",e.getId(),dropped,quoted,remaining);
-        if(quoted>remaining)throw stale("分析已完成，制作费用超出上限，请在画布上查看方案后调整");
+        if(quoted>remaining) {
+            ((ObjectNode)budget.path("analysis")).put("shortfall",quoted-remaining);
+            e.setStatus(IpPlanExecution.NEEDS_USER);
+            state.put("needsUserReason","分析已完成，制作需 "+quoted+" 积分，超出剩余预算 "+(quoted-remaining)+" 积分。");
+            return;
+        }
         var normalized=new LoadedPlan(runId,plan,loaded.rules(),loaded.contextNodeIds(),loaded.revision(),null);
         appendSteps((ArrayNode)state.withArray("steps"),normalized,"production");
         state.set("canvasContextIds",mapper.valueToTree(loaded.contextNodeIds()));
-        ((ObjectNode)budget.path("analysis")).put("approvedCap",spent).put("autoFixCap",0);
+        ((ObjectNode)budget.path("analysis")).put("approvedCap",spent).put("autoFixCap",0).remove("shortfall");
         budget.putObject("production").put("approvedCap",remaining).put("autoFixCap",remaining-quoted).put("spent",0).put("inFlight",0)
                 .put("requestFingerprint",budget.path("analysis").path("requestFingerprint").asText());
         e.setStage("production");e.setPlanRunId(runId);e.setPlanRevision(loaded.revision());
@@ -641,7 +646,12 @@ public class StudioPlanExecutionService {
         if(segmentRetry&&(!"resume".equals(action)||!added.isEmpty()||req.retryStepId()==null||req.retryStepId().isBlank()
                 ||req.retryAttempt()==null||req.retryAttempt()<1))
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请选择要重试的视频片段");
-        String detail=segmentRetry?write(List.of(req.retryStepId(),req.retryAttempt()))
+        var increase=req.budgetIncrease();
+        if(increase!=null&&(!"resume".equals(action)||segmentRetry||!added.isEmpty()||increase.stage()==null
+                ||increase.approvedCap()==null||increase.shortfall()==null||increase.approvedCap()<0||increase.shortfall()<=0
+                ||increase.approvedCap()>9_007_199_254_740_991L-increase.shortfall()))
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请选择当前任务的预算调整");
+        String detail=increase!=null?write(increase):segmentRetry?write(List.of(req.retryStepId(),req.retryAttempt()))
                 :added.isEmpty()?null:String.join(",",added.stream().sorted().toList());
         if(replayed(budget,req.clientRequestId(),action,detail))return toDto(e);
         if(req.expectedStatus()!=null&&!req.expectedStatus().equals(e.getStatus()))throw stale("这次制作的状态已经变化，请刷新后再操作");
@@ -660,9 +670,15 @@ public class StudioPlanExecutionService {
                 state.put("needsUserReason","已停止：不再提交新的步骤。排队中的任务将取消，已提交的任务会继续完成并结算。");
             }
             case "resume" -> {
+                if(increase!=null) {
+                    approveVideoBudgetIncrease(e,state,budget,increase,now);
+                    break;
+                }
                 if(segmentRetry&&!IpPlanExecution.NEEDS_USER.equals(e.getStatus()))throw stale("这次制作的状态已经变化，请刷新后再操作");
                 if(IpPlanExecution.RUNNING.equals(e.getStatus()))break;
                 if(!Set.of(IpPlanExecution.PAUSED,IpPlanExecution.NEEDS_USER).contains(e.getStatus()))throw stale("这次制作已结束，不能继续");
+                if(e.getThreadId()==null&&IpPlanExecution.NEEDS_USER.equals(e.getStatus())
+                        &&budget.path(e.getStage()).path("shortfall").asLong()>0)return toDto(e);
                 if("analysis".equals(e.getStage())&&stageFinished(state,"analysis")&&!state.has("videoTask"))throw stale("分析已经完成，请确认制作方案和预算后开始制作");
                 skills.requireActive(e.getSkillKey());
                 ObjectNode next=state.deepCopy();
@@ -678,7 +694,7 @@ public class StudioPlanExecutionService {
                             case "needs_user" -> {
                                 // 解析不了的原文留着也没用：重新发一次（新请求编号），否则下一轮又读回同一条，点继续等于没点。
                                 if(next.has("videoTask")&&RAW_ONLY_CODE.equals(step.path("errorCode").asText()))StudioSegmentedRun.retryFailed(step);
-                                else {step.put("status","pending").put("confirmed",true);step.remove("reason");}
+                                else {step.put("status","pending").put("confirmed",true);step.remove(List.of("reason","budgetBlocked"));}
                             }
                             // Only the user's explicit continue starts a new attempt (new request identity).
                             case "failed" -> {
@@ -716,6 +732,25 @@ public class StudioPlanExecutionService {
         executions.save(e);
         wakeAfterCommit(e.getId());
         return toDto(e);
+    }
+
+    private void approveVideoBudgetIncrease(IpPlanExecution e,ObjectNode state,ObjectNode budget,PlanExecutionBudgetIncrease increase,Instant now) {
+        JsonNode current=budget.path(e.getStage());
+        if(e.getThreadId()!=null||(!state.has("videoTask")&&!state.has("segmented"))
+                ||!IpPlanExecution.NEEDS_USER.equals(e.getStatus())||!e.getStage().equals(increase.stage())
+                ||current.path("approvedCap").asLong(-1)!=increase.approvedCap()||current.path("shortfall").asLong()!=increase.shortfall())
+            throw stale("任务预算已变化，请刷新后重新确认");
+        skills.requireActive(e.getSkillKey());
+        boolean readyForProduction="analysis".equals(e.getStage())&&state.has("videoTask")&&stageFinished(state,"analysis");
+        if(readyForProduction) {
+            e.setStatus(IpPlanExecution.RUNNING);
+            state.remove("needsUserReason");
+        } else {
+            resumeAfterRaise(e,state,now);
+            if(!IpPlanExecution.RUNNING.equals(e.getStatus()))throw stale("任务状态已变化，请刷新后重新确认");
+        }
+        ((ObjectNode)current).put("approvedCap",increase.approvedCap()+increase.shortfall()).put("confirmedAt",now.toString()).remove("shortfall");
+        if(e.getDeadlineAt()==null||now.isAfter(e.getDeadlineAt()))e.setDeadlineAt(now.plus(StudioPlanExecutor.WINDOW));
     }
 
     private void retryVideoSegment(String userId,String projectId,IpPlanExecution e,ObjectNode state,String id,int attempt) {

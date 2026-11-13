@@ -490,7 +490,7 @@ export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose
   const scopeName = effectiveScope === "episode" ? `第 ${ep?.no} 集` : work.episodes.length > 1 ? `全部 ${work.episodes.length} 集` : "本集";
   const doneNote = nothing || (scriptsDone ? `${scopeName}的分镜脚本均已写好。一键制作只补充未完成的步骤；如需重写，请在「分镜」点击「重写分镜脚本」。` : "");
   const start = () => void run("start", async () => {
-    const billing = await chooseDirectorBilling("script", budget);
+    const billing = await chooseDirectorBilling("director-pipeline", est?.total, budget);
     try {
       apply(await withSavedDirectorDrafts(work, apply, saved => DirectorApi.pipeline(saved.id, { action: "start", scope: effectiveScope, episodeId: effectiveScope === "episode" ? ep?.id ?? null : null, target, budget, billing, auto })));
     } catch (e) {
@@ -529,7 +529,7 @@ export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose
           <small>{est.rough ? "尚未规划的部分按默认篇幅估算（每集约 75 秒）。" : ""}推荐预算在估算基础上预留约 15% 余量；达到上限会暂停，不会超支，未用完的部分不扣除。{est.videos.error ? ` 视频：${est.videos.error}` : ""}</small>
           {custom === null ? <button type="button" className="ip-brand-text-button director-self-start" onClick={() => setCustom(String(est.recommended))}>调整预算</button> :
             <label className="director-field"><span>预算上限（积分）</span><input inputMode="numeric" value={custom} autoFocus onChange={e => setCustom(e.target.value.replace(/\D/g, ""))}/>
-              {tooLow && <small className="director-cost is-error">低于估算的 {est.total.toLocaleString("zh-CN")} 积分，制作中途会暂停。</small>}</label>}
+              {tooLow && <small className="director-cost is-error">低于预计的 {est.total.toLocaleString("zh-CN")} 积分，达到预算上限时会暂停。</small>}</label>}
         </>}
       </section>}
       {doneNote && <div className="director-warn" role="status"><span>{doneNote}</span></div>}

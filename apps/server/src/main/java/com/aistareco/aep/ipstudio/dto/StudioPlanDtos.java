@@ -71,11 +71,16 @@ public final class StudioPlanDtos {
      * {@code addMaterialNodeIds} (resume only): canvas objects a stopped plan-compile step named outside the material scope
      * that the user chose to add to this execution before it re-plans (docs/ip-studio-dialogue-intents.md 「方案素材范围跨轮」).
      */
+    public record PlanExecutionBudgetIncrease(String stage,Long approvedCap,Long shortfall) {}
     public record PlanExecutionControlRequest(String clientRequestId,String expectedStatus,List<String> addMaterialNodeIds,
-                                              String retryStepId,Integer retryAttempt) {
+                                              String retryStepId,Integer retryAttempt,PlanExecutionBudgetIncrease budgetIncrease) {
         public PlanExecutionControlRequest(String clientRequestId,String expectedStatus) {this(clientRequestId,expectedStatus,null);}
         public PlanExecutionControlRequest(String clientRequestId,String expectedStatus,List<String> addMaterialNodeIds) {
-            this(clientRequestId,expectedStatus,addMaterialNodeIds,null,null);
+            this(clientRequestId,expectedStatus,addMaterialNodeIds,null,null,null);
+        }
+        public PlanExecutionControlRequest(String clientRequestId,String expectedStatus,List<String> addMaterialNodeIds,
+                                           String retryStepId,Integer retryAttempt) {
+            this(clientRequestId,expectedStatus,addMaterialNodeIds,retryStepId,retryAttempt,null);
         }
     }
     public record PlanExecutionAcceptRequest(String clientRequestId,String runId,Integer candidateIndex) {}

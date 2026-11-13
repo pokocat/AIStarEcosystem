@@ -1641,6 +1641,15 @@ components:
         addMaterialNodeIds: { type: array, nullable: true, maxItems: 16, items: { type: string }, description: '只用于 resume：把停下那一步 materials 里、仍在画布上的素材加入这次制作再重新编排。不在 materials 里或已删除 → 400 STUDIO_INPUT_INVALID；加入后超过 16 个 → 400 STUDIO_CONTEXT_LIMIT；其它操作带它 → 400。同一 clientRequestId 带不同的列表 → 409 STUDIO_REQUEST_CHANGED。' }
         retryStepId: { type: string, nullable: true, description: '只用于 resume。支持参考素材上传失败的片段（VIDEO_REF_UPLOAD_FAILED）及多段任务中人像审核超时的片段（VIDEO_ASSET_REVIEW_TIMEOUT）。和 retryAttempt 一起提供，沿用原片段输入，仅此片段开启新尝试。' }
         retryAttempt: { type: integer, minimum: 1, nullable: true, description: '页面所见的片段尝试次数。任务或片段状态已变化 → 409 STUDIO_PLAN_STALE。' }
+        budgetIncrease:
+          type: object
+          nullable: true
+          description: '只用于 resume。本人 AI 视频页任务因预算暂停时确认追加页面所示差额，并沿用原付款账户、分析和已完成步骤。与素材增补、片段重试互斥。预算变化时返回 409 STUDIO_PLAN_STALE。'
+          required: [stage, approvedCap, shortfall]
+          properties:
+            stage: { type: string, enum: [analysis, production] }
+            approvedCap: { type: integer, format: int64, minimum: 0, description: '页面显示的当前阶段上限。' }
+            shortfall: { type: integer, format: int64, minimum: 1, description: '页面显示的当前差额。' }
     StudioPlanExecutionAcceptRequest:
       type: object
       required: [clientRequestId, runId]

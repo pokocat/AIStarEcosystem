@@ -49,10 +49,10 @@ export function errorText(e: unknown) {
 }
 
 /** 企业积分开着时让用户选这次谁付款；没开就按个人账户，服务端照样校验。 */
-export async function chooseDirectorBilling(operation: string, expectedCost?: number): Promise<EnterpriseBillingSelection | undefined> {
+export async function chooseDirectorBilling(operation: string, expectedCost?: number, costCap?: number): Promise<EnterpriseBillingSelection | undefined> {
   if (process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED !== "1") return undefined;
   const { chooseStudioBilling } = await import("@/ip/studio-billing-dialog");
-  return chooseStudioBilling({ operation, expectedCost });
+  return chooseStudioBilling({ operation, expectedCost, costCap, checkBalancePerStep: operation === "director-pipeline" });
 }
 
 /** 一个按钮一个忙碌态：防连点，失败把服务端的原话（和原始错误，带错误码、详情）交给调用方显示。 */

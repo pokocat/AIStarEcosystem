@@ -2,16 +2,18 @@ import { ensureStudioVideoPortraits } from '@/ip/portrait-review-preflight';
 import { apiFetch } from '@/ip/api/_client';
 import { withStudioBilling } from './studio-billing';
 import { normalizeStudioError } from '@/ip/studio-errors';
-import type { StudioPlanExecutionStep } from '@ai-star-eco/types/ip-studio-workflow';
+import type { StudioPlanExecution, StudioPlanExecutionStep } from '@ai-star-eco/types/ip-studio-workflow';
 import type { StudioVideoTask, StudioVideoTaskCreate, StudioVideoTaskPage, StudioVideoTaskQuote } from '@ai-star-eco/types/ip-studio-video-task';
 
 export const videoTasks = (page = 0) => apiFetch<StudioVideoTaskPage>('/v1/ip-studio/video-tasks', { query: { page } });
 export const videoTask = (id: string) => apiFetch<StudioVideoTask>(`/v1/ip-studio/video-tasks/${encodeURIComponent(id)}`);
 export const videoTaskPrice = (query: Record<string, string | number | boolean | undefined>, signal?: AbortSignal) =>
   apiFetch<StudioVideoTaskQuote>('/v1/ip-studio/studio/video-task-price', { query, signal });
-/** estimate：页面上给用户看的预计花费（按钮上那个数）；budgetCap 是授权上限，只放悬停提示，不拿来判余额。 */
+/** 多步任务按步骤冻结，预计花费和任务预算不参与付款账户的余额判断。 */
 export async function prepareVideoTask(projectId: string, input: StudioVideoTaskCreate, estimate: number | undefined) {
-  const body = input.billing ? input : await withStudioBilling(projectId, input, { expectedCost: estimate, costCap: input.budgetCap });
+  const body = input.billing ? input : await withStudioBilling(projectId, input, {
+    expectedCost: estimate, costCap: input.budgetCap, checkBalancePerStep: input.kind !== 'direct',
+  });
   if (body.configuration) body.configuration = { ...body.configuration, billing: body.billing };
   if (body.video) body.video = { ...body.video, billing: body.billing };
   return body;
@@ -31,6 +33,11 @@ export function videoTaskLabel(task: StudioVideoTask) {
 export const videoTaskNeedsAction = (task: StudioVideoTask) => ['needs_user', 'failed', 'partial'].includes(videoTaskStatus(task));
 /** 没做完的那一步。标题用用户在进度条上看到的说法，内部步骤名（审核脚本、分镜图检查）只留在生成记录里；视频页和画布都读这里。 */
 export const videoTaskProblemStep = (task: StudioVideoTask) => task.execution?.steps.find(s => s.status === 'failed' || s.status === 'needs_user');
+export function videoTaskBudgetShortfall(execution?: StudioPlanExecution) {
+  return execution?.status === 'needs_user' && !execution.threadId
+    ? execution.budgets.find(item => item.stage === execution.stage && (item.shortfall ?? 0) > 0)
+    : undefined;
+}
 export function videoTaskSegmentRetry(task: StudioVideoTask, stepId?: string) {
   const execution = task.execution;
   const step = stepId ? execution?.steps.find(s => s.stage === execution.stage && s.id === stepId) : videoTaskProblemStep(task);

@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Spin } from 'antd';
+import { Button, Modal, Spin } from 'antd';
 import { observePortraitReviews, requestPortraitReview } from '../portrait-review-events';
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -11,7 +11,7 @@ import { nanoid } from 'nanoid';
 import type { IpRun, IpProjectDoc } from '@ai-star-eco/types';
 import type { StudioPlanExecutionStep } from '@ai-star-eco/types/ip-studio-workflow';
 import type { StudioVideoTask, StudioVideoTaskCreate } from '@ai-star-eco/types/ip-studio-video-task';
-import { videoTask, videoTasks, videoTaskLabel, videoTaskStatus, videoTaskCanvasHref, videoTaskNeedsAction, videoTaskResumeLabel, videoTaskProblemStep, videoTaskProblemText, videoTaskProblemTitle, videoTaskSegmentRetry } from '@/canvas-bridge/studio-video-tasks';
+import { videoTask, videoTasks, videoTaskLabel, videoTaskStatus, videoTaskCanvasHref, videoTaskNeedsAction, videoTaskResumeLabel, videoTaskProblemStep, videoTaskProblemText, videoTaskProblemTitle, videoTaskSegmentRetry, videoTaskBudgetShortfall } from '@/canvas-bridge/studio-video-tasks';
 import { cancelRun, readRun, readVideoJob, signKeys } from '@/canvas-bridge/api';
 import { dialogFocus } from '@/ip/dialog-focus';
 import { normalizeStudioError, StudioErrorNotice, useStudioFailure } from '@/ip/studio-errors';
@@ -253,6 +253,7 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
   const showFailure = useStudioFailure();
   const [runs, setRuns] = useState<Record<string, IpRun>>({}), [urls, setUrls] = useState<Record<string, string>>({});
   const [acting, setActing] = useState(false), [previewError, setPreviewError] = useState(false), [details, setDetails] = useState(false), [allPreviews, setAllPreviews] = useState(false);
+  const [budgetApproval, setBudgetApproval] = useState<{ stage: 'analysis' | 'production'; approvedCap: number; shortfall: number; requestId: string }>();
   const [poll, setPoll] = useState(0);
   const cache = useRef<Record<string, IpRun>>({}), projection = useRef(new Set<string>());
   const execution = task.execution, status = videoTaskStatus(task), phases = videoTaskPhases(task);
@@ -302,6 +303,10 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
   const retry = execution?.steps.find(s => s.id === task.retryStepId);
   const active = phases.find(p => p.state === 'running' || p.state === 'failed') ?? phases.find(p => p.state === 'waiting');
   const needsAction = videoTaskNeedsAction(task), resumeLabel = videoTaskResumeLabel(task);
+  const budget = videoTaskBudgetShortfall(execution);
+  const shortfall = budget?.shortfall ?? 0;
+  const matchingApproval = !!budgetApproval && budget?.stage === budgetApproval.stage
+    && budget.approvedCap === budgetApproval.approvedCap && shortfall === budgetApproval.shortfall;
   // 停下来等人的任务也能停止：不停的话这张草稿里没法再生成（同一张画布一次只跑一条）
   const stoppable = !!execution && (execution.status === 'needs_user' || execution.status === 'paused');
   const segmentRetry = videoTaskSegmentRetry(task);
@@ -310,7 +315,7 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
   const queuePosition = running && activeRun?.queue && activeRun.queue.position > 0 ? activeRun.queue.position : undefined;
   const exporting = running && active?.key === 'film' && final?.operation === 'assemble';
   const exportRun = exporting ? runs[final.runIds.at(-1) ?? ''] : undefined;
-  const heading = portraitReview.length ? '参考人像待核验' : completed ? '视频已完成' : status === 'done' ? '正在加载视频…' : failed ? videoTaskProblemTitle(failed) : needsAction ? '生成没有完成'
+  const heading = budget ? '任务预算不足' : portraitReview.length ? '参考人像待核验' : completed ? '视频已完成' : status === 'done' ? '正在加载视频…' : failed ? videoTaskProblemTitle(failed) : needsAction ? '生成没有完成'
     : status === 'canceled' ? '已停止生成' : status === 'paused' ? '已暂停' : retry ? '等待重试' : exporting ? studioExportStatus(exportRun?.stage) : queuePosition ? '排队中' : active ? `正在${active.label}` : '正在准备';
   const progress = active && active.total > 1 && active.key === 'boards' ? `分镜图 ${active.done} / ${active.total} 张已完成` : active && active.total > 1 && active.key === 'videos' ? `片段 ${active.done} / ${active.total} 段已完成` : '';
   const failure = failed?.reason ?? execution?.needsUserReason ?? (task.run?.status === 'failed' ? task.run.errorMessage : undefined);
@@ -330,6 +335,22 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
       onRefresh();
     }
     catch (error) { showFailure({ action: resumeLabel, error }); } finally { setActing(false); }
+  };
+  const raiseBudget = async () => {
+    if (!execution || !budgetApproval || !matchingApproval || acting) return;
+    const { requestId, ...budgetIncrease } = budgetApproval;
+    setActing(true);
+    try {
+      await resumeStudioPlanExecution(task.projectId, execution.id, {
+        clientRequestId: requestId, expectedStatus: 'needs_user', budgetIncrease,
+      });
+      setBudgetApproval(undefined);
+    } catch (error) {
+      showFailure({ action: '提高任务预算', error });
+    } finally {
+      setActing(false);
+      onRefresh();
+    }
   };
   const download = () => void downloadMedia(urls[result!], task.title, 'video/mp4', result!).catch(error => showFailure({ action: '下载视频', error }));
   const spent = execution?.budgets.reduce((n, b) => n + b.spent, 0) ?? task.run?.cost;
@@ -351,7 +372,15 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
   const portrait = ratio === '9:16';
   // 状态、进度条和操作在上面，做出来的图在下面（2026-11-07 用户要求）；进度条下面那一行只写已消耗的积分，不折行。
   const actionNote = running ? '可离开此页面，制作将在后台继续。' : spent ? `已消耗 ${spent} 积分` : '';
+  const totalCap = execution?.budgets.reduce((total, item) => total + item.approvedCap, 0) ?? 0;
+  const budgetAction = '提高预算并继续';
   return <div className={`video-task-view is-${status}${takes.length > 1 ? ' has-takes' : ''}`}>
+    {budgetApproval && <Modal open={matchingApproval} title="提高任务预算" okText={budgetAction} cancelText="取消"
+      confirmLoading={acting} closable={!acting} maskClosable={!acting} keyboard={!acting} getContainer={false}
+      onOk={() => void raiseBudget()} onCancel={() => { if (!acting) setBudgetApproval(undefined); }}>
+      <p>需追加 {shortfall.toLocaleString('zh-CN')} 积分。本任务的预算上限将从 {totalCap.toLocaleString('zh-CN')} 提高到 {(totalCap + shortfall).toLocaleString('zh-CN')} 积分。</p>
+      <p>沿用原付款账户和已完成的步骤，按后续步骤实际用量扣费。</p>
+    </Modal>}
     {completed ? <div className="video-final-player"><SignedVideo src={urls[result]} storageKey={result} controls playsInline preload="metadata" aria-label={task.title}/></div>
       : <div className="video-production-head">
         <div className="video-state-heading"><span className={`video-state-symbol${running ? ' is-active' : failed || needsAction ? ' is-problem' : ''}`} aria-hidden="true">{failed || needsAction ? <AlertCircle size={24} strokeWidth={1.35}/> : running ? <AiMark size={22}/> : <Layers size={24} strokeWidth={1.35}/>}</span>
@@ -359,7 +388,8 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
           {retry ? reader(`「${retry.title}」失败，稍后自动重试（第 ${retry.attempt} 次，共 3 次）。`)
             : queuePosition ? reader(`${queuePosition > 1 ? `前面还有 ${queuePosition - 1} 个任务` : '即将开始'} · 已用时 ${elapsed}`)
             : running ? reader([progress, `制作总用时 ${elapsed}`].filter(Boolean).join(' · ')) : null}
-          {needsAction && failureError && <p className="video-problem-note">{videoTaskProblemText(task)}{failed && failed.attempt >= 3 && !resumeLabel && ' 请在画布上查看这一步，处理后继续生成。'}
+          {budget ? <p className="video-problem-note">继续制作还需追加 {shortfall.toLocaleString('zh-CN')} 积分的任务预算。</p>
+            : needsAction && failureError && <p className="video-problem-note">{videoTaskProblemText(task)}{failed && failed.attempt >= 3 && !resumeLabel && ' 请在画布上查看这一步，处理后继续生成。'}
             {failureError.logId && <StudioErrorNotice error={failure} autoReport={false} label="查看错误详情"/>}</p>}
           {status === 'paused' && reader('已提交的步骤会继续完成。')}
         </div>
@@ -367,9 +397,11 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
         {status !== 'done' && <footer className="video-production-actions">
           <p title={actionNote || undefined}>{actionNote}</p>
           {running ? <button type="button" disabled={acting} onClick={() => void stop()}><Square size={12}/>停止生成</button>
-            : resumeLabel ? <div className="video-footer-actions"><Link className="video-task-link" href={videoTaskCanvasHref(task)}>在画布上查看</Link>
+            : resumeLabel || budget ? <div className="video-footer-actions"><Link className="video-task-link" href={videoTaskCanvasHref(task)}>在画布上查看</Link>
               {stoppable && <button type="button" disabled={acting} onClick={() => void stop()}><Square size={12}/>停止生成</button>}
-              <button type="button" className="is-primary" disabled={acting} onClick={() => void resume()}>{resumeLabel === '继续生成' ? <Play size={12}/> : <RefreshCw size={12}/>} {resumeLabel}</button></div>
+              {budget ? <button type="button" className="is-primary" disabled={acting}
+                onClick={() => setBudgetApproval({ stage: budget.stage, approvedCap: budget.approvedCap, shortfall, requestId: nanoid() })}>{budgetAction}</button>
+                : <button type="button" className="is-primary" disabled={acting} onClick={() => void resume()}>{resumeLabel === '继续生成' ? <Play size={12}/> : <RefreshCw size={12}/>} {resumeLabel}</button>}</div>
             : <div className="video-footer-actions"><Link className={needsAction ? 'video-task-link is-primary' : 'video-task-link'} href={videoTaskCanvasHref(task)}>在画布上查看<ArrowUpRight size={14} strokeWidth={1.5}/></Link>
               {stoppable && <button type="button" disabled={acting} onClick={() => void stop()}><Square size={12}/>停止生成</button>}</div>}
         </footer>}

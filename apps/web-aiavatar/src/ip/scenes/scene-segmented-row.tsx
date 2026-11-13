@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Check, Download, Loader2, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { IpProjectDoc, IpRun } from "@ai-star-eco/types";
@@ -9,6 +10,7 @@ import type { CanvasNodeData } from "@/canvas/types/canvas";
 import { readRun, signKeys } from "@/canvas-bridge/api";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
+import { videoTaskBudgetShortfall, videoTaskHref } from "@/canvas-bridge/studio-video-tasks";
 import { segmentedActive, segmentedPhases, segmentedResultStep, type SegmentedRecord } from "@/canvas-bridge/studio-segmented";
 import { cancelStudioPlanExecution, executionRestoreUpserts, getStudioPlanExecution, missingExecutionNodes, pauseStudioPlanExecution, projectCanvasOps, readProjectedNodes,
   rememberProjectedNodes, resumeStudioPlanExecution, stepNodeId, stepRunCandidates } from "@/canvas-bridge/studio-plan-execution";
@@ -100,6 +102,7 @@ export function SegmentedRow({ record, projectId, doc, persist, busy, onConfirm,
   const phases = execution ? segmentedPhases(execution) : [];
   const spent = execution?.budgets.find(b => b.stage === "production")?.spent ?? 0;
   const status = execution?.status;
+  const shortfall = videoTaskBudgetShortfall(execution);
   const text = !execution ? "正在加载进度…"
     : status === "running" ? "可离开此页面，制作将在后台继续。"
     : status === "paused" ? "已暂停，已提交的步骤会继续完成。"
@@ -119,7 +122,8 @@ export function SegmentedRow({ record, projectId, doc, persist, busy, onConfirm,
     {execution && spent > 0 && <p className="scene-segmented-spent">已用 {spent.toLocaleString("zh-CN")} 积分</p>}
     <div className="scene-row-actions">
       {status === "running" && <button type="button" disabled={acting} onClick={() => void act("暂停", () => pauseStudioPlanExecution(projectId, executionId, control))}><Pause size={13}/>暂停</button>}
-      {(status === "paused" || status === "needs_user") && <button type="button" className="is-primary" disabled={acting} onClick={() => void act("继续制作", () => resumeStudioPlanExecution(projectId, executionId, control))}><Play size={13}/>继续</button>}
+      {shortfall ? <Link className="scene-text-button" href={videoTaskHref({ id: executionId, projectId, sceneId: record.request?.sceneId ?? "ecom-talking" })}>调整预算</Link>
+        : (status === "paused" || status === "needs_user") && <button type="button" className="is-primary" disabled={acting} onClick={() => void act("继续制作", () => resumeStudioPlanExecution(projectId, executionId, control))}><Play size={13}/>继续</button>}
       {segmentedActive(execution) && <button type="button" disabled={acting} onClick={() => void act("停止制作", () => cancelStudioPlanExecution(projectId, executionId, control))}><Square size={13}/>停止</button>}
       {url && <button type="button" onClick={() => void downloadMedia(url, record.title, undefined, resultKey)}><Download size={13}/>下载</button>}
     </div>

@@ -133,6 +133,24 @@ class StudioPlanExecutorTest {
     JsonNode step(String id) throws Exception {for(JsonNode s:state().path("steps"))if(id.equals(s.path("id").asText()))return s;return null;}
     JsonNode budget() throws Exception {return om.readTree(row.getBudgetJson()).path("production");}
 
+    @Test void settlementReleasesAVideoBudgetShortfallWithoutStartingAnotherStep() throws Exception {
+        var first=videoStep("v1",80).put("status","running");
+        first.withArray("runIds").add("IPR-first");
+        execution("running",100,first,videoStep("v2",50));
+        videoPageRetries();
+        row.setThreadId(null);
+        dtos.put("IPR-first",dto("IPR-first","running",0,null));
+        executor.advance("PEX-1");
+        assertEquals(30,budget().path("shortfall").asLong());
+        assertEquals("needs_user",row.getStatus());
+
+        dtos.put("IPR-first",dto("IPR-first","done",40,videoOutput("first.mp4")));
+        executor.advance("PEX-1");
+        assertFalse(budget().has("shortfall"));
+        assertEquals("needs_user",row.getStatus());
+        assertTrue(submitted.isEmpty());
+    }
+
     private void videoPageRetries() throws Exception {
         ObjectNode state=om.readValue(row.getStepsJson(),ObjectNode.class);state.putObject("videoTask").put("kind","direct");row.setStepsJson(state.toString());
         var helper=new StudioSegmentedRun(new StudioPlanOutputs(runRepository,projects,om),om);

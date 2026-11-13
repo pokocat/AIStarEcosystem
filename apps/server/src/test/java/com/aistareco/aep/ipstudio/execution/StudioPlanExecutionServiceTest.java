@@ -187,7 +187,9 @@ class StudioPlanExecutionServiceTest {
         var state=sceneState();
         ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",233).put("spent",10);
         var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
-        assertThrows(BusinessException.class,()->service.confirmVideoProduction(row,state,budget,"compiled"),"两个都省掉还要 224，剩余预算只有 223");
+        service.confirmVideoProduction(row,state,budget,"compiled");
+        assertEquals("needs_user",row.getStatus());
+        assertEquals(1,budget.path("analysis").path("shortfall").asLong());
         assertEquals("analysis",row.getStage());assertTrue(state.path("steps").isEmpty());assertFalse(budget.has("production"));
     }
 
@@ -198,8 +200,50 @@ class StudioPlanExecutionServiceTest {
         state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p").put("optimize",false);
         ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",45).put("spent",10);
         var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
-        assertThrows(BusinessException.class,()->service.confirmVideoProduction(row,state,budget,"compiled"));
+        service.confirmVideoProduction(row,state,budget,"compiled");
+        assertEquals("needs_user",row.getStatus());
+        assertEquals(5,budget.path("analysis").path("shortfall").asLong());
         assertEquals("analysis",row.getStage());assertTrue(state.path("steps").isEmpty());assertFalse(budget.has("production"));
+        state.withArray("steps").addObject().put("id","compile").put("stage","analysis").put("status","done")
+                .putArray("runIds").add("compiled");
+        row.setSkillKey("reference-video-recreation");
+        row.setStepsJson(state.toString());row.setBudgetJson(budget.toString());rows.put(row.getId(),row);
+
+        var outdated=new PlanExecutionControlRequest("outdated","needs_user",null,null,null,new PlanExecutionBudgetIncrease("analysis",45L,4L));
+        assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.resume("u","p",row.getId(),outdated)).getCode());
+        var approve=new PlanExecutionControlRequest("approve","needs_user",null,null,null,new PlanExecutionBudgetIncrease("analysis",45L,5L));
+        var resumed=service.resume("u","p",row.getId(),approve);
+        assertEquals("running",resumed.status());
+        assertEquals(50,resumed.budgets().get(0).approvedCap());
+        assertNull(resumed.budgets().get(0).shortfall());
+        assertEquals(50,service.resume("u","p",row.getId(),approve).budgets().get(0).approvedCap());
+
+        state=om.readValue(row.getStepsJson(),ObjectNode.class);
+        budget=om.readValue(row.getBudgetJson(),ObjectNode.class);
+        service.confirmVideoProduction(row,state,budget,"compiled");
+        assertEquals("production",row.getStage());
+        assertEquals("compiled",state.path("steps").get(0).path("runIds").get(0).asText());
+        assertEquals(40,budget.path("production").path("approvedCap").asLong());
+    }
+
+    @Test void sceneBudgetRaiseReopensOnlyTheBudgetBlockedStep() throws Exception {
+        var state=sceneState();
+        state.withArray("steps").addObject().put("id","v1").put("stage","production").put("status","done")
+                .putArray("runIds").add("IPR-first");
+        state.withArray("steps").addObject().put("id","v2").put("stage","production").put("status","needs_user")
+                .put("budgetBlocked",true).put("attempt",2).put("reason","本阶段预算还差 25 积分");
+        var budget=om.createObjectNode();
+        budget.putObject("production").put("approvedCap",100).put("spent",80).put("inFlight",10).put("shortfall",25);
+        var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").skillKey("reference-video-recreation")
+                .stage("production").status("needs_user").stepsJson(state.toString()).budgetJson(budget.toString()).build();
+        rows.put(row.getId(),row);
+        var request=new PlanExecutionControlRequest("raise","needs_user",null,null,null,new PlanExecutionBudgetIncrease("production",100L,25L));
+        var resumed=service.resume("u","p",row.getId(),request);
+        assertEquals("running",resumed.status());
+        assertEquals(125,resumed.budgets().get(0).approvedCap());
+        assertEquals(List.of("IPR-first"),resumed.steps().get(0).runIds());
+        assertEquals("pending",resumed.steps().get(1).status());
+        assertEquals(2,resumed.steps().get(1).attempt());
     }
 
     String currentPlan(String id,String stage,String raw,long... quotes) throws Exception {

@@ -7,7 +7,7 @@ import { ArrowLeft, LocateFixed, Play } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import type { IpRun } from '@ai-star-eco/types';
 import type { StudioVideoTask } from '@ai-star-eco/types/ip-studio-video-task';
-import { videoTask, videoTaskHref, videoTaskLabel, videoTaskProblemText, videoTaskResumeLabel, videoTaskSegmentRetry } from '@/canvas-bridge/studio-video-tasks';
+import { videoTask, videoTaskHref, videoTaskLabel, videoTaskProblemText, videoTaskResumeLabel, videoTaskSegmentRetry, videoTaskBudgetShortfall } from '@/canvas-bridge/studio-video-tasks';
 import { useStudioFailure } from './studio-errors';
 import { executionRestoreUpserts, projectCanvasOps, resumeStudioPlanExecution, stepNodeId, stepRunCandidates } from '@/canvas-bridge/studio-plan-execution';
 import { dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
@@ -96,10 +96,11 @@ function CanvasVideoTaskBar({ projectId, id }: { projectId: string; id: string }
     } catch (error) { showFailure({ action, error }); }
     finally { setBusy(false); }
   };
+  const budget = videoTaskBudgetShortfall(task?.execution);
   return <aside className="canvas-video-task-context" aria-label="视频任务">
-    {task ? <><Link href={videoTaskHref(task)}><ArrowLeft size={14}/>返回视频页</Link><div><strong>{task.title}</strong><p>{[videoTaskLabel(task), videoTaskProblemText(task)].filter(Boolean).join(' · ')}</p></div>
+    {task ? <><Link href={videoTaskHref(task)}><ArrowLeft size={14}/>{budget ? '在视频页调整预算' : '返回视频页'}</Link><div><strong>{task.title}</strong><p>{[videoTaskLabel(task), videoTaskProblemText(task)].filter(Boolean).join(' · ')}</p></div>
       {problemNode && <button type="button" onClick={() => dispatchStudioCommand('focus', problemNode)}><LocateFixed size={14}/>定位问题</button>}
-      {task.execution && (task.execution.status === 'paused' || task.execution.status === 'needs_user') && <button type="button" className="is-primary" disabled={busy} onClick={() => void resume()}><Play size={13}/>{resumeLabel(task)}</button>}</>
+      {!budget && task.execution && (task.execution.status === 'paused' || task.execution.status === 'needs_user') && <button type="button" className="is-primary" disabled={busy} onClick={() => void resume()}><Play size={13}/>{resumeLabel(task)}</button>}</>
       : <p>{error || '正在加载任务…'}</p>}
     {task && error && <p role="status">{error}</p>}
   </aside>;

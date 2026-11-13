@@ -619,7 +619,9 @@ export interface StudioPlanExecutionControlRequest { clientRequestId: string; ex
   /** Resume only: add these objects (from the stopped step's `materials`, still on the canvas) before re-planning. */
   addMaterialNodeIds?: string[];
   /** Resume only: retry a reference-upload failure or portrait review timeout for the displayed attempt. */
-  retryStepId?: string; retryAttempt?: number }
+  retryStepId?: string; retryAttempt?: number;
+  /** Resume an AI video task by adding exactly the displayed shortfall to its current stage budget. */
+  budgetIncrease?: { stage: StudioPlanStage; approvedCap: number; shortfall: number } }
 export interface StudioPlanExecutionAcceptRequest { clientRequestId: string; runId: string; candidateIndex?: number }
 
 // ─── AI 视频页的长视频：比模型单段上限长，一键做到成片（docs/studio-segmented-video.md）───
