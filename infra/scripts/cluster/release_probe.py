@@ -19,6 +19,7 @@ USERNAME = "aistar-release-probe"
 HOST = "api.aibuzz.cn"
 ENVIRONMENT = "/etc/aistar/server.json"
 TOKEN_TTL = 90
+PRODUCTS = {"aiavatar", "celebrity", "drama", "music", "star"}
 
 
 def segment(value):
@@ -70,6 +71,7 @@ def request(ip, path, token=None):
 
 def matches_account(body):
     data = body.get("data") or {}
+    enrollments = data.get("enrollments")
     return (
         body.get("success") is True
         and data.get("id") == SUBJECT
@@ -78,7 +80,12 @@ def matches_account(body):
         and data.get("kind") == "personal"
         and data.get("operatorRole") is None
         and data.get("identityUid") is None
-        and data.get("enrollments") == []
+        and data.get("platforms") == []
+        and isinstance(enrollments, list)
+        and len(enrollments) == len(PRODUCTS)
+        and all(isinstance(row, dict) and row.get("status") == "revoked" and row.get("source") == "legacy"
+                for row in enrollments)
+        and {row.get("product") for row in enrollments} == PRODUCTS
         and data.get("studio") is None
         and data.get("phone") is None
         and data.get("email") is None

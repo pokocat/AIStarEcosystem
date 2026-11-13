@@ -40,13 +40,35 @@ public class ReleaseProbeAccount {
                     WHERE u.id = ? AND u.username = ? AND u.kind = 'PERSONAL' AND u.status = 'ACTIVE'
                       AND u.email IS NULL AND u.phone IS NULL AND u.password_hash IS NULL
                       AND u.operator_role IS NULL AND u.identity_uid IS NULL
-                      AND NOT EXISTS (SELECT 1 FROM public.product_enrollment e WHERE e.user_id = u.id)
+                      AND NOT EXISTS (SELECT 1 FROM public.entitlement_grant g WHERE g.user_id = u.id)
                     """)) {
                 verify.setString(1, SUBJECT);
                 verify.setString(2, USERNAME);
                 try (var result = verify.executeQuery()) {
                     if (!result.next() || result.getInt(1) != 1) {
                         throw new IllegalStateException("Probe account identity or permissions do not match");
+                    }
+                }
+            }
+            // Any enrollment row prevents the startup backfill from interpreting empty legacy platforms as full access.
+            try (var deny = connection.prepareStatement("""
+                    INSERT INTO public.product_enrollment (id, user_id, product, status, source, created_at, updated_at)
+                    SELECT 'release-probe-' || product, ?, product, 'REVOKED', 'LEGACY', now(), now()
+                    FROM unnest(ARRAY['aiavatar', 'celebrity', 'drama', 'music', 'star']) AS products(product)
+                    ON CONFLICT (user_id, product) DO NOTHING
+                    """)) {
+                deny.setString(1, SUBJECT);
+                deny.executeUpdate();
+            }
+            try (var verify = connection.prepareStatement("""
+                    SELECT count(*), count(*) FILTER (WHERE status = 'REVOKED' AND source = 'LEGACY'
+                      AND product IN ('aiavatar', 'celebrity', 'drama', 'music', 'star'))
+                    FROM public.product_enrollment WHERE user_id = ?
+                    """)) {
+                verify.setString(1, SUBJECT);
+                try (var result = verify.executeQuery()) {
+                    if (!result.next() || result.getInt(1) != 5 || result.getInt(2) != 5) {
+                        throw new IllegalStateException("Probe account product access does not match");
                     }
                 }
             }

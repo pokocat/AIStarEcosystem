@@ -286,10 +286,12 @@ class ReleaseProbeAccountTests(unittest.TestCase):
  def test_me_must_be_the_unprivileged_provisioned_account(self):
   import release_probe
   account={'id':release_probe.SUBJECT,'username':release_probe.USERNAME,'status':'active',
-           'kind':'personal','operatorRole':None,'hasPassword':False,'enrollments':[]}
+           'kind':'personal','operatorRole':None,'hasPassword':False,'platforms':[],
+           'enrollments':[{'product':p,'status':'revoked','source':'legacy'} for p in sorted(release_probe.PRODUCTS)]}
   self.assertTrue(release_probe.matches_account({'success':True,'data':account}))
+  active=[{**account['enrollments'][0],'status':'active'},*account['enrollments'][1:]]
   for drift in ({'id':'different-user'},{'status':'suspended'},{'operatorRole':'operator'},
-                {'enrollments':[{'product':'aiavatar','status':'active'}]},{'hasPassword':True}):
+                {'enrollments':active},{'enrollments':[]},{'platforms':['aiavatar']},{'hasPassword':True}):
    with self.subTest(drift=drift):
     self.assertFalse(release_probe.matches_account({'success':True,'data':{**account,**drift}}))
  def test_auto_probe_requires_complete_evidence_from_the_expected_node(self):
