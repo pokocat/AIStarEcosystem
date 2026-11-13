@@ -242,8 +242,23 @@ public class FileStorageService {
     }
 
     private StoredFile ingest(InputStream in, String category, String ownerId, String ext, String contentType) throws IOException {
+        return ingest(in, category, ownerId, buildKey(category, ownerId, ext), contentType, true);
+    }
+
+    /** A persisted job can retry writing the same output without leaving duplicate objects. */
+    public StoredFile storeAllocated(Path file, String category, String ownerId, String key, String contentType) throws IOException {
+        String prefix = ownedKeyPrefix(category, ownerId);
+        if (!key.startsWith(prefix) || !key.substring(prefix.length()).matches("[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]+")) {
+            throw new IllegalArgumentException("Invalid allocated storage key");
+        }
+        try (InputStream in = Files.newInputStream(file)) {
+            return ingest(in, category, ownerId, key, contentType, false);
+        }
+    }
+
+    private StoredFile ingest(InputStream in, String category, String ownerId, String key, String contentType,
+                              boolean recordUsage) throws IOException {
         requireDurableDriver();
-        String key = buildKey(category, ownerId, ext);
         Path local = Paths.get(props.getLocalDir(), key);
         Files.createDirectories(local.getParent());
         Files.copy(in, local, StandardCopyOption.REPLACE_EXISTING);
@@ -265,7 +280,7 @@ public class FileStorageService {
             url = props.getPublicUrlBase() + "/" + key;
             signed = url;
         }
-        recordStudioUsage(category, ownerId, key, bytes, contentType);
+        if (recordUsage) recordStudioUsage(category, ownerId, key, bytes, contentType);
         return new StoredFile(key, url, signed, keptLocal, bytes, contentType);
     }
 
