@@ -1,5 +1,6 @@
 import { observePortraitReviews } from '../portrait-review-events';
 import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
+import { studioMediaUploadForm } from '@/canvas-bridge/media-upload-form';
 import { legacyImageBillingDetails, withStudioBilling, invalidateStudioModelQuote } from "@/canvas-bridge/studio-billing";
 // ─────────────────────────────────────────────────────────────────────────────
 // api/ip-studio.ts — AI IP 工作台 API 调用层。
@@ -57,8 +58,7 @@ export async function uploadImage(file: File): Promise<IpUploadResult> {
       fileName: file.name,
     });
   }
-  const form = new FormData();
-  form.append("file", await prepareImageForUpload(file));
+  const form = studioMediaUploadForm(await prepareImageForUpload(file));
   return apiFetch<IpUploadResult>("/v1/ip-studio/uploads", { method: "POST", body: form });
 }
 

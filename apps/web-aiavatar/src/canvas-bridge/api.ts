@@ -1,6 +1,7 @@
 import { observePortraitReviews } from '@/ip/portrait-review-events';
 import { ensurePortraitInputs } from '@/ip/portrait-review-preflight';
 import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
+import { studioMediaUploadForm } from './media-upload-form';
 import { legacyImageBillingDetails, withStudioBilling, invalidateStudioModelQuote } from "./studio-billing";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 // 画布 → 本仓服务端的调用层（薄封装）。
@@ -72,8 +73,7 @@ export type CanvasImageOrigin = { projectId: string; nodeId: string; title: stri
 
 /** 上传一张图，落 OSS。返回的 key 是真值，url 是当次派生的签名地址。 */
 export async function uploadImage(file: File | Blob, fileName = "image.png", origin?: CanvasImageOrigin) {
-  const form = new FormData();
-  form.append("file", await prepareImageForUpload(file instanceof File ? file : new File([file], fileName)));
+  const form = studioMediaUploadForm(await prepareImageForUpload(file instanceof File ? file : new File([file], fileName)));
   if (origin) {
     form.append("nodeId", origin.nodeId);
     form.append("title", origin.title);

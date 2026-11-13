@@ -1,5 +1,6 @@
 import { ensureStudioVideoPortraits } from '@/ip/portrait-review-preflight';
 import { prepareStudioImageUpload } from './studio-image-file';
+import { studioMediaUploadForm } from './media-upload-form';
 import { withStudioBilling, invalidateStudioModelQuote, studioCreditShortageCancel, STUDIO_GRANT_HINT, type StudioShortageOptions } from "./studio-billing";
 import { isStudioCreditShortage } from "./studio-billing-cancel";
 import type { StudioVoiceCatalog,StudioVoiceProfile,StudioAdoptVoiceRequest,StudioBindVoiceRequest } from "@ai-star-eco/types/ip-studio-workflow";
@@ -19,7 +20,7 @@ export const importStudioStory = (projectId: string, file: File) => {
 
 export const importStudioMedia = async (projectId: string, file: File, mediaType: StudioMediaImportResult['mediaType']) => {
   const prepared = mediaType === 'image' ? await prepareStudioImageUpload(file) : file;
-  const body = new FormData(); body.append('file', prepared); body.append('mediaType', mediaType);
+  const body = studioMediaUploadForm(prepared); body.append('mediaType', mediaType);
   return apiFetch<StudioMediaImportResult>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/media-import`, { method: "POST", body });
 };
 

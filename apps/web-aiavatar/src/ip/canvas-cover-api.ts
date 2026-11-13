@@ -1,6 +1,7 @@
 import { prepareImageForUpload } from '@ai-star-eco/api-client/image-upload';
 import { apiFetch } from '@ai-star-eco/api-client';
 import { signKeys } from '@/canvas-bridge/api';
+import { studioMediaUploadForm } from '@/canvas-bridge/media-upload-form';
 import type { IpCanvasCover, IpCanvasCoverTarget } from '@ai-star-eco/types';
 import { USE_MOCK, mockDelay } from './api/_client';
 import { MOCK_TEMPLATES, mockStore } from './mocks/ip-studio';
@@ -23,7 +24,7 @@ export async function uploadCanvasCover(target: IpCanvasCoverTarget, id: string,
     if ('lookCount' in item) item.coverVideoUrl = undefined;
     return mockDelay({ coverUrl: item.coverUrl });
   }
-  const body = new FormData(); body.append('file', await prepareImageForUpload(file));
+  const body = studioMediaUploadForm(await prepareImageForUpload(file));
   return apiFetch<IpCanvasCover>(`/v1/ip-studio/covers/${target}/${encodeURIComponent(id)}`, { method: "POST", body });
 }
 export async function selectCanvasCover(target: IpCanvasCoverTarget, id: string, storageKey: string) {

@@ -25,16 +25,16 @@ test('a failed image preparation sends no request and other media keeps original
   expect(mocks.prepare).toHaveBeenCalledTimes(1);
 });
 
-test('library upload sends a fresh copy of the prepared image with its filename and media type', async () => {
+test('library upload sends the prepared image as a Blob with its filename and media type', async () => {
   const original = new File(['original'], 'camera.heic');
   const prepared = new File(['image bytes'], 'camera.jpg', { type: 'image/jpeg' });
-  const readBytes = vi.spyOn(prepared, 'arrayBuffer');
+  const slice = vi.spyOn(prepared, 'slice');
   mocks.prepare.mockResolvedValueOnce(prepared);
   mocks.fetch.mockResolvedValueOnce({ key: 'own/camera.jpg' });
 
   await uploadLibraryMedia(original, 'image', 'folder');
 
-  expect(readBytes).toHaveBeenCalledOnce();
+  expect(slice).toHaveBeenCalledWith(0, prepared.size, prepared.type);
   expect(mocks.prepare).toHaveBeenCalledWith(original);
   const [path, { body }] = mocks.fetch.mock.calls[0] as [string, { body: FormData }];
   expect(path).toBe('/v1/ip-studio/library/uploads');
@@ -45,4 +45,25 @@ test('library upload sends a fresh copy of the prepared image with its filename 
   expect(await part.text()).toBe('image bytes');
   expect(body.get('mediaType')).toBe('image');
   expect(body.get('folderId')).toBe('folder');
+});
+
+test.each([
+  ['video', 'clip.mp4', 'video/mp4'],
+  ['audio', 'voice.wav', 'audio/wav'],
+] as const)('library and canvas preserve %s bytes without reading the File into memory', async (kind, name, type) => {
+  const file = new File(['media bytes'], name, { type });
+  const slice = vi.spyOn(file, 'slice');
+  const readBytes = vi.spyOn(file, 'arrayBuffer');
+  await uploadLibraryMedia(file, kind);
+  await importStudioMedia('project', file, kind);
+
+  expect(slice).toHaveBeenCalledTimes(2);
+  expect(readBytes).not.toHaveBeenCalled();
+  for (const [, { body }] of mocks.fetch.mock.calls as [string, { body: FormData }][]) {
+    const part = body.get('file') as File;
+    expect(part.name).toBe(name);
+    expect(part.type).toBe(type);
+    expect(await part.text()).toBe('media bytes');
+    expect(body.get('mediaType')).toBe(kind);
+  }
 });

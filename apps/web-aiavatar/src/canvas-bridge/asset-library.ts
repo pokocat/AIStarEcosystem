@@ -1,4 +1,5 @@
 import { prepareStudioImageUpload } from './studio-image-file';
+import { studioMediaUploadForm } from './media-upload-form';
 import { withStudioBilling } from "./studio-billing";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { apiFetch, apiFetchPaginated } from '@ai-star-eco/api-client';
@@ -22,16 +23,7 @@ export const addLibraryVersion=(id:string,storageKey:string,main=true)=>apiFetch
 export const extractLibraryAssets=async(projectId:string,body:{billing?:EnterpriseBillingSelection;nodeId:string;analyze?:boolean;episodeNo?:number;clientRequestId?:string;model?:string;maxCost?:number})=>apiFetch<LibraryExtraction>(`/v1/ip-studio/projects/${projectId}/library/extract`,{method: "POST",body:body.analyze?await withStudioBilling(projectId,body,{operation:"asset-extract",textUsage:true}):body});
 export const saveLibraryExtraction=(projectId:string,body:{nodeId:string;sourceHash:string;folderId?:string;items:LibraryCandidate[]})=>apiFetch<LibraryObject[]>(`/v1/ip-studio/projects/${projectId}/library/save-extraction`,{method: "POST",body});
 export async function uploadLibraryMedia(file: File, mediaType: 'image' | 'video' | 'audio' = 'image', folderId?: string) {
-  const body = new FormData();
-  if (mediaType === 'image') {
-    const image = await prepareStudioImageUpload(file);
-    // Safari 26.5.2 can send an empty multipart body for a file from the picker.
-    // Read the prepared image in the page before handing it to the network process.
-    const content = new Blob([await image.arrayBuffer()], { type: image.type });
-    body.append('file', content, image.name);
-  } else {
-    body.append('file', file);
-  }
+  const body = studioMediaUploadForm(mediaType === 'image' ? await prepareStudioImageUpload(file) : file);
   body.append('mediaType', mediaType);
   if (folderId) body.append('folderId', folderId);
   return apiFetch<StudioMediaImportResult>(`${LIBRARY_BASE}/uploads`, { method: "POST", body });
