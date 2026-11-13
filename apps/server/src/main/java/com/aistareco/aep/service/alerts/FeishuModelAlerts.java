@@ -18,6 +18,7 @@ import java.util.*;
 public class FeishuModelAlerts {
     private static final java.time.format.DateTimeFormatter BEIJING_TIME = java.time.format.DateTimeFormatter
             .ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(java.time.ZoneId.of("Asia/Shanghai"));
+    static final String ADMIN_LINK = "\n\n模型后台：https://admin.aibuzz.cn/admin/platform/ai-models";
     private static final Logger log=LoggerFactory.getLogger(FeishuModelAlerts.class);
     private final JdbcTemplate db;private final FeishuAlertConfig config;private final FeishuAlertClient client;
     @org.springframework.beans.factory.annotation.Autowired private ModelAlertContext modelContext;
@@ -112,20 +113,28 @@ public class FeishuModelAlerts {
         if(status==null)status=legacyStatus;
         String reason=ProviderAlertText.sanitize(String.join("\n",reasons));
         if(reason.codePointCount(0, reason.length())>1200) reason=reason.substring(0,reason.offsetByCodePoints(0,1200))+"…";
-        var card = new FeishuTaskCard();
-        card.field("告警时间（北京时间）", BEIJING_TIME.format(occurredAt));
-        card.field("错误原因", reason);
-        card.field("我方错误码", code);
-        card.field("远端 HTTP 状态", status == null ? "" : "HTTP " + status);
-        card.field("远端追踪号", String.join("；",ids.stream().limit(8).toList()));
-        card.field("我方任务", task);
-        card.field("我方追查号", logId);
-        card.field("远端任务 ID", details.remoteTask());
-        card.field("供应商 / 端点", details.endpoint());
-        card.field("模型", details.model());
-        card.field("用户", user);
-        card.field("操作", details.operation());
-        card.field("报错操作链接", details.page());
-        return card.finish(ProviderAlertText.sanitize(String.join("\n",responses)), details.page());
+        var text = new StringBuilder("【模型任务告警】\n\n");
+        field(text, "告警时间（北京时间）", BEIJING_TIME.format(occurredAt));
+        field(text, "错误原因", reason);
+        field(text, "我方错误码", code);
+        field(text, "用户", user);
+        field(text, "操作", details.operation());
+        field(text, "报错操作链接", details.page());
+        text.append('\n');
+        field(text, "我方任务", task);
+        field(text, "我方追查号", logId);
+        field(text, "远端任务 ID", details.remoteTask());
+        field(text, "供应商 / 端点", details.endpoint());
+        field(text, "模型", details.model());
+        field(text, "远端 HTTP 状态", status == null ? "" : "HTTP " + status);
+        field(text, "远端追踪号", String.join("；",ids.stream().limit(8).toList()));
+        String response = ProviderAlertText.sanitize(String.join("\n", responses));
+        text.append("\n---\n\n服务方返回：");
+        text.append(response.isBlank() ? "—" : "\n" + response);
+        return text.append(ADMIN_LINK).toString();
+    }
+
+    private static void field(StringBuilder text, String label, String value) {
+        text.append("- ").append(label).append('：').append(value == null || value.isBlank() ? "—" : value).append('\n');
     }
 }
