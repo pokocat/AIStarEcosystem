@@ -115,17 +115,19 @@ class StudioPlanExecutionServiceTest {
     /** A native planning run with a normalized, quoted, fingerprinted plan. */
     /** A plan run that is also the thread's current plan, with its pending card on assistant message {@code msg-<runId>}. */
     @Test void sceneRecreationContinuesIntoProductionUnderTheOriginalTotalCap() throws Exception {
-        planRun("compiled","production",PRODUCTION,40);
+        planRun("compiled","production",PRODUCTION,1940);
         var quote=mock(StudioPlanQuoter.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",quote);
         ObjectNode state=om.createObjectNode();state.putArray("steps");
         state.putObject("videoTask").putObject("request").putObject("configuration").put("duration",12).put("ratio","9:16").put("model","ep-h3").put("tier","768p").put("optimize",false);
-        // 页面批准的上限要放得下制作报价的 3 倍（留给检查不合格后的重出）：报价 40，剩 190
-        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",200).put("spent",10).put("requestFingerprint","original");
+        // 线上回归：分析扣了 10，剩余 5804 足够首次制作，但比三倍报价少 16。
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",5814).put("spent",10).put("requestFingerprint","original");
         var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
         service.confirmVideoProduction(row,state,budget,"compiled");
         assertEquals("production",row.getStage());assertEquals("running",row.getStatus());
-        assertEquals(10,budget.path("analysis").path("approvedCap").asLong());assertEquals(190,budget.path("production").path("approvedCap").asLong());
+        assertEquals(10,budget.path("analysis").path("approvedCap").asLong());
+        assertEquals(5804,budget.path("production").path("approvedCap").asLong());
+        assertEquals(3864,budget.path("production").path("autoFixCap").asLong());
         assertFalse(state.path("steps").isEmpty());verify(quote).quote(eq("u"),argThat(p -> {
             for(JsonNode step:p.path("steps"))if("video".equals(step.path("operation").asText()))
                 if(!step.path("settings").path("video").path("optimize").isBoolean()||step.path("settings").path("video").path("optimize").asBoolean())return false;
@@ -166,26 +168,26 @@ class StudioPlanExecutionServiceTest {
         planRun("compiled","production",WITH_OPTIONAL_CHECKS,37,110,37,110,40,110);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",summingQuoter());
         var state=sceneState();
-        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",1110).put("spent",10);
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",344).put("spent",10);
         var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
         service.confirmVideoProduction(row,state,budget,"compiled");
         assertEquals("production",row.getStage());
         List<String> ids=new ArrayList<>();state.path("steps").forEach(s->ids.add(s.path("id").asText()));
-        assertEquals(List.of("k1","k2","ck2","v1","c1"),ids,"444×3 > 1100：先省名次靠后的 ck1，334×3 ≤ 1100 就停");
+        assertEquals(List.of("k1","k2","ck2","v1","c1"),ids,"444 > 334：先省名次靠后的 ck1，刚好放得下就停");
         List<String> waits=new ArrayList<>();
         for(JsonNode s:state.path("steps"))if("v1".equals(s.path("id").asText()))s.path("dependsOn").forEach(d->waits.add(d.asText()));
         assertEquals(List.of("k1","k2","ck2"),waits,"视频不再等省掉的检查");
-        assertEquals(1100,budget.path("production").path("approvedCap").asLong());
-        assertEquals(1100-334,budget.path("production").path("autoFixCap").asLong());
+        assertEquals(334,budget.path("production").path("approvedCap").asLong());
+        assertEquals(0,budget.path("production").path("autoFixCap").asLong());
     }
 
     @Test void sceneRecreationStillStopsWhenNothingOptionalIsLeftToDrop() throws Exception {
         planRun("compiled","production",WITH_OPTIONAL_CHECKS,37,110,37,110,40,110);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"quoter",summingQuoter());
         var state=sceneState();
-        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",600).put("spent",10);
+        ObjectNode budget=om.createObjectNode();budget.putObject("analysis").put("approvedCap",233).put("spent",10);
         var row=IpPlanExecution.builder().id("PEX-scene").projectId("p").ownerUserId("u").stage("analysis").status("running").build();
-        assertThrows(BusinessException.class,()->service.confirmVideoProduction(row,state,budget,"compiled"),"两个都省掉还要 224×3 > 590");
+        assertThrows(BusinessException.class,()->service.confirmVideoProduction(row,state,budget,"compiled"),"两个都省掉还要 224，剩余预算只有 223");
         assertEquals("analysis",row.getStage());assertTrue(state.path("steps").isEmpty());assertFalse(budget.has("production"));
     }
 

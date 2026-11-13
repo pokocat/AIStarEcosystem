@@ -322,9 +322,8 @@ public class StudioPlanExecutionService {
         long quoted=plan.path("budget").path("estimated").asLong();
         // 可省的检查（爆款复刻开场画面的检查）放不下页面批准的上限时，按名次从后往前省掉，省到放得下为止；视频和每段成片的检查不省。
         List<String> dropped=new ArrayList<>();
-        // 元素替换按真实切镜点分段，段数可能比页面按时长均分报价时多一段（多一次检查）：只要求放得下这份报价，剩下的才给自动重做
-        int headroom="replacement".equals(kind)?1:3;
-        while(Math.multiplyExact(quoted,headroom)>remaining) {
+        // 先确保首次制作放得下，剩余预算留给重试。执行器在每次提交前检查总预算。
+        while(quoted>remaining) {
             String id=StudioRecreationTaskPlan.dropOptionalCheck(plan);
             if(id==null)break;
             dropped.add(id);
@@ -332,7 +331,7 @@ public class StudioPlanExecutionService {
             quoted=plan.path("budget").path("estimated").asLong();
         }
         if(!dropped.isEmpty())log.info("[plan-exec] optional checks dropped to fit the page cap execution={} dropped={} quoted={} remaining={}",e.getId(),dropped,quoted,remaining);
-        if(Math.multiplyExact(quoted,headroom)>remaining)throw stale("分析已完成，制作费用超出上限，请在画布上查看方案后调整");
+        if(quoted>remaining)throw stale("分析已完成，制作费用超出上限，请在画布上查看方案后调整");
         var normalized=new LoadedPlan(runId,plan,loaded.rules(),loaded.contextNodeIds(),loaded.revision(),null);
         appendSteps((ArrayNode)state.withArray("steps"),normalized,"production");
         state.set("canvasContextIds",mapper.valueToTree(loaded.contextNodeIds()));
