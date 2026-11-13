@@ -25,6 +25,7 @@ public class DeploymentRuntime {
     }
     void entered(){requests.incrementAndGet();}
     void exited(){requests.decrementAndGet();}
+    public boolean isQuiescing() { return quiescing.get(); }
     public boolean quiesce() {
         if(!quiescing.compareAndSet(false,true))return false;
         scheduled.orderedStream().forEach(processor->processor.getScheduledTasks().forEach(task->task.cancel(false)));

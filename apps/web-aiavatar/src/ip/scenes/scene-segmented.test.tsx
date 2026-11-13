@@ -162,6 +162,23 @@ test("one click: the request is saved before it is sent, then the row follows th
   expect(screen.getByRole("button", { name: "停止生成" })).toBeTruthy();
 });
 
+test.each([
+  ["studio.export.queued", "等待导出"],
+  ["studio.export.rendering", "正在导出"],
+])("a persisted export at %s shows %s", async (stage, label) => {
+  longDraft();
+  const exporting = execution("running", [step("v1", "video", "done", ["clip"]), step("film", "assemble", "running", ["export"])]);
+  api.start.mockResolvedValue(exporting);
+  api.getExecution.mockResolvedValue(exporting);
+  api.readRun.mockImplementation(async (id: string) => id === "export"
+    ? { id, status: "running", stage, output: {}, inputs: {} }
+    : { id, status: "done", output: { storageKey: "clip.mp4" }, inputs: {} });
+  await open();
+  await waitFor(() => expect(go().disabled).toBe(false));
+  fireEvent.click(go());
+  expect(await screen.findByRole("heading", { name: label })).toBeTruthy();
+});
+
 test("a 60-second video checks the full script against the segmented limit", async () => {
   const text = "光".repeat(31_998) + "结束";
   longDraft({ sceneVideoState: { text: text + "。", options: {}, duration: 60, ratio: "9:16" } });

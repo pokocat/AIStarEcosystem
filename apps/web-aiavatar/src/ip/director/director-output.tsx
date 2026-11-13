@@ -7,6 +7,7 @@ import { Switch } from "antd";
 import type { DirectorClip, DirectorEpisode, DirectorExport, DirectorExportOptions, DirectorQuote, DirectorWork } from "@ai-star-eco/types";
 import { SignedAudio } from "@/canvas-bridge/signed-audio";
 import { studioCaptionNote } from "@/canvas-bridge/studio-packaging";
+import { studioExportStatus } from "@/canvas-bridge/studio-export-status";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
@@ -224,7 +225,7 @@ export function EpisodeOutput({ work, ep, apply, setError }: { work: DirectorWor
   return <div className="director-output" ref={anchor}>
     <span className="director-output-count" title={missing.length ? `缺少视频：${missing.join("、")}` : undefined}>视频 {withVideo.length}/{clips.length}</span>
     {!finished && <button type="button" className="ip-brand-secondary" disabled={!withVideo.length} onClick={() => setPlaying(true)}><Play size={14}/>连播预览</button>}
-    {exporting ? <Spinner label="导出中"/> : finished ? <>
+    {exporting ? <Spinner label={studioExportStatus(exporting.stage)}/> : finished ? <>
       <button type="button" className="ip-brand-button" disabled={!!downloading} onClick={() => download(finished)}><Download size={14}/>{downloading === finished.id ? "正在准备下载" : "下载成片"}</button>
       <button type="button" className="ip-brand-secondary" onClick={() => setWatching(finished)}><Play size={14}/>观看成片</button>
     </> :

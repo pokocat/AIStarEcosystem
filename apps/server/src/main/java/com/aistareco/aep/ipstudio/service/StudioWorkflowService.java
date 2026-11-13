@@ -32,6 +32,8 @@ import java.util.*;
 /** Studio is an orchestration surface; IpRun and existing assets remain authoritative. */
 @Service
 public class StudioWorkflowService {
+    @org.springframework.beans.factory.annotation.Value("${aep.ipstudio.export-queue:false}")
+    private boolean exportQueue;
     /** 「视频裂变」找变量用的场景输入种类（见 StudioSceneCatalog#sceneVariables）。 */
     static final String SCENE_VARIABLES="video-variables";
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(StudioWorkflowService.class);
@@ -439,13 +441,14 @@ public class StudioWorkflowService {
         var billing = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId,request.billing(),IpRunService.REF_TYPE,id,
                 execution.path("endpointId").asText(null),cost,"Studio 创作", modelCharge);
         if(enterpriseBilling == null && cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"Studio 创作", modelCharge);
+        boolean queuedExport=exportQueue&&"assemble".equals(request.operation());
         IpRun run=IpRun.builder().id(id).projectId(projectId).ownerUserId(userId).nodeId(request.nodeId())
-                .kind("studio-"+request.operation()).status(IpRun.STATUS_RUNNING).stage("queued").cost(cost)
+                .kind("studio-"+request.operation()).status(IpRun.STATUS_RUNNING).stage(queuedExport?StudioExportQueue.WAITING:"queued").cost(cost)
                 .clientRequestId(request.clientRequestId()).inputFingerprint(fingerprint).inputJson(write(inputs))
                 .outputJson("{}").createdAt(Instant.now()).heartbeatAt(Instant.now()).build();
         StudioRunBilling.apply(run,billing);
         runs.save(run);
-        if (depthQueue == null || !"video-control".equals(request.operation())) {
+        if (!queuedExport && (depthQueue == null || !"video-control".equals(request.operation()))) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCommit() {
                     try {worker.execute(id);} catch(RuntimeException e){worker.reject(id,e);}

@@ -154,7 +154,7 @@ public class StudioPlanExecutor {
         switch(e.getStatus()) {
             case IpPlanExecution.CANCELED -> cancelOutstanding(e,state);
             case IpPlanExecution.RUNNING -> {
-                if(e.getDeadlineAt()!=null&&now.isAfter(e.getDeadlineAt())) {
+                if(e.getDeadlineAt()!=null&&now.isAfter(e.getDeadlineAt())&&!exportIsFinalStep(state,e.getStage())) {
                     e.setStatus(IpPlanExecution.PARTIAL);e.setFinishedAt(now);
                     state.put("needsUserReason","这次制作已超出最长等待时间，已停在这里："+progressSummary(state,e.getStage())+"。已提交的任务会继续结算。");
                 } else {
@@ -182,6 +182,14 @@ public class StudioPlanExecutor {
         save(e,state,budget);
         boolean ended=!before.equals(e.getStatus())&&Set.of(IpPlanExecution.DONE,IpPlanExecution.PARTIAL,IpPlanExecution.FAILED).contains(e.getStatus());
         return new Decision(next,ended?e.getThreadId():null);
+    }
+
+    private static boolean exportIsFinalStep(ObjectNode state,String stage) {
+        var steps=PlanState.stageSteps(state,stage);
+        return steps.stream().anyMatch(step->"assemble".equals(step.path("operation").asText())
+                && Set.of("submitted","running","done").contains(step.path("status").asText()))
+                && steps.stream().allMatch(step->"assemble".equals(step.path("operation").asText())
+                || Set.of("done","skipped").contains(step.path("status").asText()));
     }
 
     /**

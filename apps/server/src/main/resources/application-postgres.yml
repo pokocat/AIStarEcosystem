@@ -24,6 +24,8 @@ spring:
     baseline-on-migrate: false
     locations: classpath:db/postgresql
 aep:
+  ipstudio:
+    export-queue: true
   background:
     enabled: ${AEP_BACKGROUND_ENABLED:false}
   dev-auth:

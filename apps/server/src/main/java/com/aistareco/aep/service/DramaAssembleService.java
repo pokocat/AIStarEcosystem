@@ -233,14 +233,19 @@ public class DramaAssembleService {
     }
 
     public AssembledVideo assembleStudioKeys(String userId,String projectId,List<String> videoKeys,String ratio,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging packaging) {
-        return assembleKeys(userId,projectId,1,videoKeys,ratio,true,packaging);
+        return assembleStudioKeys(userId,projectId,videoKeys,ratio,packaging,null);
+    }
+
+    public AssembledVideo assembleStudioKeys(String userId,String projectId,List<String> videoKeys,String ratio,
+            com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging packaging,String runId) {
+        return assembleKeys(userId,projectId,1,videoKeys,ratio,true,packaging,runId);
     }
 
     private AssembledVideo assembleKeys(String userId, String refId, int episodeNo, List<String> videoKeys,
                                         String canvasRatio, boolean studio) {
-        return assembleKeys(userId,refId,episodeNo,videoKeys,canvasRatio,studio,null);
+        return assembleKeys(userId,refId,episodeNo,videoKeys,canvasRatio,studio,null,null);
     }
-    private AssembledVideo assembleKeys(String userId,String refId,int episodeNo,List<String> videoKeys,String canvasRatio,boolean studio,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging packaging) {
+    private AssembledVideo assembleKeys(String userId,String refId,int episodeNo,List<String> videoKeys,String canvasRatio,boolean studio,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging packaging,String runId) {
         if (videoKeys == null || videoKeys.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_CANVAS_NOTHING_TO_ASSEMBLE",
                     "这一集还没有可以合成的视频。");
@@ -337,7 +342,7 @@ public class DramaAssembleService {
             }
             String prefix = studio ? studioAssemblyPrefix(userId) : "drama/canvas/assemblies/";
             String key = prefix + safeSegment(refId) + "_ep" + episodeNo + "_"
-                    + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + ".mp4";
+                    + exportSuffix(runId) + ".mp4";
             var uploaded = cdnUploader.upload(out, key, "video/mp4");
             if (studio) key = uploaded.key();
             long bytes = Files.size(out);
@@ -364,6 +369,10 @@ public class DramaAssembleService {
      * 产物和一键合成一样落 Studio 的成片前缀、记存储用量。
      */
     public AssembledVideo renderStudioEdit(String userId, String projectId, com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditTimeline edit) {
+        return renderStudioEdit(userId,projectId,edit,null);
+    }
+
+    public AssembledVideo renderStudioEdit(String userId, String projectId, com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditTimeline edit,String runId) {
         com.aistareco.aep.ipstudio.service.StudioEditGraph.validate(edit);
         if (studioPackaging == null) throw new IllegalStateException("Studio packaging renderer unavailable");
         Path workDir = null;
@@ -429,7 +438,7 @@ public class DramaAssembleService {
             if (actual < 0 || Math.abs(actual - total) > durationTolerance(total))
                 throw new IllegalStateException("剪辑成片时长不对 expected=" + total + " actual=" + actual);
             String key = studioAssemblyPrefix(userId) + safeSegment(projectId) + "_edit_"
-                    + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + ".mp4";
+                    + exportSuffix(runId) + ".mp4";
             key = cdnUploader.upload(out, key, "video/mp4").key();
             long bytes = Files.size(out);
             storage.record("aiavatar", userId, "成片", projectId, key, bytes);
@@ -444,6 +453,11 @@ public class DramaAssembleService {
         } finally {
             cleanup(workDir);
         }
+    }
+
+    private static String exportSuffix(String runId) {
+        // An interrupted export can have uploaded the file before committing its result.
+        return runId==null ? UUID.randomUUID().toString().replace("-","").substring(0,8) : safeSegment(runId);
     }
 
     /** 成片读得出且带视频流 → 时长（秒）；否则 -1。 */

@@ -579,7 +579,7 @@ public class IpRunService {
                 return projects.toRunDto(run);
             }
             run.setCancelRequested(true);
-            run.setStage("studio.stopping");
+            if(!StudioExportQueue.RENDERING.equals(run.getStage()))run.setStage("studio.stopping");
             runRepo.save(run);
         }
         return projects.toRunDto(run);

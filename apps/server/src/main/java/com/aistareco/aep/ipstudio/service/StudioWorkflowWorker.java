@@ -53,6 +53,10 @@ public class StudioWorkflowWorker {
     // Only synchronous director text calls: accepted image/video/audio jobs keep their native recovery rules.
     private final java.util.concurrent.ConcurrentMap<String,Thread> activeDirectorCalls = new java.util.concurrent.ConcurrentHashMap<>();
     private volatile boolean stoppingForShutdown;
+    @org.springframework.beans.factory.annotation.Value("${aep.ipstudio.export-worker:false}")
+    private boolean exportWorker;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.ipstudio.execution.IpPlanExecutionRepository exportPlans;
     public StudioWorkflowWorker(IpRunRepository runs,StudioFixtureProvider fixtures,FileStorageService storage,
             AiModelInvocationService models,DramaAssembleService assembly,CreditService credits,ObjectMapper mapper,
             PlatformTransactionManager manager,DapAssetService assets) {
@@ -71,8 +75,20 @@ public class StudioWorkflowWorker {
     private org.springframework.core.task.TaskExecutor controlExecutor;
     private final Set<String> controlQueued=java.util.concurrent.ConcurrentHashMap.newKeySet();
     public void runBlocking(String id) {
+        runBlocking(id,false);
+    }
+
+    void runDedicatedExport(String id) {
+        if (!exportWorker) throw new IllegalStateException("Studio export worker is disabled");
+        runBlocking(id,true);
+    }
+
+    private void runBlocking(String id,boolean dedicatedExport) {
         IpRun run=runs.findById(id).orElse(null);
         if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
+        boolean persistedExport=StudioExportQueue.KIND.equals(run.getKind()) &&
+                (StudioExportQueue.WAITING.equals(run.getStage()) || StudioExportQueue.RENDERING.equals(run.getStage()));
+        if(dedicatedExport != persistedExport || exportWorker && !dedicatedExport)return;
         if("studio-video-control".equals(run.getKind())&&controlExecutor!=null
                 &&!Thread.currentThread().getName().startsWith(com.aistareco.aep.ipstudio.config.IpStudioAsyncConfig.CONTROL_THREAD_PREFIX)) {
             // 同一条已经在排队或在做就不再排（重派、恢复会再叫一次）
@@ -97,12 +113,12 @@ public class StudioWorkflowWorker {
         ObjectNode directorReceipt=null;
         ObjectNode preservedOutput=mapper.createObjectNode();
         try (var attribution = AiModelUsageContext.bind(run.getOwnerUserId(), "aiavatar", id)) {
-            if(!claim(id))return;
+            if(!(dedicatedExport ? claimExport(id) : claim(id)))return;
             if("studio-director".equals(run.getKind())) {
                 activeDirectorCalls.put(id,Thread.currentThread());
                 if(stoppingForShutdown){interruptDirectorTask(id,true);return;}
             }
-            if(!progress(id,10,"studio.prepare")) return;
+            if(!dedicatedExport&&!progress(id,10,"studio.prepare")) return;
             JsonNode input=mapper.readTree(run.getInputJson());
             boolean mock=input.path("mock").asBoolean();
             ObjectNode output=preservedOutput; output.put("mock",mock);
@@ -310,12 +326,12 @@ public class StudioWorkflowWorker {
                     output.put("storageKey",file.key());output.put("durationSec",fixtures.videoDuration());
                 }
                 case "assemble" -> {
-                    if(!progress(id,30,"studio.assemble")) return;
+                    if(!progress(id,30,dedicatedExport?StudioExportQueue.RENDERING:"studio.assemble")) return;
                     List<String> keys=new ArrayList<>();input.path("references").forEach(r->keys.add(r.path("storageKey").asText()));
                     // 成片高级编辑带着时间线来，按时间线合成；否则是一键合成（按顺序拼）。
                     var file=input.hasNonNull("edit")
-                            ?assembly.renderStudioEdit(run.getOwnerUserId(),run.getProjectId(),mapper.treeToValue(input.path("edit"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditTimeline.class))
-                            :assembly.assembleStudioKeys(run.getOwnerUserId(),run.getProjectId(),keys,input.path("aspectRatio").asText("9:16"),input.hasNonNull("packaging")?mapper.treeToValue(input.path("packaging"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging.class):null);
+                            ?assembly.renderStudioEdit(run.getOwnerUserId(),run.getProjectId(),mapper.treeToValue(input.path("edit"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditTimeline.class),dedicatedExport?id:null)
+                            :assembly.assembleStudioKeys(run.getOwnerUserId(),run.getProjectId(),keys,input.path("aspectRatio").asText("9:16"),input.hasNonNull("packaging")?mapper.treeToValue(input.path("packaging"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging.class):null,dedicatedExport?id:null);
                     output.put("storageKey",file.key());output.put("durationSec",file.durationSec());
                     if(file.captionStatus()!=null) {
                         var captions=output.putObject("captions");captions.put("status",file.captionStatus());
@@ -870,6 +886,36 @@ public class StudioWorkflowWorker {
             run.setStartedAt(Instant.now());run.setHeartbeatAt(Instant.now());runs.save(run);return true;
         }));
     }
+    private boolean claimExport(String id) {
+        return Boolean.TRUE.equals(transactions.execute(tx -> {
+            IpRun run=billingLockedRun(id).orElse(null);
+            if(run==null || !IpRun.STATUS_RUNNING.equals(run.getStatus()) || !StudioExportQueue.KIND.equals(run.getKind())
+                    || !(StudioExportQueue.WAITING.equals(run.getStage()) || StudioExportQueue.RENDERING.equals(run.getStage()))) return false;
+            ObjectNode input;
+            try { input=(ObjectNode)mapper.readTree(run.getInputJson()); }
+            catch(Exception invalid) { terminal(run,null,invalid); return false; }
+            ObjectNode exec=input.withObject("/_exec");
+            int attempts=exec.path("exportAttempts").asInt();
+            String executionId=exec.path("execution").path("executionId").asText(null);
+            if(executionId!=null&&exportPlans.findById(executionId)
+                    .filter(plan->com.aistareco.aep.ipstudio.execution.IpPlanExecution.CANCELED.equals(plan.getStatus())).isPresent()) {
+                run.setCancelRequested(true);
+            }
+            if(run.isCancelRequested() || attempts>=2) {
+                terminal(run,null,BusinessException.badRequest("STUDIO_EXPORT_INTERRUPTED","导出中断，可以重新导出。"));
+                return false;
+            }
+            // Retry only a process interruption. Media errors already reach a terminal state through finish().
+            exec.put("exportAttempts",attempts+1);
+            run.setInputJson(input.toString());
+            run.setStage(StudioExportQueue.RENDERING);
+            if(run.getStartedAt()==null)run.setStartedAt(Instant.now());
+            run.setHeartbeatAt(Instant.now());
+            runs.save(run);
+            log.info("[studio-export] started run={} attempt={}",id,attempts+1);
+            return true;
+        }));
+    }
     public boolean expire(String id,Instant cutoff) {
         return Boolean.TRUE.equals(transactions.execute(tx->{
             IpRun run=billingLockedRun(id).orElse(null);
@@ -927,7 +973,8 @@ public class StudioWorkflowWorker {
             if(error==null&&output!=null&&output.path("skillDraft").isObject()&&!run.isCancelRequested())saveSkillDraft(run,(ObjectNode)output.path("skillDraft"));
             terminal(run,output,error);
         });
-        afterTerminal(id);
+        // The regular Studio scheduler reconciles the result from the persisted run.
+        if(!exportWorker)afterTerminal(id);
     }
     private void saveSkillDraft(IpRun run,ObjectNode draft) {
         var sink=skillDrafts==null?null:skillDrafts.getIfAvailable();

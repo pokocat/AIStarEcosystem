@@ -16,6 +16,14 @@ public interface IpRunRepository extends JpaRepository<IpRun, String> {
     List<String> unstartedRunIds(@org.springframework.data.repository.query.Param("kind") String kind,
                                  @org.springframework.data.repository.query.Param("status") String status,
                                  org.springframework.data.domain.Pageable pageable);
+    @org.springframework.data.jpa.repository.Query("""
+        select r.id from IpRun r where r.kind = :kind and r.status = 'running' and r.stage in (:waiting, :rendering)
+        order by case when r.stage = :rendering then 0 else 1 end, r.createdAt, r.id
+        """)
+    List<String> exportDispatchIds(@org.springframework.data.repository.query.Param("kind") String kind,
+                                  @org.springframework.data.repository.query.Param("waiting") String waiting,
+                                  @org.springframework.data.repository.query.Param("rendering") String rendering,
+                                  org.springframework.data.domain.Pageable pageable);
     org.springframework.data.domain.Page<IpRun> findByOwnerUserIdAndKindOrderByCreatedAtDesc(String ownerUserId,String kind,org.springframework.data.domain.Pageable pageable);
 
     /** 账号「任务历史」：本人在时间窗内、指定几种 kind 的运行，新的在前（同一时刻按 id 再排，翻页不重不漏）。 */

@@ -57,6 +57,8 @@ import java.util.*;
  */
 @Service
 public class DirectorService {
+    @org.springframework.beans.factory.annotation.Value("${aep.ipstudio.export-queue:false}")
+    private boolean exportQueue;
     private static final Logger log = LoggerFactory.getLogger(DirectorService.class);
 
     /** 一个连跑同时最多在途的子任务（§8.4 初始建议：同一端点 2 个）。 */
@@ -1446,10 +1448,11 @@ public class DirectorService {
         if (prior != null) return prior.getId();
         String id = "IPR-" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
         input.putObject("_exec").put("holdTotal", 0).put("unitCost", 0);
+        boolean queuedExport=exportQueue&&com.aistareco.aep.ipstudio.service.StudioExportQueue.KIND.equals(kind);
         runs.save(IpRun.builder().id(id).projectId(workId).hostType(IpRun.HOST_DIRECTOR).ownerUserId(userId).nodeId(nodeId)
-                .kind(kind).status(IpRun.STATUS_RUNNING).stage("queued").cost(0).clientRequestId(requestId)
+                .kind(kind).status(IpRun.STATUS_RUNNING).stage(queuedExport?com.aistareco.aep.ipstudio.service.StudioExportQueue.WAITING:"queued").cost(0).clientRequestId(requestId)
                 .inputJson(write(input)).outputJson("{}").createdAt(Instant.now()).heartbeatAt(Instant.now()).build());
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        if(!queuedExport)TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCommit() { try { workflowWorker.execute(id); } catch (RuntimeException e) { workflowWorker.reject(id, e); } }
         });
         return id;

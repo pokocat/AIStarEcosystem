@@ -68,6 +68,8 @@ public class IpRunReaper {
         List<IpRun> stale = runRepo.findByStatusAndHeartbeatAtBefore(IpRun.STATUS_RUNNING, cutoff);
         int n = 0;
         for (IpRun run : stale) {
+            if (StudioExportQueue.KIND.equals(run.getKind()) &&
+                    (StudioExportQueue.WAITING.equals(run.getStage()) || StudioExportQueue.RENDERING.equals(run.getStage()))) continue;
             if(queue!=null && (queue.isWaiting(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,run.getId()) ||
                     queue.isWaiting(com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW,run.getId()))) continue;
             // Audio jobs have durable native checkpoints and resume their original provider Job.

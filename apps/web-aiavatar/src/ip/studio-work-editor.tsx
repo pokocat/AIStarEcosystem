@@ -8,6 +8,7 @@ import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/ca
 import { SignedVideo } from "@/canvas-bridge/signed-video";
 import { SignedAudio } from "@/canvas-bridge/signed-audio";
 import { studioEditGapSeconds, toEditTimeline } from "@/canvas-bridge/studio-edit-timeline";
+import { studioExportStatus } from "@/canvas-bridge/studio-export-status";
 import { parseStudioCaptions, studioCaptionMode, studioCaptionNote } from "@/canvas-bridge/studio-packaging";
 import {
   formatStudioClock, formatStudioSeconds, studioCaptionProblem, studioCaptionRows, studioCaptionRowsFor, studioCaptionRowsText, studioClipEpisode, studioClipIncluded,
@@ -308,7 +309,7 @@ function StudioWorkResults({ works, onDownload, renderNodeActions, anchor }: { r
   if (!works.length) return null;
   return <section className="studio-work-results" ref={anchor} aria-label="已导出的成片"><h3>已导出的成片</h3>
     {[...works].reverse().map(node => <article key={node.id} className="studio-work-result"><h4>{node.title}</h4>{node.metadata?.studio?.exportedAt && <time className="studio-work-result-time">{formatDateTime(node.metadata.studio.exportedAt)}</time>}{renderNodeActions?.(node)}
-      {node.metadata?.status === "loading" ? <p>导出中，通常需要几分钟。可返回画布继续创作。</p>
+      {node.metadata?.status === "loading" ? <p role="status">{studioExportStatus(node.metadata.studio?.task?.stage)}。可返回画布继续创作。</p>
         : node.metadata?.content || node.metadata?.storageKey ? <><SignedVideo src={node.metadata.content} storageKey={node.metadata.storageKey} controls preload="metadata"/>
           <CaptionNote node={node}/>
           <Button type="primary" icon={downloading === node.id ? undefined : <Download size={15}/>} loading={downloading === node.id} disabled={!!downloading && downloading !== node.id} onClick={() => download(node)}>{downloading === node.id ? "正在准备下载" : "下载成片"}</Button>

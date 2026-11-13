@@ -1,0 +1,17 @@
+[Unit]
+Description=AIStar Studio export worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=/opt/aibuzz-id/runtime/python311/bin/python3 -s -c 'import json; assert json.load(open("/etc/aibuzz-deploy/node.json"))["instance_id"] == "i-bp1dkkgmjbcpa21a5yi0"'
+ExecStart=/usr/bin/podman run --rm --name aistar-studio-export --network host --read-only --workdir /app/work --cpus 2 --memory 2304m --memory-swap 2304m --pids-limit 128 --stop-timeout 250 --user 10001:10001 --env-file /opt/aistar-cluster/control/env-studio-export --volume /opt/aistar-cluster/state/studio-export-tmp:/tmp:rw --volume /opt/aistar-cluster/state/production:/opt/aistar-migration/preparation:ro --entrypoint java REPLACE_VERIFIED_IMAGE_CONFIGURATION_ID -Duser.timezone=Asia/Shanghai -Djavax.net.ssl.trustStore=/opt/aistar-migration/preparation/java-truststore -Djavax.net.ssl.trustStorePassword=changeit -Xms128m -Xmx768m -jar /app/app.jar
+ExecStop=/usr/bin/podman stop --ignore --time 250 aistar-studio-export
+Restart=always
+RestartSec=5
+TimeoutStopSec=270
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

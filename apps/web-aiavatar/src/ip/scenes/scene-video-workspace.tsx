@@ -20,6 +20,7 @@ import { SignedImage } from '@/canvas-bridge/signed-image';
 import { SignedVideo } from '@/canvas-bridge/signed-video';
 import { SignedAudio } from '@/canvas-bridge/signed-audio';
 import { downloadMedia } from '@/canvas-bridge/download-media';
+import { studioExportStatus } from '@/canvas-bridge/studio-export-status';
 import { cancelStudioPlanExecution, executionRestoreUpserts, projectCanvasOps, resumeStudioPlanExecution, stepNodeId, stepRunCandidates } from '@/canvas-bridge/studio-plan-execution';
 import { formatDateTime } from '@/lib/datetime';
 import { AiMark } from '../studio-ai-icon';
@@ -307,8 +308,10 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
   const runningStep = execution?.steps.find(s => s.status === 'running' || s.status === 'submitted');
   const activeRun = task.run ?? (runningStep ? stepRunCandidates(runningStep).map(id => runs[id]).find(Boolean) : undefined);
   const queuePosition = running && activeRun?.queue && activeRun.queue.position > 0 ? activeRun.queue.position : undefined;
+  const exporting = running && active?.key === 'film' && final?.operation === 'assemble';
+  const exportRun = exporting ? runs[final.runIds.at(-1) ?? ''] : undefined;
   const heading = portraitReview.length ? '参考人像待核验' : completed ? '视频已完成' : status === 'done' ? '正在加载视频…' : failed ? videoTaskProblemTitle(failed) : needsAction ? '生成没有完成'
-    : status === 'canceled' ? '已停止生成' : status === 'paused' ? '已暂停' : retry ? '等待重试' : queuePosition ? '排队中' : active ? `正在${active.label}` : '正在准备';
+    : status === 'canceled' ? '已停止生成' : status === 'paused' ? '已暂停' : retry ? '等待重试' : exporting ? studioExportStatus(exportRun?.stage) : queuePosition ? '排队中' : active ? `正在${active.label}` : '正在准备';
   const progress = active && active.total > 1 && active.key === 'boards' ? `分镜图 ${active.done} / ${active.total} 张已完成` : active && active.total > 1 && active.key === 'videos' ? `片段 ${active.done} / ${active.total} 段已完成` : '';
   const failure = failed?.reason ?? execution?.needsUserReason ?? (task.run?.status === 'failed' ? task.run.errorMessage : undefined);
   const failureError = failure ? normalizeStudioError(failure) : undefined;
@@ -355,7 +358,7 @@ function VideoTaskView({ task, takes, onOpen, persist, onRefresh }: {
           <h2>{heading}</h2>{portraitReview.length > 0 && <Button onClick={() => void requestPortraitReview(portraitReview)}>处理人像</Button>}
           {retry ? reader(`「${retry.title}」失败，稍后自动重试（第 ${retry.attempt} 次，共 3 次）。`)
             : queuePosition ? reader(`${queuePosition > 1 ? `前面还有 ${queuePosition - 1} 个任务` : '即将开始'} · 已用时 ${elapsed}`)
-            : running ? reader([progress, `已用时 ${elapsed}`].filter(Boolean).join(' · ')) : null}
+            : running ? reader([progress, `制作总用时 ${elapsed}`].filter(Boolean).join(' · ')) : null}
           {needsAction && failureError && <p className="video-problem-note">{videoTaskProblemText(task)}{failed && failed.attempt >= 3 && !resumeLabel && ' 请在画布上查看这一步，处理后继续生成。'}
             {failureError.logId && <StudioErrorNotice error={failure} autoReport={false} label="查看错误详情"/>}</p>}
           {status === 'paused' && reader('已提交的步骤会继续完成。')}
