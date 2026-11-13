@@ -3,12 +3,24 @@ package com.aistareco.aep.service.cdn;
 import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;
+import java.net.URI;
+import java.net.URLDecoder;
 import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AliyunOssCdnUploaderTest {
+
+    @Test
+    void downloadUrlSignsAttachmentAndPreservesTheChineseFilename() {
+        AliyunOssCdnUploader uploader = uploader("media", "media");
+        String url = uploader.downloadUrlFor("media/drama/render/demo.mp4", "第 1 集.mp4", 600);
+        String query = URI.create(url).getRawQuery();
+        assertTrue(query.contains("x-oss-signature="));
+        assertTrue(URLDecoder.decode(query, StandardCharsets.UTF_8).contains(
+                "response-content-disposition=attachment; filename=\"__1__.mp4\"; filename*=UTF-8''%E7%AC%AC%201%20%E9%9B%86.mp4"));
+    }
 
     @Test
     void publicUrlKeepsKnownAbsoluteSeedMediaKeyWhenLocalPrefixDiffers() {

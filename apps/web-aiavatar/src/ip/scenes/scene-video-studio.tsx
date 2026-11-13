@@ -1490,6 +1490,7 @@ export function SceneVideoStudio() {
         : rows.length || segmentedRuns.length ? <ol className="scene-row-list">{draft && segmentedRuns.map(record => <SegmentedRow key={record.clientRequestId} record={record} projectId={draft.id} doc={draft.doc} persist={persist} busy={busy}
             onConfirm={() => void confirmLong(record)} onFailure={(action, error) => showFailure({ action, error })}/>)}{rows.map(row => <VideoRow key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id}
             onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)} onReuse={() => reuseVideo(row)}
+            onDownloadError={error => showFailure({ action: "下载视频", error })}
             onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
         : <SceneEmpty title="还没有作品" note="生成的视频将显示在这里。"/>}
       </div>
@@ -1581,8 +1582,9 @@ function ScriptTurn({ row, refs, run, stopping, busy, submitting, latest, copied
 }
 
 /** 一条视频：排队 / 生成中 / 失败（说人话）/ 播放器 + 下载。不显示假的百分比。 */
-function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onReuse, onStop }: {
+function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onReuse, onStop, onDownloadError }: {
   row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; onRetry: () => void; onConfirm: () => void; onReuse: () => void; onStop: () => void;
+  onDownloadError: (error: unknown) => void;
 }) {
   const meta = row.metadata, request = meta?.studio?.request;
   const loading = meta?.status === "loading", accepted = !!meta?.studio?.runId;
@@ -1602,7 +1604,7 @@ function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onReuse, onS
       {loading && accepted && <button type="button" onClick={onStop}><Square size={13}/>停止</button>}
       {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}
       {meta?.status === "error" && request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={13}/>重新生成</button>}
-      {url && <button type="button" onClick={() => void downloadMedia(url, row.title, undefined, meta?.storageKey)}><Download size={13}/>下载</button>}
+      {url && <button type="button" onClick={() => void downloadMedia(url, row.title, "video/mp4", meta?.storageKey).catch(onDownloadError)}><Download size={13}/>下载</button>}
       {url && request && <button type="button" disabled={busy} onClick={onReuse} title="将此视频的脚本和设置恢复到编辑器，修改后重新生成，原视频保留"><PencilLine size={13}/>重新编辑</button>}
     </div>
   </li>;

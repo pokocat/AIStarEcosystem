@@ -13352,6 +13352,18 @@ paths:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/SignCanvasAssetsResult' } } } }
         '400': { description: 'DRAMA_CANVAS_BODY_INVALID（keys 为空或超过 100 个）' }
         '404': { description: DRAMA_CANVAS_NOT_FOUND }
+  /me/drama/canvases/{id}/assets/video-download:
+    get:
+      tags: [drama]
+      operationId: issueDramaCanvasVideoDownload
+      summary: 为本人画布的本人视频签发 10 分钟的下载凭证
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+        - { in: query, name: key, required: true, schema: { type: string } }
+        - { in: query, name: name, required: true, schema: { type: string } }
+      responses:
+        '200': { description: '返回 { ticket }，禁止缓存' }
+        '404': { description: '画布或视频不可用' }
   # ── 生成（运行记录）：结果另存 drama_canvas_run，服务端从不改文档；前端按 runId 幂等合并后再保存 ──
   # 公共：body 带 clientRequestId（同 owner 同键回原记录、不重复扣费）+ docVersion（不是库里当前版本 → 409 DRAMA_CANVAS_STALE）。
   # 提示词、参考图、首帧、片段时长、合成顺序都从已保存的文档里读；读出来的每个 key 过归属闸，不是本人的 → 400 DRAMA_CANVAS_ASSET_NOT_OWNED，不扣费。
@@ -15633,6 +15645,38 @@ paths:
         （静默跳过就等于给了一个探测面）。一次最多 200 个。
       responses:
         "200": { description: "{ [key]: signedUrl }" }
+
+  /v1/ip-studio/assets/video-download:
+    get:
+      tags: [ip-studio]
+      operationId: issueStudioVideoDownload
+      summary: 校验素材读取权限后签发 10 分钟的视频下载凭证
+      parameters:
+        - { in: query, name: key, required: true, schema: { type: string } }
+        - { in: query, name: name, required: true, schema: { type: string } }
+      responses:
+        '200': { description: '返回 { ticket }，禁止缓存' }
+        '400': { description: '素材不符合权限或视频类型要求' }
+
+  /media-download/resolve:
+    post:
+      tags: [ip-studio, drama]
+      operationId: resolveVideoDownload
+      summary: 用短期凭证获取同一视频的播放地址和附件下载地址
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ticket]
+              properties:
+                ticket: { type: string, maxLength: 4096 }
+      responses:
+        '200': { description: '返回 { previewUrl, downloadUrl, filename, expiresAt }，expiresAt 为毫秒时间戳，禁止缓存' }
+        '410': { description: '下载凭证无效或已过期' }
+        '503': { description: '视频签名暂不可用' }
 
   /v1/ip-studio/projects/{id}/conversations/{nodeId}/share:
     get:

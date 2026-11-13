@@ -12,6 +12,8 @@
     "./ui/*": "./src/ui/*.tsx",
     "./ui/utils": "./src/ui/utils.ts",
     "./ui/use-mobile": "./src/ui/use-mobile.ts",
+    "./video-download": "./src/video-download.ts",
+    "./video-download-page": "./src/video-download-page.tsx",
     "./styles/*": "./src/styles/*"
   },
   "scripts": {
@@ -53,6 +55,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "embla-carousel-react": "^8.6.0",
+    "gsap": "^3.15.0",
     "input-otp": "^1.4.2",
     "next-themes": "^0.4.6",
     "react-day-picker": "^8.10.1",

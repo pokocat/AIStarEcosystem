@@ -22,6 +22,10 @@ const nextConfig = {
         source: "/api/:path*",
         destination: `${apiBase}/api/:path*`,
       },
+      {
+        source: "/cdn/:path*",
+        destination: `${apiBase}/cdn/:path*`,
+      },
     ];
   },
   // 兼容遗留链接：旧 apps/web 时代 drama landing 挂在 /drama，新 sub-app

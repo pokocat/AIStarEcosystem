@@ -12,7 +12,7 @@ import { DramaConfirmHost } from "@/components/drama-ui";
 import "@/mocks/_register";
 
 // 注：/auth/callback（统一账号中心回调）由 AuthProvider 内置放行，无需在此声明。
-const PUBLIC_PREFIXES = ["/", "/login", "/activate"];
+const PUBLIC_PREFIXES = ["/", "/login", "/activate", "/video-download"];
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (

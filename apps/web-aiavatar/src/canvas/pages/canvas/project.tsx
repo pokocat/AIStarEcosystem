@@ -1949,8 +1949,10 @@ function InfiniteCanvasPage() {
     // 改名 .jpg 才能看（线上那条示例 16 个素材键有 14 个其实是 .jpg）。
     const downloadNodeImage = useCallback((node: CanvasNodeData) => {
         if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Video && node.type !== CanvasNodeType.Audio) || !node.metadata?.content) return;
-        void downloadMedia(node.metadata.content, `canvas-${node.type}-${node.id}`, node.metadata.mimeType, node.metadata.storageKey);
-    }, []);
+        const mime = node.type === CanvasNodeType.Video ? (node.metadata.mimeType || "video/mp4") : node.metadata.mimeType;
+        void downloadMedia(node.metadata.content, `canvas-${node.type}-${node.id}`, mime, node.metadata.storageKey)
+            .catch(error => message.error(error));
+    }, [message]);
 
     const downloadBatchImage = useCallback((node: CanvasNodeData, imageId: string) => {
         const image = node.metadata?.images?.find((item) => item.id === imageId);

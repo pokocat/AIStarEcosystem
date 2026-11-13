@@ -68,6 +68,8 @@ public class AepSecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints
+                        .requestMatchers(org.springframework.http.HttpMethod.POST,
+                                com.aistareco.aep.controller.VideoDownloadController.REDEEM_PATH).permitAll()
                         .requestMatchers("/api/admin/auth/login").permitAll()
                         .requestMatchers("/api/admin/auth/operator-login").permitAll() // v0.37 平台运营登录
                         .requestMatchers("/api/auth/**").permitAll()

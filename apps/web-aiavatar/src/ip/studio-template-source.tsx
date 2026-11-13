@@ -11,6 +11,7 @@ import type { StudioTemplateInstance, StudioTemplateExecution, StudioTemplateExe
 import { readTemplateInstance, readTemplateExecution, executeTemplateStep, acceptTemplateStep, archiveTemplateStep, listTemplatePackages, createTemplatePackage, readTemplateMetrics } from '@/canvas-bridge/template-api';
 import { SignedImage } from '@/canvas-bridge/signed-image';
 import { SignedVideo } from '@/canvas-bridge/signed-video';
+import { downloadMedia } from '@/canvas-bridge/download-media';
 import { dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
 import { readStudioProject, listStudioIpAssets } from '@/canvas-bridge/studio-api';
 import { saveStudioDocument } from '@/canvas-bridge/studio-save';
@@ -62,7 +63,10 @@ export function StudioTemplateSource({projectId}:{projectId:string}) {
           {s.status==='stale'&&<p>原结果将保留。重新生成只针对此步骤，不会自动重新生成其他步骤。</p>}
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <Button disabled={busy||s.cost===undefined||!canExecute(s)} onClick={()=>void prepare(s)}>{s.run?'重新生成':isVideo(s)?'生成视频':'生成图片'}{s.cost!==undefined?` · ${s.cost} 积分`:''}</Button>
-            {s.storageKey&&s.run?.status==='done'&&s.status!=='stale'&&<><a href={s.url} target="_blank" rel="noreferrer">{isVideo(s)?'下载视频':'查看原图'}</a><Button disabled={busy} onClick={()=>void act(()=>acceptTemplateStep(projectId,s.id,{runId:s.run!.id,storageKey:s.storageKey!,accepted:!s.accepted}))}>{s.accepted?'取消采用':isVideo(s)?'采用此视频':'采用此图片'}</Button>{isVideo(s)?<Button disabled={busy||!s.accepted||s.status!=='done'} onClick={()=>{setOpen(false);dispatchStudioCommand('work',s.nodeId);}}>整理成片</Button>:<Button disabled={busy} onClick={()=>void openArchive(s)}>归档到 IP</Button>}</>}
+            {s.storageKey&&s.run?.status==='done'&&s.status!=='stale'&&<>{isVideo(s)
+              ? <Button onClick={()=>void downloadMedia(s.url??'',s.title,'video/mp4',s.storageKey).catch(setError)}>下载视频</Button>
+              : <a href={s.url} target="_blank" rel="noreferrer">查看原图</a>}
+            <Button disabled={busy} onClick={()=>void act(()=>acceptTemplateStep(projectId,s.id,{runId:s.run!.id,storageKey:s.storageKey!,accepted:!s.accepted}))}>{s.accepted?'取消采用':isVideo(s)?'采用此视频':'采用此图片'}</Button>{isVideo(s)?<Button disabled={busy||!s.accepted||s.status!=='done'} onClick={()=>{setOpen(false);dispatchStudioCommand('work',s.nodeId);}}>整理成片</Button>:<Button disabled={busy} onClick={()=>void openArchive(s)}>归档到 IP</Button>}</>}
           </div>
         </section>)}
         {error&&<StudioErrorNotice error={error}/>}

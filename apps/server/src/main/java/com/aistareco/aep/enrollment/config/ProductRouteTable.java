@@ -77,6 +77,7 @@ public final class ProductRouteTable {
      * 所以它只能精确匹配，不能当前缀。
      */
     public static final Set<String> WHITELIST_EXACT = Set.of(
+            com.aistareco.aep.controller.VideoDownloadController.REDEEM_PATH,
             "/api/v1/asset-library/callback",
             // Read-only bearer preview. Accepting membership still requires existing enrollment.
             "/api/v1/ip-studio/enterprise-invitations/preview",

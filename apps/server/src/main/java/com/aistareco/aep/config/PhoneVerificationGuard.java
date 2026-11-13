@@ -88,8 +88,9 @@ public class PhoneVerificationGuard extends OncePerRequestFilter {
             return;
         }
         String path = EnrollmentGuard.pathOf(request);
-        // This POST only reads a bearer invitation; it does not accept it or change any identity.
-        if ("POST".equals(request.getMethod()) && "/api/v1/ip-studio/enterprise-invitations/preview".equals(path)) {
+        // These POSTs read short-lived credentials supplied in the body and do not modify state.
+        if ("POST".equals(request.getMethod()) && ("/api/v1/ip-studio/enterprise-invitations/preview".equals(path)
+                || com.aistareco.aep.controller.VideoDownloadController.REDEEM_PATH.equals(path))) {
             chain.doFilter(request, response);
             return;
         }

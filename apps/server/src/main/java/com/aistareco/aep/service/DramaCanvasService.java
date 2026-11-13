@@ -348,6 +348,15 @@ public class DramaCanvasService {
         return new SignCanvasAssetsResultDto(urls);
     }
 
+    @Transactional(readOnly = true)
+    public String requireDownloadAsset(String userId, String canvasId, String key) {
+        requireCanvas(userId, canvasId);
+        if (!ownership.ownedKeys(userId, List.of(key)).contains(key)) {
+            throw BusinessException.notFound("DRAMA_CANVAS_ASSET_NOT_FOUND", "视频已不可用");
+        }
+        return key;
+    }
+
     // ── 出 wire ──────────────────────────────────────────────────────────────────
 
     /** @param splitNotes 只有 paste 新建那次传切集说明；其余一律 null（不出 wire）。 */

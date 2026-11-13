@@ -27,8 +27,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { saveAs } from "file-saver";
+import { isWeChatBrowser, openVideoDownload } from "@ai-star-eco/ui/video-download";
 
 import { fetchAssetBlob } from "./api";
+import { issueStudioVideoDownload } from "@/ip/api/ip-studio";
 
 /** 文件头 → 扩展名。与服务端 `ImageBytes.sniff` 同一套判断，认不出返回 null（不猜）。 */
 export function sniffExtension(bytes: Uint8Array): string | null {
@@ -90,6 +92,14 @@ export async function downloadMedia(
   declaredMime?: string | null,
   storageKey?: string | null,
 ): Promise<void> {
+  const video = declaredMime?.toLowerCase().startsWith("video/") ||
+    mimeFromKey(storageKey ?? url)?.startsWith("video/");
+  if (video && isWeChatBrowser(navigator.userAgent)) {
+    if (!storageKey) throw new Error("视频暂不可下载，请刷新作品页后重试。");
+    const { ticket } = await issueStudioVideoDownload(storageKey, baseName);
+    openVideoDownload(ticket);
+    return;
+  }
   try {
     // 有 storageKey 就走同源路由 —— 桶没配 CORS，直接 fetch 那个签名地址必被拦。
     // 同源之后：字节嗅探真的跑得到，`a[download]` 也才作数。
@@ -117,7 +127,7 @@ export function mimeFromKey(key: string | null | undefined): string | undefined 
   const map: Record<string, string> = {
     png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
     gif: "image/gif", bmp: "image/bmp",
-    mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm",
+    mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", m4v: "video/x-m4v",
     mp3: "audio/mpeg", wav: "audio/wav", aac: "audio/aac", flac: "audio/flac",
     opus: "audio/opus", ogg: "audio/ogg",
   };

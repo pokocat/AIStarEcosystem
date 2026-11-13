@@ -263,7 +263,14 @@ public class AliyunOssCdnUploader implements CdnUploader {
         String objectKey = objectKeyFor(key);
         return switch (signStrategy) {
             case NONE -> publicUrlFor(key);
-            case OSS  -> ossPresignedUrl(objectKey, ttl, "inline");
+            case OSS  -> {
+                try {
+                    yield ossPresignedUrl(objectKey, ttl, "inline");
+                } catch (RuntimeException e) {
+                    log.warn("[cdn] ossPresignedUrl failed key={}: {} → 回退 public URL", objectKey, e.getMessage());
+                    yield baseUrl + "/" + objectKey;
+                }
+            }
             case CDN  -> cdnTypeAUrl(objectKey, ttl);
         };
     }
@@ -292,26 +299,14 @@ public class AliyunOssCdnUploader implements CdnUploader {
      * </ul>
      */
     private String ossPresignedUrl(String objectKey, long ttl, String contentDisposition) {
-        try {
-            // V4 签名最大 7 天
-            long safeTtl = Math.min(ttl, 7 * 24 * 3600L);
-            Date expiration = new Date(System.currentTimeMillis() + safeTtl * 1000L);
-            GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucket, objectKey, HttpMethod.GET);
-            req.setExpiration(expiration);
-            if (contentDisposition != null && !contentDisposition.isBlank()) {
-                ResponseHeaderOverrides responseHeaders = new ResponseHeaderOverrides();
-                responseHeaders.setContentDisposition(contentDisposition);
-                req.setResponseHeaders(responseHeaders);
-            }
-            // 用公网客户端签：host 从一开始就是公网域名，签名与 host 一致，不需要事后改写。
-            String signed = signClient.generatePresignedUrl(req).toString();
-            // 仍过一道 rewrite：signClient 万一退化成 ossClient（endpoint 本就是公网）时它是恒等的，
-            // 另外统一 http→https。
-            return rewritePublicEndpoint(signed);
-        } catch (Exception e) {
-            log.warn("[cdn] ossPresignedUrl failed key={}: {} → 回退 public URL", objectKey, e.getMessage());
-            return baseUrl + "/" + objectKey;
-        }
+        long safeTtl = Math.min(ttl, 7 * 24 * 3600L);
+        Date expiration = new Date(System.currentTimeMillis() + safeTtl * 1000L);
+        GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucket, objectKey, HttpMethod.GET);
+        req.setExpiration(expiration);
+        ResponseHeaderOverrides responseHeaders = new ResponseHeaderOverrides();
+        responseHeaders.setContentDisposition(contentDisposition);
+        req.setResponseHeaders(responseHeaders);
+        return rewritePublicEndpoint(signClient.generatePresignedUrl(req).toString());
     }
 
     /**
@@ -365,7 +360,11 @@ public class AliyunOssCdnUploader implements CdnUploader {
             safeName = sanitizeFilename(slash >= 0 ? objectKey.substring(slash + 1) : objectKey);
         }
         if (safeName.isBlank()) safeName = "download.bin";
-        return "attachment; filename=\"" + safeName + "\"";
+        String disposition = "attachment; filename=\"" + safeName + "\"";
+        if (filename == null || filename.isBlank() || safeName.equals(filename)) return disposition;
+        String encoded = java.net.URLEncoder.encode(filename, StandardCharsets.UTF_8)
+                .replace("+", "%20").replace("*", "%2A");
+        return disposition + "; filename*=UTF-8''" + encoded;
     }
 
     private static String sanitizeFilename(String filename) {

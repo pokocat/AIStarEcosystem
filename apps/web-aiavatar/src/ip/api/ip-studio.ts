@@ -297,6 +297,10 @@ export async function fetchAssetBlob(storageKey: string): Promise<Blob> {
   return res.blob();
 }
 
+export function issueStudioVideoDownload(key: string, name: string) {
+  return apiFetch<{ ticket: string }>("/v1/ip-studio/assets/video-download", { query: { key, name } });
+}
+
 // 完整运行历史独立分页，旧的 adhoc 运行也能找回。
 export async function listProjectRuns(id: string, page = 0): Promise<import("@ai-star-eco/types").IpRunPage> {
   if (USE_MOCK) {

@@ -125,7 +125,7 @@ export function SegmentedRow({ record, projectId, doc, persist, busy, onConfirm,
       {shortfall ? <Link className="scene-text-button" href={videoTaskHref({ id: executionId, projectId, sceneId: record.request?.sceneId ?? "ecom-talking" })}>调整预算</Link>
         : (status === "paused" || status === "needs_user") && <button type="button" className="is-primary" disabled={acting} onClick={() => void act("继续制作", () => resumeStudioPlanExecution(projectId, executionId, control))}><Play size={13}/>继续</button>}
       {segmentedActive(execution) && <button type="button" disabled={acting} onClick={() => void act("停止制作", () => cancelStudioPlanExecution(projectId, executionId, control))}><Square size={13}/>停止</button>}
-      {url && <button type="button" onClick={() => void downloadMedia(url, record.title, undefined, resultKey)}><Download size={13}/>下载</button>}
+      {url && <button type="button" onClick={() => void downloadMedia(url, record.title, "video/mp4", resultKey).catch(error => onFailure("下载视频", error))}><Download size={13}/>下载</button>}
     </div>
   </li>;
 }

@@ -23,7 +23,7 @@ import { isCanvasPath, rememberCanvasReturn } from "./canvas-return";
 import { DesktopTopBar } from "./desktop-top-bar";
 import { useLayoutMode } from "./layout-mode";
 
-const BARE_PREFIXES = ["/enterprise/invite", "/invite/","/card/p/", "/shared/conversations/", "/login", "/auth/callback", "/auth/test-login"];
+const BARE_PREFIXES = ["/enterprise/invite", "/invite/","/card/p/", "/shared/conversations/", "/login", "/auth/callback", "/auth/test-login", "/video-download"];
 
 /** 记下用户在哪一页，画布的返回按钮要用（shell/canvas-return.ts）。场景页改场景、草稿号走 replaceState，useSearchParams 也跟得上。 */
 function CanvasReturnTracker() {

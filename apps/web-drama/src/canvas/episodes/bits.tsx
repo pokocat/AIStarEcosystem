@@ -3,7 +3,8 @@
 // 逐集两屏共用的小件：积分数（钻石 + 数字）、价格文案、成片预览弹窗、下载成片。
 import * as React from "react";
 import { Download, Gem, X } from "lucide-react";
-import { formatDateTime } from "@ai-star-eco/api-client";
+import { apiFetch, formatDateTime } from "@ai-star-eco/api-client";
+import { isWeChatBrowser, openVideoDownload } from "@ai-star-eco/ui/video-download";
 import type { CanvasAssembled, DramaCanvasRatio } from "@ai-star-eco/types/drama-canvas";
 import { CanvasVideo, resignCanvasAsset } from "@/canvas/shell";
 import { toast } from "@/lib/toast";
@@ -32,6 +33,17 @@ export function PriceLine({ parts, className }: { parts: PricePart[]; className?
 
 /** 下载成片：先按 key 换一个新地址（签名 1 小时过期），换不到再用手上的。 */
 export async function downloadAssembled(canvasId: string, assembled: CanvasAssembled, filename: string): Promise<void> {
+  if (isWeChatBrowser(navigator.userAgent)) {
+    try {
+      const { ticket } = await apiFetch<{ ticket: string }>(`/me/drama/canvases/${encodeURIComponent(canvasId)}/assets/video-download`, {
+        query: { key: assembled.key, name: filename },
+      });
+      openVideoDownload(ticket);
+    } catch {
+      toast.error("视频下载暂不可用", { description: "请稍后重试。" });
+    }
+    return;
+  }
   let url: string | undefined;
   try {
     url = (await resignCanvasAsset(canvasId, assembled.key)) ?? assembled.url;
