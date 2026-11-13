@@ -37,7 +37,7 @@ class DramaAssembleServiceNormalizeTest {
 
     private static FfmpegRunner.MediaProbe clip(int w, int h, String vcodec, String acodec, int rate, int ch, double dur) {
         return new FfmpegRunner.MediaProbe(dur, "mp4", vcodec, acodec, w, h, acodec == null ? 0 : rate,
-                acodec == null ? 0 : ch, true);
+                acodec == null ? 0 : ch, true, "1/15360", acodec == null ? null : "1/" + rate);
     }
 
     private static FfmpegRunner.MediaProbe portrait(boolean audio) {
@@ -63,6 +63,9 @@ class DramaAssembleServiceNormalizeTest {
                 clip(720, 1280, "h264", "aac", 48000, 2, 5))));
         assertFalse(DramaAssembleService.uniformForCopy(List.of(portrait(true),
                 clip(720, 1280, "h264", "aac", 44100, 1, 5))));
+        assertFalse(DramaAssembleService.uniformForCopy(List.of(portrait(true),
+                new FfmpegRunner.MediaProbe(5, "mp4", "h264", "aac", 720, 1280, 44100, 2, true,
+                        "1/15360", "1/90000"))));
     }
 
     @Test
@@ -140,7 +143,7 @@ class DramaAssembleServiceNormalizeTest {
         assertEquals(List.of("-i", a.toString(), "-i", b.toString()), args.subList(1, 5));
         assertFalse(args.contains("concat") || args.contains("-f"), "不走 concat 分离器: " + args);
         String graph = args.get(args.indexOf("-filter_complex") + 1);
-        String video = "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,"
+        String video = "setpts=PTS-STARTPTS,scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,"
                 + "setsar=1,fps=30,format=yuv420p";
         assertTrue(graph.contains("[0:v]" + video + "[v0]"), graph);
         assertTrue(graph.contains("[1:v]" + video + "[v1]"), graph);
@@ -313,7 +316,64 @@ class DramaAssembleServiceNormalizeTest {
                 "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=44100:duration=2",
                 "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", c2.toString()));
 
-        Map<String, Path> files = new ConcurrentHashMap<>(Map.of("/cdn/k0.mp4", c0, "/cdn/k1.mp4", c1, "/cdn/k2.mp4", c2));
+        Path kept = dir.resolve("episode-kept.mp4");
+        var assembled = assembleWithRealFfmpeg(real, List.of(c0, c1, c2), kept);
+        FfmpegRunner.MediaProbe outProbe = real.probeMedia(kept.toFile());
+        assertTrue(outProbe.readable() && outProbe.hasVideo() && outProbe.hasAudio(), outProbe.toString());
+        assertEquals(720, outProbe.width());
+        assertEquals(1280, outProbe.height());
+        assertEquals(44100, outProbe.sampleRate());
+        assertEquals(2, outProbe.channels());
+        assertEquals(7.0, outProbe.durationSec(), 0.5);
+        assertEquals(7, assembled.durationSec());
+    }
+
+    @Test
+    void realFfmpeg_sameCodecsWithDifferentTimeBases_exportsBothClips(@TempDir Path dir) throws Exception {
+        FfmpegRunner real = new FfmpegRunner(new MixcutProperties());
+        assumeTrue(ffmpegAvailable(real), "本机没有 ffmpeg / ffprobe");
+        Path first = dir.resolve("red.mp4");
+        Path second = dir.resolve("blue.mp4");
+        makeClip(real, first, "red", "3002677");
+        makeClip(real, second, "blue", "12074689");
+        var probes = List.of(real.probeMedia(first.toFile()), real.probeMedia(second.toFile()));
+        assertEquals(List.of("1/3002677", "1/12074689"), probes.stream().map(FfmpegRunner.MediaProbe::videoTimeBase).toList());
+        assertFalse(DramaAssembleService.uniformForCopy(probes));
+
+        Path kept = dir.resolve("episode-kept.mp4");
+        var assembled = assembleWithRealFfmpeg(real, List.of(first, second), kept);
+        var output = real.probeMedia(kept.toFile());
+        assertTrue(output.hasVideo() && output.hasAudio());
+        assertEquals(4.0, output.durationSec(), 0.15);
+        assertEquals(4, assembled.durationSec());
+        assertDominantColor(real, kept, dir, "1", true);
+        assertDominantColor(real, kept, dir, "3", false);
+    }
+
+    private static void makeClip(FfmpegRunner real, Path out, String color, String timeScale) {
+        real.runFfmpeg(List.of("-v", "error", "-y", "-f", "lavfi", "-i", "color=" + color + ":s=180x320:r=24:d=2",
+                "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2", "-ac", "2",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-video_track_timescale", timeScale,
+                "-c:a", "aac", "-shortest", out.toString()));
+    }
+
+    private static void assertDominantColor(FfmpegRunner real, Path video, Path dir, String second, boolean red) throws Exception {
+        Path frame = dir.resolve("frame-" + second + ".rgb");
+        real.runFfmpeg(List.of("-v", "error", "-y", "-ss", second, "-i", video.toString(), "-frames:v", "1",
+                "-vf", "scale=1:1", "-pix_fmt", "rgb24", "-f", "rawvideo", frame.toString()));
+        byte[] rgb = Files.readAllBytes(frame);
+        assertEquals(3, rgb.length);
+        assertTrue(Byte.toUnsignedInt(rgb[red ? 0 : 2]) > 200 && Byte.toUnsignedInt(rgb[red ? 2 : 0]) < 30);
+    }
+
+    private DramaAssembleService.AssembledVideo assembleWithRealFfmpeg(FfmpegRunner real, List<Path> clips, Path kept) throws Exception {
+        Map<String, Path> files = new ConcurrentHashMap<>();
+        List<String> keys = new ArrayList<>();
+        for (int i = 0; i < clips.size(); i++) {
+            String key = "k" + i + ".mp4";
+            keys.add(key);
+            files.put("/cdn/" + key, clips.get(i));
+        }
         HttpServer srv = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         srv.createContext("/", ex -> {
             byte[] body = Files.readAllBytes(files.get(ex.getRequestURI().getPath()));
@@ -322,26 +382,17 @@ class DramaAssembleServiceNormalizeTest {
             ex.close();
         });
         srv.start();
-        Path kept = dir.resolve("episode-kept.mp4");
         try {
             CdnUploader up = mock(CdnUploader.class);
             doAnswer(inv -> {
                 Files.copy((Path) inv.getArgument(0), kept, StandardCopyOption.REPLACE_EXISTING);
-                return null;
+                String key = inv.getArgument(1);
+                return new CdnUploader.CdnUploadResult("/cdn/" + key, key, Files.size(kept), java.time.Instant.now());
             }).when(up).upload(any(Path.class), anyString(), anyString());
             DramaAssembleService realSvc = new DramaAssembleService(mock(DramaProjectRepository.class), real, up, signer,
                     mock(StorageQuotaService.class), new ObjectMapper(), srv.getAddress().getPort(), "/cdn", "");
 
-            DramaAssembleService.AssembledVideo a = realSvc.assembleKeys("u1", "dcv_1", 1,
-                    List.of("k0.mp4", "k1.mp4", "k2.mp4"), "9:16");
-            FfmpegRunner.MediaProbe outProbe = real.probeMedia(kept.toFile());
-            assertTrue(outProbe.readable() && outProbe.hasVideo() && outProbe.hasAudio(), outProbe.toString());
-            assertEquals(720, outProbe.width());
-            assertEquals(1280, outProbe.height());
-            assertEquals(44100, outProbe.sampleRate());
-            assertEquals(2, outProbe.channels());
-            assertEquals(7.0, outProbe.durationSec(), 0.5);
-            assertEquals(7, a.durationSec());
+            return realSvc.assembleStudioKeys("u1", "IPP-1", keys, "9:16");
         } finally {
             srv.stop(0);
         }

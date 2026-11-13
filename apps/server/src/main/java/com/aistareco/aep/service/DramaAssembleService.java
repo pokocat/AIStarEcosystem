@@ -198,7 +198,7 @@ public class DramaAssembleService {
     /**
      * 画布「合成成片」（v0.198）：按调用方给定的顺序把这些视频 key 拼成一条，存进我方存储并记 storage_asset。
      *
-     * <p>和 {@link #assemble} 同一套拼接（先流复制，失败回退重编码）与下载白名单；key 由调用方从**库里的文档**取、
+     * <p>片段参数一致时先流复制，失败回退逐段解码再拼接。key 由调用方从**库里的文档**取、
      * 并且已经过归属闸（{@code DramaCanvasOwnership.requireOwned}）—— 这里不再判归属，只负责拼。
      *
      * <p>质量门（失败即抛，不交付一条坏片）：
@@ -210,8 +210,8 @@ public class DramaAssembleService {
      *
      * <p>两条拼法（按各段 ffprobe 结果选）：
      * <ul>
-     *   <li><b>copy</b>：各段宽高、视频编码、有没有音轨（以及音轨的编码 / 采样率 / 声道）全一致 →
-     *       concat 分离器流复制（失败或时长不对回退 concat 分离器重编码）。</li>
+     *   <li><b>copy</b>：各段宽高、视频编码及时间基、有没有音轨（以及音轨的编码 / 采样率 / 声道 / 时间基）全一致 →
+     *       concat 分离器流复制（失败或时长不对回退 concat 滤镜）。</li>
      *   <li><b>normalize</b>：有任何一项不一致 —— 每段可以选不同的视频模型（2026-10 生产：H3 竖屏回 768×1024，
      *       别的模型回 9:16），有的段没有音轨 —— concat 分离器拼出来是坏片或直接失败。改成一条 filter_complex：
      *       每段缩放到目标画幅内、补边、统一 30fps / yuv420p，音轨统一 44.1kHz 立体声，没音轨的段补同长静音，
@@ -305,32 +305,18 @@ public class DramaAssembleService {
                 }
                 Files.writeString(listFile, sb.toString());
 
-                boolean copied = false;
                 try {
                     ffmpeg.runFfmpeg(List.of("-y", "-f", "concat", "-safe", "0",
                             "-i", listFile.toString(), "-c", "copy", out.toString()));
-                    copied = true;
                     actual = gatedDuration(out);
                 } catch (Exception copyFail) {
-                    log.info("[drama-assemble] canvas -c copy 失败，回退重编码: {}", copyFail.getMessage());
+                    log.info("[drama-assemble] canvas 流复制失败，改用逐段解码: {}", copyFail.getMessage());
                 }
-                if (!copied || actual < 0 || Math.abs(actual - expected) > tolerance) {
-                    if (copied) {
-                        log.info("[drama-assemble] canvas 流复制时长不对 expected={} actual={}，改重编码", expected, actual);
-                    }
-                    ffmpeg.runFfmpeg(List.of("-y", "-f", "concat", "-safe", "0",
-                            "-i", listFile.toString(),
-                            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-                            "-c:a", "aac", "-movflags", "+faststart", out.toString()));
-                    actual = gatedDuration(out);
-                    if (actual < 0 || Math.abs(actual - expected) > tolerance) {
-                        throw new IllegalStateException("成片质量门没过 expected=" + expected + " actual=" + actual);
-                    }
-                }
-            } else {
+            }
+            if (actual < 0 || Math.abs(actual - expected) > tolerance) {
                 int[] target = studio ? studioTargetSize(probes, canvasRatio, quality) : targetSize(probes, canvasRatio);
-                log.info("[drama-assemble] canvas path=normalize canvas={} ep={} clips={} ratio={} target={}x{} clipsMeta={}",
-                        refId, episodeNo, locals.size(), canvasRatio, target[0], target[1], describe(probes));
+                log.info("[drama-assemble] canvas path=normalize canvas={} ep={} clips={} ratio={} target={}x{} expected={} copyDuration={} clipsMeta={}",
+                        refId, episodeNo, locals.size(), canvasRatio, target[0], target[1], expected, actual, describe(probes));
                 ffmpeg.runFfmpeg(normalizeArgs(locals, probes, target[0], target[1], out));
                 actual = gatedDuration(out);
                 if (actual < 0 || Math.abs(actual - expected) > tolerance) {
@@ -474,22 +460,27 @@ public class DramaAssembleService {
             "aformat=sample_fmts=fltp:sample_rates=" + NORMALIZE_SAMPLE_RATE + ":channel_layouts=stereo";
 
     /**
-     * 能不能直接流复制：各段宽高、视频编码、有没有音轨一致；都有音轨时音轨编码 / 采样率 / 声道也要一致
-     * （concat 分离器流复制不会转音频参数，采样率不同的段拼出来音调会变）。
+     * concat 分离器要求各段的流参数一致。时间基不同会让后续片段的时间戳按第一段的时间基解释，导致成片时长错误。
      */
     static boolean uniformForCopy(List<FfmpegRunner.MediaProbe> probes) {
-        if (probes == null || probes.isEmpty()) return true;
+        if (probes == null || probes.size() < 2) return true;
         FfmpegRunner.MediaProbe first = probes.get(0);
         for (FfmpegRunner.MediaProbe p : probes) {
             if (p.width() != first.width() || p.height() != first.height()) return false;
             if (!sameCodec(p.videoCodec(), first.videoCodec())) return false;
+            if (!sameTimeBase(p.videoTimeBase(), first.videoTimeBase())) return false;
             if (p.hasAudio() != first.hasAudio()) return false;
             if (first.hasAudio() && (!sameCodec(p.audioCodec(), first.audioCodec())
-                    || p.sampleRate() != first.sampleRate() || p.channels() != first.channels())) {
+                    || p.sampleRate() != first.sampleRate() || p.channels() != first.channels()
+                    || !sameTimeBase(p.audioTimeBase(), first.audioTimeBase()))) {
                 return false;
             }
         }
         return true;
+    }
+
+    private static boolean sameTimeBase(String a, String b) {
+        return a != null && !a.isBlank() && a.equals(b);
     }
 
     private static boolean sameCodec(String a, String b) {
@@ -618,7 +609,7 @@ public class DramaAssembleService {
         StringBuilder concatIn = new StringBuilder();
         for (int i = 0; i < inputs.size(); i++) {
             graph.append('[').append(i).append(":v]")
-                    .append("scale=").append(width).append(':').append(height)
+                    .append("setpts=PTS-STARTPTS,scale=").append(width).append(':').append(height)
                     .append(":force_original_aspect_ratio=decrease,")
                     .append("pad=").append(width).append(':').append(height).append(":(ow-iw)/2:(oh-ih)/2,")
                     .append("setsar=1,fps=").append(NORMALIZE_FPS).append(",format=yuv420p")
@@ -626,7 +617,8 @@ public class DramaAssembleService {
             FfmpegRunner.MediaProbe probe = probes.get(i);
             if (probe.hasAudio()) {
                 graph.append('[').append(i).append(":a]")
-                        .append("aresample=").append(NORMALIZE_SAMPLE_RATE).append(',').append(AUDIO_FORMAT);
+                        .append("aresample=").append(NORMALIZE_SAMPLE_RATE).append(',').append(AUDIO_FORMAT)
+                        .append(",asetpts=PTS-STARTPTS");
             } else {
                 graph.append("anullsrc=r=").append(NORMALIZE_SAMPLE_RATE).append(":cl=stereo,")
                         .append("atrim=duration=").append(String.format(Locale.ROOT, "%.3f", probe.durationSec()))
@@ -646,14 +638,15 @@ public class DramaAssembleService {
         return args;
     }
 
-    /** 日志用：每段的宽高 / 视频编码 / 音轨。 */
+    /** 日志用：每段的宽高 / 编码 / 时间基。 */
     private static String describe(List<FfmpegRunner.MediaProbe> probes) {
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < probes.size(); i++) {
             FfmpegRunner.MediaProbe p = probes.get(i);
             if (i > 0) sb.append(", ");
             sb.append(p.width()).append('x').append(p.height()).append('/').append(p.videoCodec())
-                    .append('/').append(p.hasAudio() ? p.audioCodec() + "@" + p.sampleRate() : "noaudio");
+                    .append('@').append(p.videoTimeBase())
+                    .append('/').append(p.hasAudio() ? p.audioCodec() + "@" + p.sampleRate() + ":" + p.audioTimeBase() : "noaudio");
         }
         return sb.append(']').toString();
     }

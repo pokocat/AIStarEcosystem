@@ -63,7 +63,8 @@ class DramaAssembleServiceCanvasTest {
         when(ffmpeg.probeMedia(any(File.class))).thenAnswer(inv -> {
             File f = inv.getArgument(0);
             if (f.getName().startsWith("clip_")) {
-                return new FfmpegRunner.MediaProbe(5.0, "mp4", "h264", "aac", 720, 1280, 44100, 2, true);
+                return new FfmpegRunner.MediaProbe(5.0, "mp4", "h264", "aac", 720, 1280, 44100, 2, true,
+                        "1/15360", "1/44100");
             }
             double d = outDurations.isEmpty() ? 10.0 : outDurations.remove(0);
             return new FfmpegRunner.MediaProbe(d, "mp4", "h264", "aac", 720, 1280, 44100, 2, true);
@@ -97,6 +98,19 @@ class DramaAssembleServiceCanvasTest {
         verify(ffmpeg, times(2)).runFfmpeg(anyList());
         verify(uploader, never()).upload(any(), any(), any());
         verifyNoInteractions(storage);
+    }
+
+    @Test
+    void copyDurationDrift_decodesClipsIndependentlyAndDelivers() throws Exception {
+        outDurations.add(40.0);
+        outDurations.add(10.0);
+        var result = svc.assembleKeys("u1", "dcv_1", 1, List.of("k1.mp4", "k2.mp4"), "9:16");
+        var calls = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(ffmpeg, times(2)).runFfmpeg(calls.capture());
+        assertTrue(calls.getAllValues().get(0).contains("copy"));
+        assertTrue(calls.getAllValues().get(1).contains("-filter_complex"));
+        assertEquals(10, result.durationSec());
+        verify(uploader).upload(any(Path.class), eq(result.key()), eq("video/mp4"));
     }
 
     @Test

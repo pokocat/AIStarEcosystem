@@ -400,7 +400,7 @@ public class FfmpegRunner {
         try {
             String out = runFfprobe(List.of(
                     "-v", "error",
-                    "-show_entries", "format=duration,format_name:stream=codec_type,codec_name,width,height,sample_rate,channels",
+                    "-show_entries", "format=duration,format_name:stream=codec_type,codec_name,width,height,sample_rate,channels,time_base",
                     "-of", "json",
                     file.getAbsolutePath()
             ));
@@ -409,6 +409,8 @@ public class FfmpegRunner {
             String format = root.path("format").path("format_name").asText("");
             String videoCodec = null;
             String audioCodec = null;
+            String videoTimeBase = null;
+            String audioTimeBase = null;
             int width = 0;
             int height = 0;
             int sampleRate = 0;
@@ -417,15 +419,18 @@ public class FfmpegRunner {
                 String type = stream.path("codec_type").asText("");
                 if ("video".equals(type) && videoCodec == null) {
                     videoCodec = stream.path("codec_name").asText("");
+                    videoTimeBase = stream.path("time_base").asText(null);
                     width = stream.path("width").asInt(0);
                     height = stream.path("height").asInt(0);
                 } else if ("audio".equals(type) && audioCodec == null) {
                     audioCodec = stream.path("codec_name").asText("");
+                    audioTimeBase = stream.path("time_base").asText(null);
                     sampleRate = stream.path("sample_rate").asInt(0);
                     channels = stream.path("channels").asInt(0);
                 }
             }
-            return new MediaProbe(duration, format, videoCodec, audioCodec, width, height, sampleRate, channels, true);
+            return new MediaProbe(duration, format, videoCodec, audioCodec, width, height, sampleRate, channels,
+                    true, videoTimeBase, audioTimeBase);
         } catch (Exception e) {
             log.warn("[mixcut] ffprobe media metadata failed file={} error={}", file.getName(), e.getMessage());
             return new MediaProbe(0, "", null, null, 0, 0, 0, 0, false);
@@ -433,7 +438,13 @@ public class FfmpegRunner {
     }
 
     public record MediaProbe(double durationSec, String format, String videoCodec, String audioCodec,
-                             int width, int height, int sampleRate, int channels, boolean readable) {
+                             int width, int height, int sampleRate, int channels, boolean readable,
+                             String videoTimeBase, String audioTimeBase) {
+        public MediaProbe(double durationSec, String format, String videoCodec, String audioCodec,
+                          int width, int height, int sampleRate, int channels, boolean readable) {
+            this(durationSec, format, videoCodec, audioCodec, width, height, sampleRate, channels, readable, null, null);
+        }
+
         public boolean hasVideo() { return videoCodec != null && !videoCodec.isBlank(); }
         public boolean hasAudio() { return audioCodec != null && !audioCodec.isBlank(); }
     }
