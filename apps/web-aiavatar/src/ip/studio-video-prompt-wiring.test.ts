@@ -23,11 +23,11 @@ test("the composer, the run input view and the dialog are mounted", () => {
 test("the frame question is asked before saving the document or submitting, and the choice reaches the request", () => {
   const workspace = read("ip/studio-workspace.tsx");
   const submit = workspace.slice(workspace.indexOf("const submit = async (choice"), workspace.indexOf("const importScript = async"));
-  const asked = submit.indexOf("studioFrameIntent(requestPrompt,videoSettings,nativeModeSpec)");
+  const asked = submit.indexOf("studioFrameIntent(requestPrompt,videoSettings,submissionModeSpec)");
   expect(asked).toBeGreaterThan(0);
   expect(asked).toBeLessThan(submit.indexOf("setBusy(true)"));
   expect(asked).toBeLessThan(submit.indexOf("await saveStudioDocument(projectId)"));
   expect(asked).toBeLessThan(submit.indexOf("await submitStudioRun(projectId, request,"));
   expect(submit).toMatch(/if\(choice==="cancel"\)return;\s*if\(choice==="bind"\)\{bindFramesFor\(intent\);return;\}/);
-  expect(workspace).toContain("studioVideoSettings(videoDraft.mode,videoDraft.tier,videoAssets,videoDraft.seed,nativeModeSpec,studioVideoPromptMode(nativeVideo.supportsPromptOptimization,videoDraft.keepPrompt))");
+  expect(workspace).toMatch(/studioVideoSettings\(submissionModeSpec\.mode, videoDraft\.tier, videoAssets, videoDraft\.seed,\s*submissionModeSpec, studioVideoPromptMode\(nativeVideo\.supportsPromptOptimization, videoDraft\.keepPrompt\)\)/);
 });
