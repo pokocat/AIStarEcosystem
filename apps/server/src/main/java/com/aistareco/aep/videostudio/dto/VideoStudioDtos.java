@@ -35,12 +35,7 @@ public final class VideoStudioDtos {
 
     /** 一档清晰度及其可选画布。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    public record VideoStudioTier(String tier, List<VideoStudioCanvas> canvases,
-                                  @JsonInclude(JsonInclude.Include.NON_NULL) Long creditsPerSecond) {
-        public VideoStudioTier(String tier, List<VideoStudioCanvas> canvases) {
-            this(tier, canvases, null);
-        }
-    }
+    public record VideoStudioTier(String tier, List<VideoStudioCanvas> canvases) {}
 
     /** 某类素材的限制。{@code minDurationSec} / {@code maxDurationSec} 为 null = 不限。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)
@@ -113,7 +108,14 @@ public final class VideoStudioDtos {
     public record VideoStudioPricingConfig(@JsonInclude(value = JsonInclude.Include.ALWAYS, content = JsonInclude.Include.ALWAYS)
                                            Map<String, Map<String, Long>> perSecond,
                                            Integer freeRefImages, Long extraRefImagePerSecond,
-                                           Long promptOptimizationPerCall) {}
+                                           Long promptOptimizationPerCall,
+                                           @JsonInclude(JsonInclude.Include.NON_NULL)
+                                           Map<String, Map<String, Long>> endpointTierRates) {
+        public VideoStudioPricingConfig(Map<String, Map<String, Long>> perSecond, Integer freeRefImages,
+                                        Long extraRefImagePerSecond, Long promptOptimizationPerCall) {
+            this(perSecond, freeRefImages, extraRefImagePerSecond, promptOptimizationPerCall, null);
+        }
+    }
 
     /** 可选模型（GET /me/celebrity/video-studio/models 的一项）。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)

@@ -105,7 +105,7 @@
 }
 ```
 
-- 端点合同 `tiers[].creditsPerSecond` 可为该模型的一档清晰度设定每秒积分，优先于共享价表。`perSecond[模式][清晰度]` 为共享价表，null 时按后台给模型配的每秒价。最终报价按整数运算并检查溢出。
+- 计价配置 `endpointTierRates[端点][清晰度]` 可为该模型的一档清晰度设定每秒积分，优先于共享价表。`perSecond[模式][清晰度]` 为共享价表，null 时按后台给模型配的每秒价。最终报价按整数运算并检查溢出。
   （候选 `creditCostOverride` 且端点 `PER_SECOND`；**`creditCostOverride` 为 0 算没配，不算免费**）。模型也没配每秒价 → 这一格**未定价**：下发给用户的 pricing 里是 null，
   前端不报价、不许提交，服务端提交 → 503 `VIDEO_STUDIO_PRICE_NOT_CONFIGURED`（文案告诉运营去哪配）。**不回落任何写死的价**（§8.0）。
 - 多参考素材加价：前 `freeRefImages`（非负；H3 素材合同本身最多 9 张）张不加价，之后每张每秒加 `extraRefImagePerSecond`（非负，0 = 不加）。是否使用这项加价由当前模式的参考素材规则决定，与模式名称无关；其他模型的实际参考图数量由其端点素材规格决定。

@@ -1032,7 +1032,7 @@ web-drama 的 `/canvas`：照小云雀「短剧 Agent」做的一条**独立**�
   视频生成」编辑，`GET / PUT /api/admin/celebrity/video-studio-pricing`（角色同 `action-pricing`：`/api/admin/**` 的
   SUPER_ADMIN / OPERATOR / FINANCE_ADMIN）。整份替换，60 秒缓存在保存时立即失效。首次启动写入全 null / 0
   （= 生成按模型单价、不加价、智能优化不收费）。
-- 每一格（模式 × 清晰度）的每秒价 = **端点该清晰度的 `creditsPerSecond` ?? 共享价表那一格 ?? 这个模型的每秒价**（候选 `creditCostOverride` 且端点 `PER_SECOND`，
+- 每一格（模式 × 清晰度）的每秒价 = **`endpointTierRates[端点][清晰度]` ?? 共享价表那一格 ?? 这个模型的每秒价**（候选 `creditCostOverride` 且端点 `PER_SECOND`，
   即 `videoBillingUnit` = `per_second`）**?? 未定价**。未定价的格子下发给用户是显式 null：前端不报价、不许提交；
   服务端提交 → 503 `VIDEO_STUDIO_PRICE_NOT_CONFIGURED`（冻结之前），**不回落任何写死的价**（§8.0）。
   不再有「按条计价」分支；合成的默认项没有候选行、没有模型每秒价，只认配置的格子。

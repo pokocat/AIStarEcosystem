@@ -61,12 +61,15 @@ class VideoStudioPricingTest {
             var old = com.aistareco.aep.videostudio.service.VideoStudioService.contract(4, 15);
             var contract = new VideoStudioDtos.VideoStudioContract(old.modes(), java.util.List.of(
                     new VideoStudioDtos.VideoStudioTier("720p", old.tiers().get(0).canvases()),
-                    new VideoStudioDtos.VideoStudioTier("1080p", old.tiers().get(0).canvases(), 358L)),
+                    new VideoStudioDtos.VideoStudioTier("1080p", old.tiers().get(0).canvases())),
                     4, 15, old.promptMaxChars(), old.seedMax());
-            var pricing = VideoStudioPricing.effective(config(cells("t2v", "1080p", 80L), 0, 0L, 0L), 120L, contract);
+            var cfg = new VideoStudioPricingConfig(cells("t2v", "1080p", 80L), 0, 0L, 0L,
+                    Map.of("seedance25", Map.of("1080p", 358L)));
+            var pricing = VideoStudioPricing.effective(cfg, 120L, contract, "seedance25");
             assertEquals(600L, VideoStudioPricing.total(pricing, "t2v", "720p", 5, 0, false));
             assertEquals(1790L, VideoStudioPricing.total(pricing, "t2v", "1080p", 5, 0, false));
             assertEquals(1790L, VideoStudioPricing.total(pricing, "universal_reference_video", "1080p", 5, 0, true));
+            assertEquals(400L, VideoStudioPricing.total(VideoStudioPricing.effective(cfg, 120L, contract, "other"), "t2v", "1080p", 5, 0, false));
         }
 
         @Test
@@ -262,13 +265,15 @@ class VideoStudioPricingTest {
                     () -> svc.replace(config(cells("t2v", "768p", 0L), 0, 0L, 0L), "admin1")).getCode());
             verify(platformConfig, never()).upsert(anyString(), any(), anyString(), anyString());
 
+            stored("{\"perSecond\":{\"t2v\":{\"768p\":\"broken\"}},\"endpointTierRates\":{\"seedance25\":{\"1080p\":358}}}");
             VideoStudioPricingConfig saved = svc.replace(config(cells("t2v", "768p", 25L), 0, 0L, 4L), "admin1");
             ArgumentCaptor<JsonNode> value = ArgumentCaptor.forClass(JsonNode.class);
             verify(platformConfig).upsert(eq(VideoStudioPricingService.CONFIG_KEY), value.capture(), anyString(), eq("admin1"));
             assertEquals(25, value.getValue().path("perSecond").path("t2v").path("768p").asInt());
             assertTrue(value.getValue().path("perSecond").path("i2v").get("544p").isNull());
+            assertEquals(358, value.getValue().path("endpointTierRates").path("seedance25").path("1080p").asInt());
             assertEquals(saved, svc.current());
-            verify(platformConfig, never()).findByKey(anyString());
+            verify(platformConfig).findByKey(VideoStudioPricingService.CONFIG_KEY);
         }
     }
 }

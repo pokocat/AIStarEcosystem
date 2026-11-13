@@ -5851,7 +5851,6 @@ components:
       properties:
         tier: { type: string, example: 768p }
         canvases: { type: array, items: { $ref: '#/components/schemas/VideoStudioCanvas' } }
-        creditsPerSecond: { type: integer, format: int64, minimum: 1, description: 端点对这一清晰度的每秒售价，优先于共享价表和候选单价 }
     VideoStudioMediaLimit:
       type: object
       required: [mediaType, maxCount, maxBytes, formats, minDurationSec, maxDurationSec]
@@ -5951,6 +5950,12 @@ components:
         越界、缺标量、模式或清晰度不认识 → 400 VIDEO_STUDIO_PRICING_INVALID。首次启动写入全 null / 0。
       required: [perSecond, freeRefImages, extraRefImagePerSecond, promptOptimizationPerCall]
       properties:
+        endpointTierRates:
+          type: object
+          description: 端点编号 → 清晰度 → 每秒积分，优先于共享价表；省略时保留已配置的端点售价
+          additionalProperties:
+            type: object
+            additionalProperties: { type: integer, format: int64, minimum: 1 }
         perSecond: { $ref: '#/components/schemas/VideoStudioPerSecondGrid' }
         freeRefImages: { type: integer, minimum: 0 }
         extraRefImagePerSecond: { type: integer, format: int64, minimum: 0 }

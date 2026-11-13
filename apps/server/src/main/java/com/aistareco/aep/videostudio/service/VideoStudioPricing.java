@@ -62,13 +62,20 @@ public final class VideoStudioPricing {
     /** Project shared overrides onto only the combinations this configured endpoint exposes. */
     public static VideoStudioDtos.VideoStudioPricing effective(VideoStudioPricingConfig config, Long modelRatePerSecond,
                                                                 VideoStudioDtos.VideoStudioContract contract) {
+        return effective(config, modelRatePerSecond, contract, null);
+    }
+
+    public static VideoStudioDtos.VideoStudioPricing effective(VideoStudioPricingConfig config, Long modelRatePerSecond,
+                                                                VideoStudioDtos.VideoStudioContract contract, String endpointId) {
+        Map<String, Long> endpointRates = endpointId == null || config.endpointTierRates() == null
+                ? Map.of() : config.endpointTierRates().getOrDefault(endpointId, Map.of());
         Map<String, Map<String, Long>> grid = new LinkedHashMap<>();
         for (var mode : contract.modes()) {
             Map<String, Long> prices = new LinkedHashMap<>();
             for (var tier : contract.tiers()) {
                 Map<String, Long> configured = config.perSecond().get(mode.mode());
-                prices.put(tier.tier(), tier.creditsPerSecond() != null ? tier.creditsPerSecond()
-                        : configured == null ? null : configured.get(tier.tier()));
+                Long endpointRate = endpointRates.get(tier.tier());
+                prices.put(tier.tier(), endpointRate != null ? endpointRate : configured == null ? null : configured.get(tier.tier()));
             }
             grid.put(mode.mode(), prices);
         }
@@ -129,8 +136,16 @@ public final class VideoStudioPricing {
         }
         requireAmount(input.extraRefImagePerSecond(), "全能参考每张加价");
         requireAmount(input.promptOptimizationPerCall(), "智能优化单价");
+        if (input.endpointTierRates() != null) input.endpointTierRates().forEach((endpoint, rates) -> {
+            if (!endpoint.matches("[A-Za-z0-9_.:-]{1,100}") || rates == null)
+                throw invalid("端点清晰度售价配置无效");
+            rates.forEach((tier, rate) -> {
+                if (!tier.matches("[A-Za-z0-9_.-]{1,32}") || rate == null || rate < CELL_MIN)
+                    throw invalid("端点清晰度售价必须为正整数");
+            });
+        });
         return new VideoStudioPricingConfig(fullGrid(input.perSecond()), free,
-                input.extraRefImagePerSecond(), input.promptOptimizationPerCall());
+                input.extraRefImagePerSecond(), input.promptOptimizationPerCall(), input.endpointTierRates());
     }
 
     static boolean validModeKey(String mode) {

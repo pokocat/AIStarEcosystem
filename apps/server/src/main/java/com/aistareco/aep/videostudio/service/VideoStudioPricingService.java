@@ -73,6 +73,17 @@ public class VideoStudioPricingService {
     /** 后台整份替换：严格校验 → 落库 → 缓存立即换成新值。 */
     public VideoStudioPricingConfig replace(VideoStudioPricingConfig next, String updatedBy) {
         VideoStudioPricingConfig normalized = VideoStudioPricing.validate(next);
+        // Older pricing screens do not send the endpoint rates when editing the shared grid.
+        if (normalized.endpointTierRates() == null) {
+            // A shared-grid edit can also repair a broken stored configuration.
+            Map<String, Map<String, Long>> rates = platformConfig.findByKey(CONFIG_KEY).map(PlatformConfigDto::value)
+                    .filter(value -> value.hasNonNull("endpointTierRates"))
+                    .map(value -> OM.convertValue(value.get("endpointTierRates"),
+                            new com.fasterxml.jackson.core.type.TypeReference<Map<String, Map<String, Long>>>() {}))
+                    .orElse(null);
+            normalized = VideoStudioPricing.validate(new VideoStudioPricingConfig(normalized.perSecond(), normalized.freeRefImages(),
+                    normalized.extraRefImagePerSecond(), normalized.promptOptimizationPerCall(), rates));
+        }
         platformConfig.upsert(CONFIG_KEY, OM.valueToTree(normalized), DESCRIPTION,
                 updatedBy == null || updatedBy.isBlank() ? "admin" : updatedBy);
         cache.set(new Cache(normalized, System.currentTimeMillis()));
@@ -113,6 +124,6 @@ public class VideoStudioPricingService {
         return VideoStudioPricing.validate(new VideoStudioPricingConfig(known,
                 raw.freeRefImages() == null ? 0 : raw.freeRefImages(),
                 raw.extraRefImagePerSecond() == null ? 0L : raw.extraRefImagePerSecond(),
-                raw.promptOptimizationPerCall() == null ? 0L : raw.promptOptimizationPerCall()));
+                raw.promptOptimizationPerCall() == null ? 0L : raw.promptOptimizationPerCall(), raw.endpointTierRates()));
     }
 }

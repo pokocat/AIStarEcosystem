@@ -271,8 +271,7 @@ public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
         Set<String> tiers = new HashSet<>();
         for (VideoStudioTier tier : contract.tiers()) {
             if (tier == null || tier.tier() == null || !tier.tier().matches("[A-Za-z0-9_.-]{1,32}")
-                    || !tiers.add(tier.tier()) || tier.canvases() == null || tier.canvases().isEmpty()
-                    || tier.creditsPerSecond() != null && tier.creditsPerSecond() <= 0) throw invalid();
+                    || !tiers.add(tier.tier()) || tier.canvases() == null || tier.canvases().isEmpty()) throw invalid();
             Set<String> ratios = new HashSet<>();
             for (VideoStudioCanvas canvas : tier.canvases()) {
                 if (canvas == null || canvas.aspectRatio() == null

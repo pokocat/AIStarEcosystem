@@ -215,7 +215,7 @@ public class VideoStudioService {
                         videoContract.promptMaxChars(), videoContract.seedMax());
         return new VideoStudioModel(ep.getId(), ep.publicModelName(), isDefault, selectableById,
                 modelClient.isJusuanMedia(ep), effectiveContract,
-                VideoStudioPricing.effective(config, modelRate, effectiveContract),
+                VideoStudioPricing.effective(config, modelRate, effectiveContract, ep.getId()),
                 configured==null?List.of(1,2,4):configured.allowedBatchCounts());
     }
 
