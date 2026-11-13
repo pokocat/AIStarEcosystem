@@ -9,7 +9,8 @@
 .portrait-guide-photo figcaption { min-width: 0; }
 .portrait-guide-image, .portrait-guide-placeholder { flex: none; width: 64px; }
 .portrait-guide-image, .portrait-guide-image img, .portrait-guide-placeholder { aspect-ratio: 4 / 5; border-radius: 10px; }
-.portrait-guide-image img { width: 100%; height: 100%; object-fit: cover; }
+.portrait-guide-image { display: block; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.portrait-guide-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .portrait-guide-placeholder { display: grid; place-items: center; background: rgba(25, 34, 41, .05); color: rgba(25, 34, 41, .45); }
 .portrait-guide-body { min-width: 0; }
 .portrait-guide-form .ant-form-item { margin-bottom: 20px; }

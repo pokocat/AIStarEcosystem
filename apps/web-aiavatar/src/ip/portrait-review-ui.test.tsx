@@ -112,3 +112,22 @@ it('deferring verification closes the modal without resubmitting or losing the p
   fireEvent.click(screen.getByRole('radio', { name: '真人照片' }));expect(screen.getByRole('radio', { name: '陈泽' })).toHaveProperty('checked', true);
   fireEvent.click(screen.getByRole('button', { name: '暂不生成' }));await expect(pending).resolves.toBe(false);expect(mocks.resume).not.toHaveBeenCalled();expect(mocks.declare).not.toHaveBeenCalled();
 });
+it('opens the fitted image viewer and returns to the portrait confirmation on Escape', async () => {
+  const photo = { ...item, id: 'defer-item', previewUrl: '/photos/reference.jpg' };
+  mocks.overview.mockResolvedValue({ ...data(), items: [photo] });
+  render(<PortraitReviewHost />);
+  let pending!: Promise<boolean>;
+  act(() => { pending = requestPortraitReview([], [photo]); });
+
+  const trigger = await screen.findByRole('button', { name: '放大查看参考图' });
+  fireEvent.click(trigger);
+  expect(screen.getByRole('toolbar', { name: '缩放' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '适应窗口' })).toHaveProperty('disabled', true);
+  fireEvent.click(screen.getByRole('button', { name: '放大' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '适应窗口' })).toHaveProperty('disabled', false));
+  fireEvent.keyDown(trigger, { key: 'Escape' });
+  expect(screen.queryByRole('toolbar', { name: '缩放' })).toBeNull();
+  expect(screen.getByRole('dialog', { name: '确认参考人像' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '暂不生成' }));
+  await expect(pending).resolves.toBe(false);
+});

@@ -8,6 +8,7 @@ import { CircleCheck, UserRound } from 'lucide-react';
 import type { VideoPortraitItem, VideoPortraitOverview, VideoPortraitPerson } from '@ai-star-eco/types/video-portrait-library';
 import { formatDateTime } from '@/lib/datetime';
 import { useLayoutMode } from '@/shell/layout-mode';
+import { ImageLightbox } from './image-lightbox';
 import { normalizeStudioError, reportStudioError } from './studio-errors';
 import * as api from './api/video-portrait-library';
 
@@ -111,6 +112,8 @@ export function PortraitGuide({ item, overview, busy, act, footer, batchItems = 
   const [name, setName] = useState(''), [accepted, setAccepted] = useState(false);
   const [additionalIds, setAdditionalIds] = useState<string[]>([]);
   const [verification, setVerification] = useState<VideoPortraitPerson>(), [verified, setVerified] = useState<VideoPortraitPerson>();
+  const [preview, setPreview] = useState<{ src: string; alt: string }>();
+  const closePreview = useCallback(() => setPreview(undefined), []);
   const requestId = useRef<string | undefined>(undefined);
   // The person just verified may reach this list one reload after the photo is submitted.
   const options = verified && !people.some(p => p.id === verified.id) ? [...people, verified] : people;
@@ -180,12 +183,17 @@ export function PortraitGuide({ item, overview, busy, act, footer, batchItems = 
   const controls = footer
     ? <>{lead && footer.start && createPortal(lead, footer.start)}{action && footer.action && createPortal(action, footer.action)}</>
     : (lead || action) && <Flex align="center" justify="space-between" gap={12} wrap className="portrait-actions">{lead || <span />}{action}</Flex>;
+  const { previewUrl } = item;
 
   return <div className="portrait-guide">
     <figure className="portrait-guide-photo">
-      {item.previewUrl ? <Image src={item.previewUrl} alt={item.label} rootClassName="portrait-guide-image" /> : <div className="portrait-guide-placeholder"><UserRound size={28} /></div>}
+      {previewUrl ? <button type="button" className="portrait-guide-image" aria-label={`放大查看${item.label}`} title="点击放大"
+        onClick={() => setPreview({ src: previewUrl, alt: item.label })}>
+        <img src={previewUrl} alt={item.label} />
+      </button> : <div className="portrait-guide-placeholder"><UserRound size={28} /></div>}
       <figcaption><Typography.Text type="secondary" ellipsis={{ tooltip: item.label }}>{item.label}</Typography.Text></figcaption>
     </figure>
+    {preview && <ImageLightbox src={preview.src} alt={preview.alt} open onClose={closePreview} />}
     <Flex vertical gap={24} className="portrait-guide-body">
       <Steps size="small" responsive={false} current={current} status={phase === 'done' ? 'finish' : phase === 'verify' && verification && !portraitVerificationLive(verification) ? 'error' : 'process'} items={steps.map(title => ({ title }))} />
       {phase === 'choose' && <Form layout="vertical" requiredMark={false} onFinish={submit} className="portrait-guide-form">
