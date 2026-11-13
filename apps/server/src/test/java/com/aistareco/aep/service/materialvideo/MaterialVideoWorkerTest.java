@@ -35,11 +35,13 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 /**
@@ -202,6 +204,32 @@ class MaterialVideoWorkerTest {
         worker(new FakeUploader(false)).generateAsync("mvj_test");
         assertEquals("VIDEO_PROVIDER_INTERNAL",job.getErrorCode());
         assertTrue(job.getErrorMessage().contains("重新生成"),job.getErrorMessage());
+    }
+
+    @Test void audioCopyrightRejectionReleasesTheOriginalHoldAndKeepsItsCodeAndEvidenceForAlerts() {
+        String body = """
+                {"status":"failed","error":{"category":"service_rejected","code":"InternalServiceError","reason":"copyright_audio"}}
+                """;
+        var mapped = VideoProviderErrorMapper.poll(body).orElseThrow();
+        var evidence = com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(200,
+                HttpHeaders.of(Map.of(), (k,v) -> true), body);
+        when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
+                new MaterialVideoModelClient.PollResult("failed", null, null, "failed", 100, mapped.message(),
+                        null, null, null, evidence, mapped.code()));
+        job.setCreditsHeld(480L);
+        var errors = mock(com.aistareco.aep.service.ErrorLogService.class);
+        var worker = worker(new FakeUploader(false));
+        org.springframework.test.util.ReflectionTestUtils.setField(worker, "errorLogs", errors);
+        worker.generateAsync("mvj_test");
+        assertEquals("failed", job.getStatus());
+        assertEquals("VIDEO_AUDIO_COPYRIGHT_RESTRICTED", job.getErrorCode());
+        assertTrue(job.getErrorMessage().contains("调整提示词"), "the customer must retain the corrective action");
+        var failure = org.mockito.ArgumentCaptor.forClass(Throwable.class);
+        verify(errors).recordTask(failure.capture(), eq(mapped.code()), eq("u1"), eq("mvj_test"));
+        assertSame(evidence, failure.getValue().getSuppressed()[0]);
+        verify(creditService).releaseHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE), eq("mvj_test"), anyString());
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), any());
+        verify(modelClient, times(1)).submit(any(), anyInt(), any(), any(), any(), any(), any(), any());
     }
 
     @Test void failedSeedanceTaskReportsMeasuredReferenceDimensions() throws IOException {

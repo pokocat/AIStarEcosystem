@@ -105,6 +105,20 @@ class FeishuModelAlertsTest {
         assertTrue(text.contains("private-prompt"),"supplier error.message must reach the alert");
         assertFalse(text.contains("hidden-secret"));
     }
+    @Test void audioCopyrightAlertKeepsActionableReasonAndStructuredSupplierEvidence() {
+        String reason = "视频生成失败：服务方提示生成的音频可能涉及版权限制。请调整提示词后再生成。";
+        var failure = new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_AUDIO_COPYRIGHT_RESTRICTED", reason);
+        ProviderResponseDiagnostics.capture(200, java.net.http.HttpHeaders.of(java.util.Map.of(), (k,v) -> true), """
+                {"status":"failed","error":{"category":"service_rejected","code":"InternalServiceError",
+                "reason":"copyright_audio","message":"生成的音频可能涉及版权限制，请关闭音频（generate_audio=false）或调整提示词后重试。"}}
+                """).attachTo(failure);
+        String card = FeishuModelAlerts.message("test-task", failure.getCode(), "ABCDEF234567", failure);
+        assertTrue(card.contains(reason), "the alert summary must retain the actionable customer reason");
+        assertTrue(card.contains("VIDEO_AUDIO_COPYRIGHT_RESTRICTED"));
+        assertTrue(card.contains("HTTP 200"));
+        assertTrue(card.contains("copyright_audio"));
+        assertTrue(card.contains("generate_audio=false"), "original supplier advice remains in diagnostics");
+    }
     @Test void legacyDiagnosticsKeepIdNamesAndRejectSecretsOrTruncatedIds() throws Exception {
         String text=FeishuModelAlerts.message("task","FAIL","trace",new IllegalStateException(
                 "status=503 log_id=abc.123 requestId=req_456 x-tt-logid: 789ABC trace_id=trace:789 request_id=sk-secret-value logid="+"a".repeat(257)));

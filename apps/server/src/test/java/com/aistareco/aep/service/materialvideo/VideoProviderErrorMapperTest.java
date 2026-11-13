@@ -45,6 +45,40 @@ class VideoProviderErrorMapperTest {
     }
 
     @Test
+    void structuredAudioCopyrightReasonTakesPriorityOverTheGenericInternalCodeAndExplainsWhatToChange() {
+        // 2026-11-13 OneToken Seedance 2.5: two HTTP 200 failed polls; no request content or identifiers.
+        String response = """
+                {"status":"failed","error":{"category":"service_rejected","code":"InternalServiceError",
+                "reason":"copyright_audio","message":"生成的音频可能涉及版权限制，请关闭音频（generate_audio=false）或调整提示词后重试。"}}
+                """;
+        var mapped = VideoProviderErrorMapper.poll(response).orElseThrow();
+        assertEquals("VIDEO_AUDIO_COPYRIGHT_RESTRICTED", mapped.code());
+        assertTrue(mapped.message().contains("服务方提示"), "report the supplier's assessment, not a finding of infringement");
+        assertTrue(mapped.message().contains("音频可能涉及版权限制"));
+        assertTrue(mapped.message().contains("调整提示词"));
+        assertFalse(mapped.message().contains("generate_audio"));
+        assertFalse(mapped.message().contains("临时出错"));
+        assertEquals(mapped.message(), com.aistareco.aep.service.ai.PublicModelErrorPolicy.stored(mapped.message(), mapped.code()));
+        assertTrue(VideoProviderErrorMapper.submit(502, response).isEmpty(), "poll classification must not change uncertain create handling");
+    }
+
+    @Test
+    void serviceBusyAndUnknownReasonsKeepTheirExistingClassification() {
+        for (String reason : java.util.List.of("service_busy", "unknown_reason")) {
+            String response = "{\"error\":{\"category\":\"service_rejected\",\"code\":\"InternalServiceError\",\"reason\":\"" + reason + "\"}}";
+            assertEquals("VIDEO_PROVIDER_INTERNAL", VideoProviderErrorMapper.poll(response).orElseThrow().code());
+        }
+        assertTrue(VideoProviderErrorMapper.poll("{\"error\":{\"category\":\"service_rejected\",\"reason\":\"unknown_reason\"}}").isEmpty());
+        assertTrue(VideoProviderErrorMapper.poll("{\"error\":{\"category\":\"service_rejected\",\"reason\":\"copyright_audio\"}}").isEmpty());
+        assertEquals("VIDEO_PROVIDER_INTERNAL", VideoProviderErrorMapper.poll("""
+                {"error":{"category":"internal","code":"InternalServiceError","reason":"copyright_audio"}}
+                """).orElseThrow().code(), "a reason token alone does not establish this known rejection");
+        assertEquals("VIDEO_PROVIDER_INTERNAL", VideoProviderErrorMapper.poll("""
+                {"error":{"code":"InternalServiceError","message":"copyright_audio"}}
+                """).orElseThrow().code(), "do not classify by message keywords");
+    }
+
+    @Test
     void mapsKnownProviderCodeToStablePlatformCode() {
         var mapped = VideoProviderErrorMapper.submit(503,
                 "{\"code\":\"video_queue_full\",\"message\":\"video queue is full\"}").orElseThrow();

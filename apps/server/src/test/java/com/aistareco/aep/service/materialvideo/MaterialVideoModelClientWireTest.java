@@ -1124,6 +1124,38 @@ class MaterialVideoModelClientWireTest {
     }
 
     @Test
+    void acceptedAudioCopyrightRejectionKeepsActionableGuidanceAndTheOriginalDiagnostics() throws Exception {
+        var spec = new AiVideoRequestSpec("seedance", VideoStudioService.contract(5, 15),
+                "/tasks", "/tasks/{id}", Map.of(), null,
+                new AiVideoRequestSpec.ResponseSpec("/id", "/status", null, "/error/message", null, null));
+        var endpoint = AiModelEndpoint.builder().id("ep-test").name("OneToken Seedance 2.5")
+                .baseUrl(base("/onetoken")).model("seedance-2.0").videoRequestSpecJson(spec.json())
+                .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("sk-test")).enabled(true).build();
+        when(invocation.resolveDefaultEndpoint(AiModelPurpose.VIDEO_GENERATION, "celebrity"))
+                .thenReturn(Optional.of(endpoint));
+        when(invocation.storedEndpoint(endpoint.getId())).thenReturn(Optional.of(endpoint));
+        createBody = "{\"id\":\"task-audio-copyright\"}";
+        var accepted = client.submit("测试", 12, "16:9", "u1", "celebrity", null, VideoGenSpec.EMPTY);
+        createStatus = 200;
+        // Minimal projection of the two real 2026-11-13 failed polls; no request body, asset URL or real IDs.
+        createBody = """
+                {"status":"failed","error":{"category":"service_rejected","code":"InternalServiceError",
+                "reason":"copyright_audio","message":"生成的音频可能涉及版权限制，请关闭音频（generate_audio=false）或调整提示词后重试。"}}
+                """;
+        var failed = client.poll(accepted);
+        assertTrue(failed.failed());
+        assertEquals("VIDEO_AUDIO_COPYRIGHT_RESTRICTED", failed.failCode());
+        assertTrue(failed.failReason().contains("音频可能涉及版权限制"));
+        assertTrue(failed.failReason().contains("调整提示词"));
+        assertFalse(failed.failReason().contains("临时出错"));
+        assertEquals(failed.failReason(), com.aistareco.aep.service.ai.PublicModelErrorPolicy.stored(failed.failReason(), failed.failCode()));
+        assertEquals(200, failed.diagnostics().status());
+        assertTrue(failed.diagnostics().responseBody().contains("copyright_audio"));
+        assertTrue(failed.diagnostics().responseBody().contains("generate_audio=false"));
+        assertEquals(1, requests.stream().filter(r -> "POST".equals(r.method())).count(), "poll must not resubmit");
+    }
+
+    @Test
     void configuredResponsePathsReadNestedTaskStatusAndOutput() {
         var response = new AiVideoRequestSpec.ResponseSpec("/payload/task/id", "/payload/state",
                 "/payload/result/url", "/payload/error/message", List.of("ok"), List.of("rejected"));
