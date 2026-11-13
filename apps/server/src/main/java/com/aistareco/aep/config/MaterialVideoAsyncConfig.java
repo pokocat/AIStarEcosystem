@@ -56,4 +56,13 @@ public class MaterialVideoAsyncConfig {
         scheduler.setThreadNamePrefix("portrait-asset-");
         return scheduler;
     }
+
+    @Bean
+    public ThreadPoolTaskScheduler materialVideoLeaseScheduler() {
+        var scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("material-video-lease-");
+        scheduler.setRemoveOnCancelPolicy(true);
+        return scheduler;
+    }
 }

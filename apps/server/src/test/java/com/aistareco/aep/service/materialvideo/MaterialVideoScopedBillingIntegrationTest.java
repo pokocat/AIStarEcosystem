@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.*;
 import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.*;
@@ -226,6 +227,35 @@ class MaterialVideoScopedBillingIntegrationTest {
         worker.generateAsync(id);assertEquals("generating",jobs.findById(id).orElseThrow().getStatus());assertEquals(CreditHold.Status.ACTIVE,hold(id).getStatus());assertEquals(50,grant().getFrozen());
         worker.generateAsync(id);assertEquals("succeeded",jobs.findById(id).orElseThrow().getStatus());assertEquals(70,wallet().getTotalBalance());assertEquals(50,grant().getSpent());
         verify(client,times(1)).submit(any(),anyInt(),any(),any(),any(),any(),any(),any());verify(client).resumeExistingTask(eq("vendor-job"),eq("ep"),any(),eq("video-v1"),any(),any(),any());
+    }
+
+    @Test void interruptedSubmissionRefundsOriginalWalletAndGrantOnceAfterTheLastActivityExpires() {
+        String id = create();
+        assertEquals(1, jobs.claimQueued(id, OffsetDateTime.now()));
+        clearInvocations(client);
+
+        worker.failUnconfirmedSubmission(id);
+        assertEquals("submitting", jobs.findById(id).orElseThrow().getStatus());
+        assertEquals(CreditHold.Status.ACTIVE, hold(id).getStatus());
+        assertEquals(30, wallet().getPendingBalance());
+        assertEquals(50, grant().getFrozen());
+
+        var interrupted = jobs.findById(id).orElseThrow();
+        interrupted.setUpdatedAt(OffsetDateTime.now().minusMinutes(5));
+        jobs.saveAndFlush(interrupted);
+        worker.failUnconfirmedSubmission(id);
+        worker.failUnconfirmedSubmission(id);
+
+        var closed = jobs.findById(id).orElseThrow();
+        assertEquals("failed", closed.getStatus());
+        assertEquals("VIDEO_SUBMISSION_UNKNOWN", closed.getErrorCode());
+        assertEquals(CreditHold.Status.RELEASED, hold(id).getStatus());
+        assertEquals(0, hold(id).getRemainingAmount());
+        assertEquals(100, wallet().getTotalBalance());
+        assertEquals(0, wallet().getPendingBalance());
+        assertEquals(50, grant().getAvailable());
+        assertEquals(0, grant().getFrozen());
+        verifyNoInteractions(client);
     }
     @Test void missingOutputRefundDoesNotRestoreSupplierResourcesOrChargeARecoveryAgainstNewGrants() {
         String id=create();when(client.poll(any(MaterialVideoModelClient.SubmitResult.class)))

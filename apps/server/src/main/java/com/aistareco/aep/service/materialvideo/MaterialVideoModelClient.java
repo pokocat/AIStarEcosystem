@@ -442,6 +442,7 @@ public class MaterialVideoModelClient {
                 // 不设这个字段的话 [upstream-io] 那行永远打成 `body=` —— 出片参数（generationMode /
                 // 参考图 assetId / 时长比例）一个都看不到，排「参数到底发出去没有」全靠猜（v0.184 踩过）。
                 .requestBodyJson(auditBody(bodyJson))
+                .boundBody(true)
                 .client(http)
                 .build();
         HttpResponse<String> resp;

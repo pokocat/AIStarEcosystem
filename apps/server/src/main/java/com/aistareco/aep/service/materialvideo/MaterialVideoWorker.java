@@ -14,6 +14,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -25,8 +26,10 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Locale;
+import java.util.concurrent.ScheduledFuture;
 
 /**
  * 带货视频生成 worker —— 提交视频大模型任务后服务端轮询直到出片 / 超时。
@@ -41,6 +44,9 @@ public class MaterialVideoWorker {
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.ErrorLogService errorLogs;
 
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.beans.factory.annotation.Qualifier("materialVideoLeaseScheduler")
+    private TaskScheduler leaseScheduler;
     @org.springframework.beans.factory.annotation.Autowired private VideoPortraitReviewService portraitReviews;
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
     /** 终态通知（{@link MaterialVideoJobEnded}）；单测里构造的 worker 没有它，照常结算。 */
@@ -199,11 +205,17 @@ public class MaterialVideoWorker {
         if(paused[0]&&queue!=null)queue.requeue(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId,Duration.ofSeconds(30));
     }
 
-    /** Apply the explicit fail-and-refund policy to historical unknown receipts, without any provider call. */
+    /** Settle missing receipts after an interrupted submit, including older rows without an error code. */
     public void failUnconfirmedSubmission(String jobId) {
         inTransaction(() -> settlementJob(jobId).ifPresent(job -> {
-            if (!"submitting".equals(job.getStatus()) || hasAcceptedTask(job)
-                    || !"VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode())) return;
+            if (!"submitting".equals(job.getStatus()) || hasAcceptedTask(job)) return;
+            if (!"VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode())) {
+                // The queue lease can start before inputs are prepared. The route checkpoint refreshes
+                // updatedAt just before the POST, so give that request its own timeout and time to save.
+                OffsetDateTime lastActivity = job.getUpdatedAt() == null ? job.getCreatedAt() : job.getUpdatedAt();
+                long graceSeconds = Math.max(180L, props.getHttpTimeoutSeconds() + 60L);
+                if (lastActivity == null || lastActivity.plusSeconds(graceSeconds).isAfter(OffsetDateTime.now())) return;
+            }
             markFailed(jobId, "VIDEO_SUBMISSION_UNKNOWN",
                     com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE,
                     com.aistareco.aep.service.GenerationSubmissionFailure.settled("视频请求没有拿到受理结果", job.getErrorMessage(), null));
@@ -393,13 +405,30 @@ public class MaterialVideoWorker {
         // v0.183 之前首帧根本没往下传，聚算那条链一律发 generationMode=t2v —— 用户接了参考图，
         // 出来的片跟参考图毫无关系。
         VideoGenSpec spec = VideoGenSpec.fromVariantConfigJson(job.getVariantConfigJson());
-        MaterialVideoModelClient.SubmitResult submit =
-                accepted?modelClient.resumeExistingTask(job.getExternalTaskId(),endpointId,job.getProviderUsed(),job.getModelUsed(),appCode,
-                        job.getUpstreamBaseUrlSnapshot(),job.getVideoRequestSpecSnapshotJson()):modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
-                        job.getOwnerUserId(), appCode, endpointId, spec,context->recordSubmissionRoute(jobId,context));
-        try {markGenerating(jobId, submit);}
-        catch(RuntimeException persistenceFailure) {
-            throw new MaterialVideoModelClient.SubmissionUnknown("accepted task="+submit.externalId()+"; persistence="+persistenceFailure.getClass().getSimpleName());
+        MaterialVideoModelClient.SubmitResult submit;
+        ScheduledFuture<?> heartbeat = accepted || leaseScheduler == null || queue == null ? null
+                : leaseScheduler.scheduleWithFixedDelay(
+                        () -> queue.touch(com.aistareco.aep.service.AiGenerationQueueService.VIDEO, jobId),
+                        Instant.now().plusSeconds(30), Duration.ofSeconds(30));
+        try {
+            submit = accepted
+                    ? modelClient.resumeExistingTask(job.getExternalTaskId(), endpointId, job.getProviderUsed(), job.getModelUsed(),
+                            appCode, job.getUpstreamBaseUrlSnapshot(), job.getVideoRequestSpecSnapshotJson())
+                    : modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(), job.getOwnerUserId(),
+                            appCode, endpointId, spec, context -> recordSubmissionRoute(jobId, context));
+            try {
+                if (!markGenerating(jobId, submit)) {
+                    log.warn("[material-video] receipt arrived after job closed job={} upstreamTask={}",
+                            jobId, submit.externalId());
+                    terminal[0] = true;
+                    return;
+                }
+            } catch (RuntimeException persistenceFailure) {
+                throw new MaterialVideoModelClient.SubmissionUnknown("accepted task=" + submit.externalId()
+                        + "; persistence=" + persistenceFailure.getClass().getSimpleName());
+            }
+        } finally {
+            if (heartbeat != null) heartbeat.cancel(false);
         }
 
         long start = System.currentTimeMillis();
@@ -707,8 +736,10 @@ public class MaterialVideoWorker {
         return payload.toString();
     }
 
-    private void markGenerating(String jobId, MaterialVideoModelClient.SubmitResult submit) {
-        jobRepo.findById(jobId).ifPresent(j -> {
+    private boolean markGenerating(String jobId, MaterialVideoModelClient.SubmitResult submit) {
+        boolean[] recorded = {false};
+        inTransaction(() -> settlementJob(jobId).ifPresent(j -> {
+            if (isTerminal(j.getStatus())) return;
             j.setStatus("generating");
             j.setProgress(Math.max(j.getProgress(), 10));
             j.setExternalTaskId(submit.taskId());
@@ -718,13 +749,17 @@ public class MaterialVideoWorker {
             if(submit.requestSpecSnapshotJson()!=null)j.setVideoRequestSpecSnapshotJson(submit.requestSpecSnapshotJson());
             j.setUpdatedAt(OffsetDateTime.now());
             jobRepo.save(j);
-        });
+            recorded[0] = true;
+        }));
+        return recorded[0];
     }
 
     private void recordSubmissionRoute(String jobId,MaterialVideoModelClient.SubmitResult context) {
         if(enterpriseBilling!=null)enterpriseBilling.requireEndpointAllowed(MaterialVideoJobService.CREDIT_REF_TYPE,jobId,context.endpointId());
         inTransaction(()->{
             MaterialVideoJob j=settlementJob(jobId).orElseThrow(()->BusinessException.notFound("VIDEO_JOB_NOT_FOUND","视频任务不存在"));
+            if (!"submitting".equals(j.getStatus()) || hasAcceptedTask(j))
+                throw BusinessException.badRequest("VIDEO_SUBMISSION_CLOSED", "本次视频提交已结束");
             MaterialVideoBilling.requireRoute(j,context);
             creditService.markModelDispatched(MaterialVideoJobService.CREDIT_REF_TYPE,jobId);
             j.setProviderUsed(context.providerUsed());j.setModelUsed(context.modelUsed());

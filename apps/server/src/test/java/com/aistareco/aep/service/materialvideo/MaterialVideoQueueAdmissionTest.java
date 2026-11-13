@@ -8,9 +8,13 @@ import com.aistareco.aep.service.cdn.CdnUploader;
 import com.aistareco.aep.service.storage.StorageQuotaService;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.test.util.ReflectionTestUtils;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Optional;
+import java.util.concurrent.ScheduledFuture;
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -58,6 +62,38 @@ class MaterialVideoQueueAdmissionTest {
     @Test void acceptedJobIsNeverRefundedByUnknownReceiptCleanup() {
         job.setStatus("submitting");job.setErrorCode("VIDEO_SUBMISSION_UNKNOWN");job.setExternalTaskId("original");
         worker.failUnconfirmedSubmission("job");assertEquals("submitting",job.getStatus());verifyNoInteractions(client,credits);
+    }
+    @Test void lateSupplierReceiptCannotReopenASettledSubmission() {
+        when(client.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenAnswer(i -> {
+            job.setUpdatedAt(OffsetDateTime.now().minusMinutes(5));
+            worker.failUnconfirmedSubmission("job");
+            return new MaterialVideoModelClient.SubmitResult("late", null, "provider", "model", "generic", "e");
+        });
+
+        worker.generateAsync("job");
+
+        assertEquals("failed", job.getStatus());
+        assertNull(job.getExternalTaskId());
+        verify(credits, times(1)).releaseHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE), eq("job"), anyString());
+        verify(client, never()).poll(any(MaterialVideoModelClient.SubmitResult.class));
+    }
+    @Test void liveSubmissionRenewsItsQueueLeaseUntilItReturns() {
+        var scheduler = mock(TaskScheduler.class);
+        var tick = org.mockito.ArgumentCaptor.forClass(Runnable.class);
+        var heartbeat = mock(ScheduledFuture.class);
+        doReturn(heartbeat).when(scheduler).scheduleWithFixedDelay(tick.capture(), any(Instant.class), eq(Duration.ofSeconds(30)));
+        ReflectionTestUtils.setField(worker, "leaseScheduler", scheduler);
+        when(client.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenAnswer(i -> {
+            tick.getValue().run();
+            verify(heartbeat, never()).cancel(anyBoolean());
+            throw new MaterialVideoModelClient.SubmissionUnknown("timeout");
+        });
+
+        worker.generateAsync("job");
+
+        verify(queue).touch(AiGenerationQueueService.VIDEO, "job");
+        verify(heartbeat).cancel(false);
+        verify(queue).finish(AiGenerationQueueService.VIDEO, "job");
     }
     @Test void originalJobRecoveryNeverSubmitsAnotherGeneration(){
         job.setStatus("failed");job.setExternalTaskId("original");

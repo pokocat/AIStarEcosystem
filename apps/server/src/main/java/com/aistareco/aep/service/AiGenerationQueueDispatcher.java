@@ -54,7 +54,10 @@ public class AiGenerationQueueDispatcher {
                 }
                 if(!waiting) {
                     if(job.getExternalTaskId()==null||job.getExternalTaskId().isBlank()) {
-                        if("VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode()))videoWorker.getObject().failUnconfirmedSubmission(id);
+                        if ("submitting".equals(job.getStatus()) &&
+                                ("VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode()) || queue.claimDispatch(entry, true))) {
+                            videoWorker.getObject().failUnconfirmedSubmission(id);
+                        }
                         continue;
                     }
                     if(queue.claimDispatch(entry,true))videoWorker.getObject().recoverQueuedGeneration(id);

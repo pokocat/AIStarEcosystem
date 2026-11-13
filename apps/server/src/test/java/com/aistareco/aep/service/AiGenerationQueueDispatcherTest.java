@@ -126,6 +126,21 @@ class AiGenerationQueueDispatcherTest {
         dispatcher.dispatch();
         verify(videoWorker).failUnconfirmedSubmission("uncertain");verify(videoWorker,never()).generateAsync(any());verify(queue,never()).claimDispatch(any(),anyBoolean());verify(queue,never()).finish(any(),any());
     }
+
+    @Test void interruptedVideoWithoutAnErrorCodeWaitsForItsRecoveryLease() {
+        var entry = ticket(AiGenerationQueueService.VIDEO, "interrupted", "running");
+        when(queue.openEntries()).thenReturn(List.of(entry));
+        when(videos.findById("interrupted")).thenReturn(Optional.of(
+                MaterialVideoJob.builder().status("submitting").build()));
+        when(queue.claimDispatch(entry, true)).thenReturn(false, true);
+
+        dispatcher.dispatch();
+        verifyNoInteractions(videoWorker);
+        dispatcher.dispatch();
+
+        verify(videoWorker).failUnconfirmedSubmission("interrupted");
+        verifyNoMoreInteractions(videoWorker);
+    }
     private AiGenerationQueueEntry ticket(String type,String id,String state) {
         var ticket=new AiGenerationQueueEntry();ticket.setId(1L);ticket.setTaskType(type);ticket.setTaskId(id);
         ticket.setEndpointId("e");ticket.setState(state);ticket.setDispatchAfter(Instant.now());return ticket;
