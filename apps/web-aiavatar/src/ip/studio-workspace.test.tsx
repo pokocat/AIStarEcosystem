@@ -532,6 +532,37 @@ test('a text wired into a video is visible and its current content is snapshotte
  expect(snapshot[0].metadata?.studio?.request?.prompt).toBe(api.submit.mock.calls[0][1].prompt);
 });
 
+test('submitting a video mention binds the selected original and saves the edge before submitting', async () => {
+ const native = { endpointId: 'model', batchCounts: [1], contract: {
+  modes: [
+   { mode: 't2v', label: '文生视频' },
+   { mode: 'universal_reference_video', label: '全能参考',
+    references: { image: { maxCount: 3 }, video: { maxCount: 1 }, audio: { maxCount: 1 },
+     maxTotal: 4, maxImagesWithVideo: 3, minVisual: 1 } },
+  ],
+  tiers: [{ tier: '768p', canvases: [{ aspectRatio: '9:16', width: 768, height: 1365 }] }],
+  minSeconds: 5, maxSeconds: 15, promptMaxChars: 7000, seedMax: 100,
+ }, pricing: { perSecond: { t2v: { '768p': 40 }, universal_reference_video: { '768p': 45 } },
+  freeRefImages: 1, extraRefImagePerSecond: 0 } };
+ api.videoModels.mockResolvedValue([native]);
+ const original = { ...node, id: 'original', title: '原片', metadata: { origin: 'upload' as const, storageKey: 'source.mp4' } };
+ render(<Host initialNodes={[{ ...node, metadata: { ...node.metadata, prompt: '参考 @视频1 的动作', videoCount: '1' } }, original]}/>);
+ openVideo();
+ await screen.findByText('生成时将自动引用「原片」作为视频1。');
+ const send = screen.getByRole('button', { name: '生成视频', exact: true });
+ expect(send).toHaveProperty('disabled', false);
+ expect(connectionSnapshot).toHaveLength(0);
+ api.submit.mockImplementationOnce(async () => {
+  expect(api.save).toHaveBeenCalled();
+  expect(connectionSnapshot).toEqual([{ id: expect.any(String), fromNodeId: 'original', toNodeId: 'v' }]);
+  return done;
+ });
+ fireEvent.click(send);
+ await waitFor(() => expect(api.submit).toHaveBeenCalledOnce());
+ expect(api.submit.mock.calls[0][1]).toMatchObject({ prompt: '参考 @视频1 的动作', maxCost: 360,
+  video: { mode: 'universal_reference_video', references: [{ mediaType: 'video', key: 'source.mp4' }] } });
+});
+
 test('removing a wired text from the composer removes its edge before generating',async()=>{
  const text:CanvasNodeData={...node,id:'story',type:'text' as never,title:'动作设定',metadata:{content:'不再使用的动作'}};
  render(<Host initialNodes={[node,text]} initialConnections={[{id:'text-edge',fromNodeId:'story',toNodeId:'v'}]}/>);openVideo();

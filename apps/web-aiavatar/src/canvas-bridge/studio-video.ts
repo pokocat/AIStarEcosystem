@@ -2,6 +2,7 @@ import type { StudioVideoSettings } from "@ai-star-eco/types/ip-studio-workflow"
 import type { VideoStudioModel, VideoStudioMode, VideoStudioMediaType, VideoStudioModeSpec } from "@ai-star-eco/types/video-studio";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import { inferVideoRatio } from "@/canvas/lib/media-size";
+import { studioMissingVideoMention, studioMissingVideoMessage } from "./studio-video-references";
 
 const legacyModeNames: Record<string,string> = {
   t2v:"文生视频", i2v:"图生视频", first_last_frame_video:"首尾帧", universal_reference_video:"全能参考",
@@ -208,5 +209,7 @@ export function studioVideoError(model:VideoStudioModel,video:StudioVideoSetting
     if(counts.video>0&&counts.image>rules.maxImagesWithVideo)return `含视频时最多选择 ${rules.maxImagesWithVideo} 张图片`;
     if(counts.image+counts.video<rules.minVisual)return "至少选择一张图片或一段视频作为参考";
   }
+  const missingVideo = studioMissingVideoMention(prompt, (video.references ?? []).filter(ref => ref.mediaType === "video").length);
+  if (missingVideo) return studioMissingVideoMessage(missingVideo);
   if(studioVideoQuote(model,video,seconds)==null)return "当前模式和清晰度暂不可用";
 }

@@ -352,6 +352,8 @@ public class IpRunService {
         if (req == null || req.video() == null && (req.prompt() == null || req.prompt().isBlank())) {
             requireNoMissing(List.of("prompt"));
         }
+        if (req.video() == null)
+            com.aistareco.aep.videostudio.service.VideoStudioService.requireVideoMentions(req.prompt(), 0);
         // 首帧图：非本人的 key 直接 400（画布是客户端，能塞任何字符串进来）
         String refKey = projects.requireOwnedAssetKey(userId, req.refKey());
 

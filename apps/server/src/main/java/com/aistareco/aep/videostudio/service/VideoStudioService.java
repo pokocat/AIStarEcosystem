@@ -52,6 +52,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * 视频生成区（web-celebrity「AI 创作 → 视频生成」，v0.199，设计真源 docs/video-studio-plan.md）。
@@ -68,6 +69,7 @@ import java.util.Set;
 public class VideoStudioService {
 
     private static final Logger log = LoggerFactory.getLogger(VideoStudioService.class);
+    private static final Pattern VIDEO_MENTION = Pattern.compile("[@＠]视频\\h*([1-9][0-9]*)");
 
     /** 账本文案（冻结 / 扣除 / 退回三笔都是它）。 */
     static final String CREDIT_LABEL = "视频生成";
@@ -462,6 +464,8 @@ public class VideoStudioService {
 
         // 6) 该模式要的素材
         Inputs inputs = requireInputsForMode(modeSpec, d);
+        requireVideoMentions(prompt, inputs.references().stream()
+                .filter(ref -> JusuanH3Contract.MEDIA_VIDEO.equals(ref.mediaType())).count());
 
         // 7) 素材归属与类型：本人在本区上传的那一类，或做同款时这个模板自带的同类素材
         StudioTemplate template = null;
@@ -652,6 +656,18 @@ public class VideoStudioService {
         if (limit == null || !mediaType.equals(limit.mediaType()))
             throw BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID", "所选视频模式不支持该素材");
         return limit;
+    }
+
+    /** An explicit @视频N names a submitted attachment, in the order of the video references. */
+    public static void requireVideoMentions(String prompt, long videos) {
+        if (prompt == null) return;
+        var mentions = VIDEO_MENTION.matcher(prompt);
+        String max = Long.toString(videos);
+        while (mentions.find()) {
+            String number = mentions.group(1);
+            if (number.length() > max.length() || number.length() == max.length() && number.compareTo(max) > 0)
+                throw inputInvalid("提示词引用了 @视频" + number + "，请添加对应的参考视频。");
+        }
     }
 
     /** 素材与模式是否匹配。每一条报错都说清是哪一条（缺首帧、带了不该带的、超数量、没有视觉素材、重复…）。 */

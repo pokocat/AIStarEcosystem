@@ -1,6 +1,27 @@
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { CanvasResourceReference } from '@/canvas/lib/canvas/canvas-resource-references';
 
+export function studioMissingVideoMention(prompt: string, bound: number): string | undefined {
+  for (const match of prompt.matchAll(/[@＠]视频[^\S\r\n]*([1-9][0-9]*)/gu)) {
+    if (Number(match[1]) > bound) return `@视频${match[1]}`;
+  }
+}
+
+export function studioMissingVideoMessage(mention: string): string {
+  return `提示词引用了 ${mention}，请添加对应的参考视频。`;
+}
+
+/** A scene's selected source takes priority over other clips. Legacy canvases can use a unique uploaded original. */
+export function studioVideoMentionSource(
+  prompt: string, bound: number, targetId: string | undefined, nodes: CanvasNodeData[], sceneVideoKey: string | null | undefined,
+): CanvasNodeData | undefined {
+  if (bound || studioMissingVideoMention(prompt, 0) !== '@视频1' || studioMissingVideoMention(prompt, 1)) return;
+  const clips = nodes.filter(node => node.id !== targetId && node.type === 'video' && node.metadata?.storageKey);
+  if (sceneVideoKey !== undefined) return clips.find(node => node.metadata?.storageKey === sceneVideoKey);
+  const uploads = new Map(clips.filter(node => node.metadata?.origin === 'upload').map(node => [node.metadata!.storageKey, node]));
+  if (uploads.size === 1) return uploads.values().next().value;
+}
+
 /** Number only the effective request inputs, in their submitted order, per media type. */
 export function studioVideoPromptReferences(nodes:CanvasNodeData[], ids:string[]):CanvasResourceReference[] {
   const counts={image:0,video:0,audio:0};

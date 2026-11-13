@@ -202,6 +202,20 @@ class VideoStudioServiceTest {
         verify(videoJobs,never()).submit(any(),anyString(),anyString());
     }
 
+    @Test void canvasValidatesVideoMentionsAgainstTheActualAttachments() {
+        var wrong = jr("ep-h3", "universal_reference_video", "参考 @视频1", "768p", "9:16", 5,
+                null, null, null, List.of(r("image", IMG)));
+        var error = assertThrows(BusinessException.class,
+                () -> svc.prepareCanvas(USER, wrong, (type, key, frame) -> {
+                    throw new AssertionError("must fail before reading assets");
+                }));
+        assertEquals("VIDEO_STUDIO_INPUT_INVALID", error.getCode());
+        assertTrue(error.getMessage().contains("@视频1"));
+        var correct = with(wrong, "references", List.of(r("image", IMG), r("video", VID)));
+        assertEquals(2, svc.prepareCanvas(USER, correct, (type, key, frame) -> {}).spec().references().size());
+        verify(videoJobs, never()).submit(any(), anyString(), anyString());
+    }
+
     /** AI 视频页按钮旁的价：和提交同一张价表、同一套合同校验，只是素材换成张数（2026-11-03）。 */
     @Test void pagePriceMatchesTheCanvasPriceAndSpecWithoutAnyAssetKey() {
         var real=svc.prepareCanvas(USER,jr("ep-h3","universal_reference_video","参考图","768p","9:16",5,null,null,null,

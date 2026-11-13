@@ -44,7 +44,7 @@ import { studioDurationIssue, studioDurationLimits, studioSpecConflict, studioSp
 import { StudioFrameCropHint } from "./studio-frame-crop-hint";
 import { studioFailedWithoutMedia, studioUnusableModel } from "@/canvas-bridge/studio-node-failure";
 import { studioNodeCommand } from './studio-node-command';
-import { studioVideoPromptReferences, rebindStudioVideoMentions } from '@/canvas-bridge/studio-video-references';
+import { studioMissingVideoMention, studioMissingVideoMessage, studioVideoMentionSource, studioVideoPromptReferences, rebindStudioVideoMentions } from '@/canvas-bridge/studio-video-references';
 import { StudioAssetMentionInput } from "./studio-asset-mention-input";
 import { StudioMotionPrompt } from "./studio-motion-prompt";
 import { encodeChannelModel } from "@/canvas-bridge/config-store";
@@ -142,6 +142,10 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(originSeen.current===originId){originSeen.current=undefined;setPickingReferences(false);setDirector(false);}
   },[director,originId,nodes]);
   const [referenceIds, setReferenceIds] = useState<string[]>([]);
+  const sceneVideoKey = useCanvasStore(state => {
+    const selection = state.projects.find(project => project.id === projectId)?.documentFields?.sceneInputs as { video?: string | null } | undefined;
+    return selection?.video;
+  });
   const [ratio, setRatio] = useState("9:16");
   const [composerSettingsOpen,setComposerSettingsOpen]=useState(false);
   useEffect(()=>{setComposerSettingsOpen(false);},[originId,operation,director]);
@@ -597,6 +601,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(durationIssue){message.error(durationIssue.message);return;}
     if(operation==="video"&&nativeVideo&&videoValidationError){message.error(videoValidationError);return;}
     if(operation==="video"&&legacyVideoError){message.error(legacyVideoError);return;}
+    if (removedVideoMention) { message.error("提示词中有已移除的参考，请删除该标记或重新引用素材。"); return; }
     const origin = nodesRef.current.find(n => n.id === originId);
     if(studioGenerationPending(origin)){setTaskList(true);message.info("请等待或确认原任务，当前批次不会重复提交。");return;}
     const inputError=(operation==="image"||operation==="video")?studioLinkedInputError(originId,nodesRef.current,connectionsRef.current):undefined;
@@ -626,8 +631,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       specConflictAnswered.current.add(conflictKey);
     }
     // Writing 图1 / 尾帧 in the text binds nothing. Ask before a paid request; never pick pictures or switch modes unasked.
-    const intent=operation==="video"&&nativeVideo&&videoSettings?studioFrameIntent(requestPrompt,videoSettings,nativeModeSpec):undefined;
-    const intentKey=`${originId}\n${videoDraft.mode}\n${requestPrompt}`;
+    const intent=operation==="video"&&nativeVideo&&videoSettings?studioFrameIntent(requestPrompt,videoSettings,submissionModeSpec):undefined;
+    const intentKey=`${originId}\n${submissionModeSpec?.mode}\n${requestPrompt}`;
     if(intent&&!frameIntentAnswered.current.has(intentKey)) {
       const choice=await new Promise<StudioFrameIntentChoice>(resolve=>setFrameIntent({intent,resolve}));
       setFrameIntent(undefined);
@@ -641,7 +646,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     // Fill a new draft or storyboard shot; completed scripts keep their editable source.
     const reuseScriptDraft=(operation==="script"||operation==="storyboard")&&origin?.type===CanvasNodeType.Text&&origin.metadata?.studio?.kind==="script"&&!origin.metadata.studio.script;
     const target = operation==="text"&&origin?.type===CanvasNodeType.Text || reuseScriptDraft || operation === "image" && origin?.type===CanvasNodeType.Image || operation === "video" && origin?.type === CanvasNodeType.Video ? origin! : makeStudioNode(operation, origin);
-    const usedReferenceIds=operation==="video"&&nativeVideo ? studioVideoSelectionIds(videoDraft,referenceIds):referenceIds;
+    const usedReferenceIds=operation==="video"&&nativeVideo ? submissionReferenceIds:referenceIds;
     const references = makeReferences(usedReferenceIds, operation === "video" ? "frame" : "character");
     const requestEpisodeNo=operation==="image"||operation==="video"?studioNodeEpisode(origin):episodeNo;
     const selectedModel=chosenModel;
@@ -651,7 +656,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       ...(operation==="text"?{textEdit:{content:origin?.metadata?.content||""},history:origin?.metadata?.studio?.textEditor?.turns}:{}),
       episodeNo:requestEpisodeNo,...(operation==="image"&&selectedImageSize?{size:selectedImageSize}:{}),...(operation==="script"||operation==="storyboard"?{settings}:{}),...(operation==="script"?{mode:scriptMode}:{}),maxCost:quote??undefined };
     const retainedTarget=retainStudioMediaVersions(target);
-    const pending = { ...retainedTarget, metadata: { ...retainedTarget.metadata, prompt: requestPrompt, ...(operation==="video"?{videoCount:String(videoCount)}:{}), ...(operation==="video"&&nativeVideo?{videoMode:videoDraft.mode,seconds:String(duration),vquality:videoDraft.tier,size:selectedCanvas?`${selectedCanvas.width}x${selectedCanvas.height}`:computeVideoSize(videoDraft.tier.replace(/p$/,""),ratio),model:encodeChannelModel(SERVER_CHANNEL_ID,selectedModel!.endpointId)}:{}),status: "loading" as const,
+    const pending = { ...retainedTarget, metadata: { ...retainedTarget.metadata, prompt: requestPrompt, ...(operation==="video"?{videoCount:String(videoCount)}:{}), ...(operation==="video"&&nativeVideo?{videoMode:chosenVideo!.mode,seconds:String(duration),vquality:videoDraft.tier,size:selectedCanvas?`${selectedCanvas.width}x${selectedCanvas.height}`:computeVideoSize(videoDraft.tier.replace(/p$/,""),ratio),model:encodeChannelModel(SERVER_CHANNEL_ID,selectedModel!.endpointId)}:{}),status: "loading" as const,
       studio: { ...target.metadata!.studio!, request, references, runId:undefined, upstreamChanged:false, promptReview:undefined, promptChoice:choice?.kind,...(operation==="script"?{scriptMode,scriptSourceNodeId:scriptMode==="adapt"?scriptSourceNodeId:undefined}:{}),settings:operation==="script"||operation==="storyboard"?settings:undefined,episodeNo:requestEpisodeNo,parentNodeId:target===origin?target.metadata?.studio?.parentNodeId:origin?.id,
         ...(operation==="script"&&rewriteScope?{rewriteScope,script:origin?.metadata?.studio?.script}:{}) } } };
     if (target === origin) patch(target.id, () => pending); else addNode(pending, origin);
@@ -659,7 +664,11 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       setConnections(current=>current.filter(c=>c.toNodeId!==target.id||c.fromNodeId!==origin.metadata!.studio!.scriptSourceNodeId));
     // An uncertain response keeps every creation mode bound to its submitted target.
     setOriginId(target.id);
-    if(operation==="video"&&nativeVideo)setConnections(current=>[...current.filter(c=>c.toNodeId!==target.id||!nodesRef.current.some(n=>n.id===c.fromNodeId&&[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].some(type=>type===n.type))),...usedReferenceIds.filter(id=>id!==target.id).map(id=>({id:nanoid(),fromNodeId:id,toNodeId:target.id}))]);
+    if (autoVideoSource && chosenVideo) {
+      setReferenceIds(usedReferenceIds);
+      setVideoDraft(draft => ({ ...draft, mode: chosenVideo.mode }));
+    }
+    if(operation==="video"&&nativeVideo)setConnections(current=>[...current.filter(c=>c.toNodeId!==target.id||!nodesRef.current.some(n=>n.id===c.fromNodeId&&[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].some(type=>type===n.type))),...usedReferenceIds.filter(id=>id!==target.id).map(id=>current.find(c=>c.fromNodeId===id&&c.toNodeId===target.id)||{id:nanoid(),fromNodeId:id,toNodeId:target.id})]);
     try {
       await saveStudioDocument(projectId);
       if(epoch.current!==submissionEpoch)return;
@@ -754,6 +763,15 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       }
       const next = node.metadata?.status === "error" ? { ...request, clientRequestId: nanoid(), modelBilling: undefined,
         ...(isFailedStudioVideo(node) && { executionId: undefined, stage: undefined }) } : request;
+      if (next !== request && next.operation === "video") {
+        const bound = next.video?.references?.filter(ref => ref.mediaType === "video").length ?? 0;
+        if (studioMissingVideoMention(next.prompt, bound)) {
+          // Reuse the composer for input resolution, mode validation and the new request's price.
+          openDirector("video", node);
+          regenerate.current = { bindVideoFor: node.id };
+          return;
+        }
+      }
       patch(node.id,n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails:undefined, studio: { ...n.metadata!.studio!, request: next,runId:next===request?n.metadata?.studio?.runId:undefined } } }));
       await saveStudioDocument(projectId);
       if(epoch.current!==submissionEpoch)return;
@@ -1044,7 +1062,10 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     priorVideoReferences.current={origin:originId,references:videoPromptReferences};
   },[director,operation,originId,JSON.stringify(videoPromptReferences.map(r=>[r.nodeId,r.label]))]);
   const removedVideoMention=operation==="video"&&prompt.includes('[已移除参考：');
-  const legacyVideoError=operation==="video"&&!nativeVideo&&(referenceIds.length>1||referenceIds.some(id=>nodes.find(n=>n.id===id)?.type!==CanvasNodeType.Image))?"当前模型只支持一张首帧图，请移除多余素材，或改用支持首尾帧 / 全能参考的模型":undefined;
+  const legacyVideoError = operation === "video" && !nativeVideo
+    && (referenceIds.length > 1 || referenceIds.some(id => nodes.find(n => n.id === id)?.type !== CanvasNodeType.Image)
+      || !!studioMissingVideoMention(limitedPrompt, 0))
+    ? "当前模型只支持一张首帧图，请调整参考素材或改用支持全能参考的模型" : undefined;
   const imageIds=new Set(nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey).map(n=>n.id));
   const changeVideoDraft=(next:StudioVideoDraft)=>{
     const selection=changeStudioVideoDraft(videoDraft,next,referenceIds,imageIds);
@@ -1068,11 +1089,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     setReferenceIds(ids);
   };
   // 积分不足提示框里选了「改用」或「继续生成」：等模型换好、上一次提交收尾后，按面板现在的设置再提交一次（要花钱的话还有费用确认）。
-  const regenerate=useRef<{model?:string;choice?:Parameters<typeof submit>[0]}>(undefined);
+  const regenerate=useRef<{model?:string;choice?:Parameters<typeof submit>[0];bindVideoFor?:string}>(undefined);
   useEffect(()=>{
     const next=regenerate.current;
     if(!next||busy||(next.model&&chosenModel?.endpointId!==next.model))return;
     regenerate.current=undefined;
+    if (next.bindVideoFor && (originId !== next.bindVideoFor || !autoVideoSource || videoValidationError)) return;
     void submit(next.choice);
   });
   /**
@@ -1143,10 +1165,28 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     window.addEventListener('studio-node-context-menu',dismissForMenu);
     return()=>window.removeEventListener('studio-node-context-menu',dismissForMenu);
   },[director,speechOpen,busy,directorSaving,speechSaving]);
-  const videoAssets=studioVideoSelectionIds(videoDraft,referenceIds)
+  const selectedVideoIds = studioVideoSelectionIds(videoDraft, referenceIds);
+  const autoVideoSource = nativeVideo ? studioVideoMentionSource(limitedPrompt,
+    selectedVideoIds.filter(id => nodes.some(n => n.id === id && n.type === CanvasNodeType.Video && n.metadata?.storageKey)).length,
+    originId, nodes, sceneVideoKey) : undefined;
+  const submissionReferenceIds = autoVideoSource ? [...selectedVideoIds, autoVideoSource.id] : selectedVideoIds;
+  // A video can select full reference mode from a text-only draft. Keep any explicitly chosen frame slots.
+  const submissionModeSpec = autoVideoSource && nativeModeSpec?.mode === "t2v"
+    ? nativeVideo?.contract.modes.find(spec => spec.references?.video.maxCount && !spec.needsFirstFrame && !spec.needsLastFrame)
+    : nativeModeSpec;
+  const videoAssets=submissionReferenceIds
     .map(id=>{const n=nodes.find(node=>node.id===id);return {storageKey:n?.metadata?.storageKey,mediaType:n?.type===CanvasNodeType.Video?"video" as const:n?.type===CanvasNodeType.Audio?"audio" as const:"image" as const};});
   let videoSettings:StudioRunRequest["video"],videoValidationError:string|undefined;
-  if(nativeVideo)try {if(!nativeModeSpec)throw new Error("当前模型不支持所选视频模式，请重新选择");videoSettings=studioVideoSettings(videoDraft.mode,videoDraft.tier,videoAssets,videoDraft.seed,nativeModeSpec,studioVideoPromptMode(nativeVideo.supportsPromptOptimization,videoDraft.keepPrompt));videoValidationError=studioVideoError(nativeVideo,videoSettings,prompt,ratio,duration);}catch(e){videoValidationError=e instanceof Error?e.message:"请确认视频参考素材";}
+  if (nativeVideo) try {
+    if (!submissionModeSpec) throw new Error("当前模型不支持所选视频模式，请重新选择");
+    if (autoVideoSource && !submissionModeSpec.references?.video.maxCount)
+      throw new Error("当前视频模式不支持参考视频，请切换到支持参考视频的模式。");
+    videoSettings = studioVideoSettings(submissionModeSpec.mode, videoDraft.tier, videoAssets, videoDraft.seed,
+      submissionModeSpec, studioVideoPromptMode(nativeVideo.supportsPromptOptimization, videoDraft.keepPrompt));
+    videoValidationError = studioVideoError(nativeVideo, videoSettings, limitedPrompt, ratio, duration);
+  } catch (e) {
+    videoValidationError = e instanceof Error ? e.message : "请确认视频参考素材";
+  }
   // The /models capability also carries effective bounds for non-native video endpoints.
   const durationLimits=studioDurationLimits(nativeVideo?{min:nativeVideo.contract.minSeconds,max:nativeVideo.contract.maxSeconds}:chosenModel?{min:chosenModel.capability?.minDurationSec,max:chosenModel.capability?.maxDurationSec}:undefined,capabilities?.mock);
   // A duration the chosen model cannot do is shown with a one-press fix; it is never clamped behind the user's back
@@ -1360,6 +1400,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       {imageRatioUnsupported&&<p className="studio-composer-validation" role="status">当前模型不支持 {ratio}，请打开创作参数选择可用比例。</p>}
       {promptTooLong&&<div className="studio-composer-validation studio-prompt-limit" role="status"><span>{studioPromptLimitMessage(promptChars,promptMaxChars,limitedPrompt!==prompt)}</span>{longerPromptModel&&<Button size="small" disabled={busy||directorSaving||!!directorPending} onClick={()=>changeGenerationModel(longerPromptModel.endpointId)}>改用 {longerPromptModel.name}（最多 {longerPromptModel.promptMaxChars} 字）</Button>}</div>}
       {removedVideoMention&&<StudioErrorNotice error="提示词中有已移除的参考，请删除该标记或重新引用素材。" background/>}
+      {autoVideoSource&&!videoValidationError&&<p className="studio-composer-validation" role="status">生成时将自动引用「{autoVideoSource.title}」作为视频1。</p>}
       <div className="studio-composer-inputs">
 
         {!nativeVideo&&!mediaOp&&<label>画布参考素材<Select mode="multiple" aria-label="参考素材" value={referenceIds} onChange={setReferenceIds} options={referenceOptions.map(n => ({value:n.id,label:n.title}))} placeholder="选择已在画布上的参考素材"/></label>}
