@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent } from "react";
-import { Button, Image } from "antd";
+import { Button } from "antd";
 import { FileText, Group, Image as ImageIcon, Music2, Video, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -8,6 +8,7 @@ import { isImeComposing } from "@/canvas/lib/keyboard-event";
 import i18n from "@/canvas-bridge/i18n";
 import { canvasThemes } from "@/canvas/lib/canvas-theme";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
+import { ImageLightbox } from "@/ip/image-lightbox";
 import type { NodeGenerationInput } from "./canvas-node-generation";
 import { CanvasNodeReferenceBar } from "./canvas-node-reference-bar";
 import type { CanvasNodeData } from "@/canvas/types/canvas";
@@ -195,7 +196,7 @@ export function CanvasConfigComposer({ nodeId, nodes, value, inputs, connectedNo
                 />
                 {mention && candidates.length ? <MentionMenu inputs={candidates} allInputs={inputs} activeIndex={Math.min(activeIndex, candidates.length - 1)} theme={theme} onSelect={insertReference} /> : null}
             </div>
-            {imagePreview ? <Image src={imagePreview} alt={t("canvas.composer.imagePreview")} style={{ display: "none" }} preview={{ visible: true, src: imagePreview, onVisibleChange: (visible) => !visible && setImagePreview(null) }} /> : null}
+            {imagePreview && <ImageLightbox src={imagePreview} alt={t("canvas.composer.imagePreview")} open onClose={() => setImagePreview(null)} />}
         </div>
     );
 

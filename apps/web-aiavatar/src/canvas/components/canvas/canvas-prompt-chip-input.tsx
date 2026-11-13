@@ -1,13 +1,13 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, Ref } from "react";
 import { createPortal } from "react-dom";
-import { Image } from "antd";
 import { FileText, Image as ImageIcon, Music2, Video } from "lucide-react";
 
 import i18n from "@/canvas-bridge/i18n";
 import { canvasThemes } from "@/canvas/lib/canvas-theme";
 import { isImeComposing, isPlainEnterKey } from "@/canvas/lib/keyboard-event";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
+import { ImageLightbox } from "@/ip/image-lightbox";
 import type { CanvasResourceReference } from "@/canvas/lib/canvas/canvas-resource-references";
 
 // 本仓 v0.211：generic instruction chips; host owns the catalogue. Serialized value stays plain prompt text.
@@ -328,7 +328,7 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, o
             {mention && (candidates.length||onLibraryRequest) ? (
                 <MentionMenu rect={mention.rect} references={candidates} activeIndex={Math.min(activeIndex, candidates.length - 1)} theme={theme} onSelect={insertReference} onLibraryRequest={onLibraryRequest?()=>{onLibraryRequest(mention.query);setMention(null);}:undefined} />
             ) : null}
-            {imagePreview ? <Image src={imagePreview} alt={i18n.t("canvas.composer.imagePreview")} style={{ display: "none" }} preview={{ visible: true, src: imagePreview, onVisibleChange: (visible) => !visible && setImagePreview(null) }} /> : null}
+            {imagePreview && <ImageLightbox src={imagePreview} alt={i18n.t("canvas.composer.imagePreview")} open onClose={() => setImagePreview(null)} />}
         </div>
     );
 }

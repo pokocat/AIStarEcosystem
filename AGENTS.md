@@ -867,6 +867,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 - **场景页（AI 图片 / AI 视频）的样式真值是 `studio-scenes.css` 的新版令牌**（白底、渐变主按钮、18px 卡片、13px 正文），不是 `DESIGN.md` 里的暖灰。2026-11-06 视频任务页以 `DESIGN.md` 为基准另写了一套，主按钮、圆角、字号都和图片页对不上；配置卡缩窄后规格和场景面板也被裁切。新增区块只写布局，不覆盖 `.scene-go` / `.scene-card`；2026-11-07 起不再用源码正则锁定 CSS 写法，改动时在 375px 与桌面真实页面检查裁切、规格面板和按钮可读性。同一次还有：深底链接写 `a.xxx`，单个 class 盖不过 `.ip-brand-surface a { color: inherit }`（失败页主按钮黑底黑字，验收截图里就看得到，复核仍判通过）。
 - **web-aiavatar 的 antd 颜色走全站主题**（2026-10-31）：`src/shell/antd-theme.tsx` 在根布局挂一次（主按钮 #202c42 白字、危险色 #ad3449 与站内 `--ip-error` 一致、不能点的浅灰底灰字、两字按钮不加空格），新页面不用再包 ConfigProvider 配主色。别写压过 antd 按钮字色的样式（`ip-brand.css` 的 `color: inherit` 已排除 `.ant-btn`），也别用 `.容器 span {}` 这种会命中按钮里文字的后代选择器（资产选择框「使用」灰字蓝底就是这两条叠出来的）。
 - **shadcn 原语**：放在 `packages/ui/src/ui/`（共享包）；不要手改，要扩展用 wrapper
+- **Studio 通用图片预览**：`apps/web-aiavatar` 里，新增或修改「点击图片放大」入口（含列表缩略图、弹窗参考图、画布提示词里的图片）必须复用 `src/ip/image-lightbox.tsx` 的 `ImageLightbox`，也可通过已有的 `ZoomableImage` 接入。页面中的 Ant Design `Image` 如仅作缩略图，显式设置 `preview={false}`。禁止在业务入口直接启用 Ant Design 默认预览、直接挂 `Image.PreviewGroup` 或再实现一套单图放大层。提交前从实际入口验证桌面和窄屏默认完整显示图片、缩放后可恢复「适应窗口」、Esc 只关闭大图。带下载、切换或继续创作等业务操作的媒体详情需保留这些操作。
 - **`"use client"`**：新 client 组件保留
 - **新代码 API 形态**：`async function xxx(): Promise<T>`，聚合为 namespace 导出（`MusicApi`, `CelebrityZoneApi`, `MixcutApi`, …）
 - **mock 与 api 分工**：组件默认渲染 import mocks，用户动作走 api

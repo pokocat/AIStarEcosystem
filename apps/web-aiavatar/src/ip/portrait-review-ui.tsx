@@ -23,16 +23,23 @@ const portraitPending = (item: VideoPortraitItem) => ['queued', 'uploading', 'pr
 
 type Act = (run: () => Promise<unknown>) => Promise<boolean>;
 
-/** All portrait controls use Ant Design. CSS is limited to product layout and media dimensions. */
 export function PortraitMaterialTable({ items, loading, onConfirm, onRefresh }: {
   items: VideoPortraitItem[]; loading?: boolean; onConfirm: (item: VideoPortraitItem) => void; onRefresh: (item: VideoPortraitItem) => void;
 }) {
+  const [preview, setPreview] = useState<{ src: string; alt: string }>();
   const columns: TableColumnsType<VideoPortraitItem> = [
-    { title: '素材', key: 'material', render: (_, item) => <Flex align="center" gap={12}>
-      {item.previewUrl ? <Image src={item.previewUrl} alt={item.label} width={48} height={60} rootClassName="portrait-table-thumb" style={{ objectFit: 'cover', borderRadius: 6 }} /> : <Avatar shape="square" size={48} icon={<UserRound size={18} />} />}
-      <Flex vertical gap={4} style={{ minWidth: 0 }}><Typography.Text strong ellipsis={{ tooltip: item.label }}>{item.label}</Typography.Text>
-        <Typography.Text type={item.errorMessage ? 'danger' : 'secondary'} className="portrait-secondary">{item.errorMessage || (item.placement === 'virtual' ? 'AI 虚拟人像' : item.placement === 'person' ? '真人照片' : '人像类型待确认')}</Typography.Text>
-      </Flex></Flex> },
+    { title: '素材', key: 'material', render: (_, item) => {
+      const { previewUrl, label } = item;
+      return <Flex align="center" gap={12}>
+        {previewUrl ? <button type="button" className="portrait-table-thumb" aria-label={`放大查看${label}`} title="点击放大"
+          onClick={() => setPreview({ src: previewUrl, alt: label })}>
+          <img src={previewUrl} alt={label} />
+        </button> : <Avatar shape="square" size={48} icon={<UserRound size={18} />} />}
+        <Flex vertical gap={4} style={{ minWidth: 0 }}><Typography.Text strong ellipsis={{ tooltip: label }}>{label}</Typography.Text>
+        <Typography.Text type={item.arkError || item.errorMessage ? 'danger' : 'secondary'} className="portrait-secondary">{item.arkError || item.errorMessage || (item.placement === 'virtual' ? 'AI 虚拟人像' : item.placement === 'person' ? '真人照片' : '人像类型待确认')}</Typography.Text>
+        </Flex>
+      </Flex>;
+    } },
     { title: '状态', key: 'status', width: 98, render: (_, item) => item.submissionUnknown
       ? <Tag color="warning">{portraitItemStatus(item)}</Tag> : <PortraitStatus status={item.status} /> },
     { title: '更新时间', key: 'updated', width: 175, responsive: ['lg'], render: (_, item) => <Typography.Text type="secondary">{formatDateTime(item.updatedAt)}</Typography.Text> },
@@ -40,8 +47,11 @@ export function PortraitMaterialTable({ items, loading, onConfirm, onRefresh }: 
       ? <Button size="small" onClick={() => onConfirm(item)}>确认人像</Button>
       : item.status === 'processing' ? <Button type="link" size="small" onClick={() => onRefresh(item)}>查询结果</Button> : null },
   ];
-  return <Table<VideoPortraitItem> rowKey="id" size="middle" columns={columns} dataSource={items} loading={loading} pagination={false}
-    locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无人像素材" /> }} />;
+  return <>
+    <Table<VideoPortraitItem> rowKey="id" size="middle" columns={columns} dataSource={items} loading={loading} pagination={false}
+      locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无人像素材" /> }} />
+    {preview && <ImageLightbox src={preview.src} alt={preview.alt} open onClose={() => setPreview(undefined)} />}
+  </>;
 }
 
 /** Where a dialog lets the current step put its controls: the left end (hint or 上一步) and the main button. */
@@ -67,10 +77,12 @@ export function PortraitVerifyPanel({ person, note }: { person: VideoPortraitPer
   // On a phone the person is often holding this very device and cannot scan its own screen: open the link first, QR second.
   const phone = useLayoutMode() === 'mobile';
   if (!portraitVerificationLive(person)) return <Flex vertical align="center" gap={8} className="portrait-state">
-    <Typography.Text strong>核验未完成，链接已失效</Typography.Text>
+    {person.arkError ? <Alert type="error" showIcon title={person.arkError} className="portrait-provider-error" />
+      : <Typography.Text strong>核验未完成，链接已失效</Typography.Text>}
     <Typography.Text type="secondary">请{person.name}本人重新核验。</Typography.Text>
   </Flex>;
   return <Flex vertical align="center" gap={12} className="portrait-verify">
+    {person.arkError && <Alert type="error" showIcon title={person.arkError} className="portrait-provider-error" />}
     <Typography.Text strong>{phone ? `请${person.name}本人完成核验` : `请${person.name}本人用手机扫码核验`}</Typography.Text>
     {phone && <Button type="primary" block href={person.verificationUrl} target="_blank" rel="noreferrer">在本机核验</Button>}
     <QRCode type="svg" value={person.verificationUrl!} size={phone ? 128 : 168} bordered={false} className="portrait-qr" />
@@ -197,7 +209,7 @@ export function PortraitGuide({ item, overview, busy, act, footer, batchItems = 
     <Flex vertical gap={24} className="portrait-guide-body">
       <Steps size="small" responsive={false} current={current} status={phase === 'done' ? 'finish' : phase === 'verify' && verification && !portraitVerificationLive(verification) ? 'error' : 'process'} items={steps.map(title => ({ title }))} />
       {phase === 'choose' && <Form layout="vertical" requiredMark={false} onFinish={submit} className="portrait-guide-form">
-        {item.status === 'failed' && <Alert type="error" showIcon title={item.errorMessage || '上次提交未成功，请重新提交。'} />}
+        {item.status === 'failed' && <Alert type="error" showIcon title={item.arkError || item.errorMessage || '素材入库失败。'} className="portrait-provider-error" />}
         {item.status === 'revoked' && <Alert type="warning" showIcon title="这张照片的人物授权已撤销，请重新确认。" />}
         <Form.Item label="照片类型">
           <Radio.Group block optionType="button" buttonStyle="solid" value={kind} disabled={busy} onChange={e => { setKind(e.target.value); setAccepted(false); setAdditionalIds([]); }}
@@ -231,8 +243,9 @@ export function PortraitGuide({ item, overview, busy, act, footer, batchItems = 
         <Spin />
         <Typography.Text strong>{item.status === 'queued' ? '照片排队中' : item.status === 'uploading' ? '照片提交中' : '照片审核中'}</Typography.Text>
         <Typography.Text type="secondary">{item.status === 'queued' ? '排到后将自动送审。' : '结果会自动更新。'}</Typography.Text>
+        {item.arkError && <Alert type="warning" showIcon title={item.arkError} className="portrait-provider-error" />}
       </Flex>}
-      {phase === 'unknown' && <Alert type="warning" showIcon title={item.errorMessage || '素材提交结果待确认，请联系技术支持。'} />}
+      {phase === 'unknown' && <Alert type="warning" showIcon title={item.arkError || item.errorMessage || '素材提交结果待确认，请联系技术支持。'} className="portrait-provider-error" />}
       {phase === 'done' && <Flex vertical align="center" gap={8} className="portrait-state">
         <CircleCheck size={36} className="portrait-done-icon" aria-hidden />
         <Typography.Text strong>审核已通过</Typography.Text>
