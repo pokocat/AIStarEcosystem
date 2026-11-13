@@ -128,6 +128,10 @@ VideoAssetLibrary（适配器）         ← 新增接口
 
 V75 保留 `video_asset_library` 和模型的 `asset_library_id`；V78 新增加密凭据列以及 `video_asset_person`、`video_asset_portrait`，不修改已执行迁移。项目名、AIGC 素材组等非敏感配置存在 `config_json`；AK/SK 与本人会话凭证加密，不出 DTO、审计或日志。
 
+素材提交、审核与本人核验保留方舟错误码及消息。以「【火山引擎】」开头的 `arkError` 由素材列表、确认弹窗和本人核验展示。OpenAPI 错误从 `ResponseMetadata.Error` 读取，素材审核从 `Result.Error` 读取，触发人像核验的推理拒绝从 `error` 读取，H5 失败回调保留 `resultCode` 和 `algorithmBaseRespCode`。没有错误正文的官方响应展示实际 HTTP 状态或素材状态。只对凭据和链接脱敏。平台超时或本地校验提示使用平台文案。
+
+PostgreSQL V81 和 MySQL/H2 V83 在两张人像表加可空 `ark_error`。历史审核若仅留有方舟错误码，展示已有错误码。历史提交若只留平台归类码，原始原因仍需查对应日志。官方限流期间继续排队，提交结果不确定时继续阻止重复提交。[查询素材资产信息](https://docs.volcengine.com/docs/ark/get-asset-api?lang=zh) · [拉起真人认证 H5](https://docs.volcengine.com/docs/ark/h5-create-visual-validate-session-api?lang=zh)
+
 MySQL / H2 的 V82 和 PostgreSQL 的 V80 增加素材库下次送审时间、素材下次审核查询时间和队列索引。送审使用现有素材记录，明确限流后保留原声明和排序时间。创建请求受理结果不明时保留待确认记录，避免重复入库。
 
 人像记录按 owner + library + storage key 隔离，保存官方资产 ID、入库状态、人物关联、声明版本与时间。真人组只能由官方本人核验结果取得。声明保留不可变记录；撤销后本地立即禁用后续引用，并删除官方素材组，处理迟到回调及并发上传的清理。

@@ -3,12 +3,12 @@ export type VideoPortraitItem = {
   id: string; libraryId: string; key: string; mediaType: string; label: string; previewUrl?: string;
   status: 'needs_review' | 'queued' | 'uploading' | 'processing' | 'active' | 'failed' | 'revoked';
   placement?: 'virtual' | 'person'; personId?: string; errorMessage?: string; updatedAt: string;
-  submissionUnknown?: boolean;
+  submissionUnknown?: boolean; arkError?: string;
 };
 export type VideoPortraitDeclaration = { kind: 'virtual' | 'person'; personId?: string; accepted: boolean; agreementVersion: string };
 export type VideoPortraitPerson = {
   id: string; libraryId: string; name: string; status: 'verifying' | 'active' | 'failed' | 'revoked';
-  verificationUrl?: string; expiresAt: string; createdAt: string;
+  verificationUrl?: string; expiresAt: string; createdAt: string; arkError?: string;
 };
 export type VideoPortraitOverview = {
   libraries: { id: string; name: string }[]; items: VideoPortraitItem[]; persons: VideoPortraitPerson[];

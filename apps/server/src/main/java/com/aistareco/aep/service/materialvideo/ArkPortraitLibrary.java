@@ -46,8 +46,10 @@ public class ArkPortraitLibrary {
         this.transactions = new TransactionTemplate(transactionManager);
     }
     public record Item(String id,String libraryId,String key,String mediaType,String label,String previewUrl,
-                       String status,String placement,String personId,String errorMessage,String updatedAt,boolean submissionUnknown) {}
-    public record Person(String id,String libraryId,String name,String status,String verificationUrl,String expiresAt,String createdAt) {}
+                       String status,String placement,String personId,String errorMessage,String updatedAt,boolean submissionUnknown,
+                       String arkError) {}
+    public record Person(String id,String libraryId,String name,String status,String verificationUrl,String expiresAt,String createdAt,
+                         String arkError) {}
     public record Overview(List<Map<String,String>> libraries,List<Item> items,List<Person> persons,Map<String,String> agreement) {}
     private VideoAssetLibraryRecord library(String id) {
         var record=libraries.findById(id).orElseThrow(()->bad("VIDEO_ASSET_LIBRARY_NOT_CONFIGURED","所选模型的素材服务暂不可用，请稍后重试。"));
@@ -97,13 +99,26 @@ public class ArkPortraitLibrary {
         while(matcher.find()){int i=Integer.parseInt(matcher.group(1))-1;if(i>=0&&i<keys.size())indices.add(i);}
         // If the provider does not identify an index, ask about visual inputs, never silently label them virtual.
         if(indices.isEmpty())for(int i=0;i<keys.size();i++)if(!"audio".equals(types.get(i)))indices.add(i);
+        String official = referenceError(response);
         boolean needsReview=false;
         for(int i:indices) {
             var item=register(owner,libraryId,keys.get(i),types.get(i),"参考素材 "+(i+1));
+            if (official != null && "needs_review".equals(item.status())) {
+                db.update("""
+                    UPDATE video_asset_portrait SET ark_error=? WHERE id=? AND owner_user_id=? AND status='needs_review'
+                    """, official, item.id(), owner);
+            }
             needsReview|=!"active".equals(item.status());
         }
         // If Ark rejects a trusted reference, reopening an already approved review would retry it in a loop.
         return needsReview;
+    }
+    private String referenceError(String response) {
+        try {
+            return ArkAssetClient.officialError(JSON.readTree(response).path("error"));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
+            return null;
+        }
     }
     /** All undeclared nonportrait inputs retain signed URLs. Known portraits can only use Active references. */
     public String reference(String owner,String libraryId,String key) {
@@ -144,7 +159,7 @@ public class ArkPortraitLibrary {
             for (String id : unique.stream().sorted().toList()) {
                 db.update("""
                     UPDATE video_asset_portrait SET status='queued', placement=?, person_id=?, declared_by=?,
-                        declared_at=?, declaration_text=?, asset_id=NULL, error_code=NULL, review_after=NULL, updated_at=?
+                        declared_at=?, declaration_text=?, asset_id=NULL, error_code=NULL, ark_error=NULL, review_after=NULL, updated_at=?
                     WHERE id=? AND owner_user_id=? AND status IN ('needs_review','failed','revoked')
                         AND (error_code IS NULL OR error_code<>?)
                     """, kind, person, owner, submittedAt, "virtual".equals(kind) ? VIRTUAL_DECLARATION : AGREEMENT,
@@ -224,35 +239,36 @@ public class ArkPortraitLibrary {
             if (!asset.startsWith("asset-")) throw bad(SUBMISSION_UNKNOWN, "素材提交结果待确认。");
 
             int saved = db.update("""
-                UPDATE video_asset_portrait SET asset_id=?,status='processing',review_after=?,updated_at=?
+                UPDATE video_asset_portrait SET asset_id=?,status='processing',ark_error=NULL,review_after=?,updated_at=?
                 WHERE id=? AND status='uploading' AND declared_at=?
                 """, asset, Timestamp.from(Instant.now().plusSeconds(5)), now(), id, declaredAt);
             if (saved == 0) api.call(record, "DeleteAsset", Map.of("Id", asset));
         } catch (BusinessException e) {
+            String official = ArkAssetClient.officialError(e);
             if (ArkAssetClient.RATE_LIMITED.equals(e.getCode())) {
                 transactions.executeWithoutResult(tx -> {
                     var retryAfter = Timestamp.from(Instant.now().plusSeconds(60));
                     db.update("UPDATE video_asset_library SET portrait_upload_after=? WHERE id=? AND portrait_upload_after<?",
                             retryAfter, lib, retryAfter);
                     db.update("""
-                        UPDATE video_asset_portrait SET status='queued',updated_at=?
+                        UPDATE video_asset_portrait SET status='queued',ark_error=?,updated_at=?
                         WHERE id=? AND status='uploading' AND declared_at=?
-                        """, now(), id, declaredAt);
+                        """, official, now(), id, declaredAt);
                 });
             } else {
-                failUpload(id, declaredAt, e.getCode());
+                failUpload(id, declaredAt, e.getCode(), official);
             }
         } catch (Exception e) {
             log.warn("[ark-assets] portrait={} submission could not be recorded ({})", id, e.getClass().getSimpleName());
-            failUpload(id, declaredAt, SUBMISSION_UNKNOWN);
+            failUpload(id, declaredAt, SUBMISSION_UNKNOWN, null);
         }
     }
 
-    private void failUpload(String id, Timestamp declaredAt, String code) {
+    private void failUpload(String id, Timestamp declaredAt, String code, String official) {
         db.update("""
-            UPDATE video_asset_portrait SET status='failed',error_code=?,updated_at=?
+            UPDATE video_asset_portrait SET status='failed',error_code=?,ark_error=?,updated_at=?
             WHERE id=? AND status='uploading' AND declared_at=?
-            """, code, now(), id, declaredAt);
+            """, code, official, now(), id, declaredAt);
     }
 
     @Scheduled(fixedDelay = 5_000, scheduler = "portraitAssetScheduler")
@@ -279,41 +295,63 @@ public class ArkPortraitLibrary {
         if (!"processing".equals(row.get("status"))) return;
         String id = (String) row.get("id");
         String asset = (String) row.get("asset_id");
+        var nextCheck = Timestamp.from(Instant.now().plusSeconds(10));
         int claimed = db.update("""
             UPDATE video_asset_portrait SET review_after=? WHERE id=? AND status='processing' AND asset_id=?
                 AND (review_after IS NULL OR review_after<=?)
-            """, Timestamp.from(Instant.now().plusSeconds(10)), id, asset, now());
+            """, nextCheck, id, asset, now());
         if (claimed == 0) return;
 
         try {
             var record = library((String) row.get("library_id"));
             var result = api.call(record, "GetAsset", Map.of("Id", asset));
             String state = result.path("Status").asText();
-            if ("Active".equals(state) || "Failed".equals(state)) {
-                if ("Failed".equals(state)) log.warn("[ark-assets] asset={} review={}", asset, ArkAssetClient.safe(result));
-                finishReview(id, asset, "Active".equals(state) ? "active" : "failed",
-                        result.path("Error").path("Code").asText(null));
+            if ("Active".equals(state)) {
+                finishReview(id, asset, "active", null, null);
                 return;
             }
+            if ("Failed".equals(state)) {
+                String[] credentials = ArkAssetClient.assetCredentials(record);
+                log.warn("[ark-assets] asset={} review={}", asset, ArkAssetClient.safe(result, credentials));
+                String official = ArkAssetClient.officialError(result.path("Error"), credentials);
+                finishReview(id, asset, "failed", null, official == null ? "【火山引擎】Failed" : official);
+                return;
+            }
+            String official = result.hasNonNull("Error")
+                    ? ArkAssetClient.officialError(result.path("Error"), ArkAssetClient.assetCredentials(record)) : null;
+            if (reviewExpired(row)) finishReview(id, asset, "failed", "VIDEO_ASSET_REVIEW_TIMEOUT", official);
+            else if (official != null || row.get("ark_error") != null) saveReviewError(id, asset, nextCheck, official);
         } catch (BusinessException e) {
-            if ("VIDEO_ASSET_REMOTE_NOT_FOUND".equals(e.getCode())) {
-                finishReview(id, asset, "failed", e.getCode());
+            String official = ArkAssetClient.officialError(e);
+            if (ArkAssetClient.NOT_FOUND.equals(e.getCode())) {
+                finishReview(id, asset, "failed", e.getCode(), official);
                 return;
             }
-            if (!reviewExpired(row)) throw e;
+            if (!reviewExpired(row)) {
+                if (official == null) throw e;
+                saveReviewError(id, asset, nextCheck, official);
+                return;
+            }
+            finishReview(id, asset, "failed", "VIDEO_ASSET_REVIEW_TIMEOUT", official);
+            return;
         }
-        if (reviewExpired(row)) finishReview(id, asset, "failed", "VIDEO_ASSET_REVIEW_TIMEOUT");
     }
 
     private boolean reviewExpired(Map<String,Object> row) {
         return ((Timestamp) row.get("updated_at")).toInstant().isBefore(Instant.now().minusSeconds(1800));
     }
 
-    private void finishReview(String id, String asset, String status, String code) {
+    private void saveReviewError(String id, String asset, Timestamp nextCheck, String official) {
         db.update("""
-            UPDATE video_asset_portrait SET status=?,error_code=?,review_after=NULL,updated_at=?
+            UPDATE video_asset_portrait SET ark_error=? WHERE id=? AND status='processing' AND asset_id=? AND review_after=?
+            """, official, id, asset, nextCheck);
+    }
+
+    private void finishReview(String id, String asset, String status, String code, String official) {
+        db.update("""
+            UPDATE video_asset_portrait SET status=?,error_code=?,ark_error=?,review_after=NULL,updated_at=?
             WHERE id=? AND status='processing' AND asset_id=?
-            """, status, code, now(), id, asset);
+            """, status, code, official, now(), id, asset);
     }
 
     public Person startPerson(String owner,String lib,String name,String requestId,boolean accepted,String version) {
@@ -331,14 +369,37 @@ public class ArkPortraitLibrary {
             String token=result.path("BytedToken").asText(),link=result.path("H5Link").asText();
             if(token.isBlank()||!link.startsWith("https://"))throw bad("VIDEO_ASSET_PROVIDER_FAILED","未能打开本人核验，请重试。");
             db.update("UPDATE video_asset_person SET token_encrypted=?,link_encrypted=?,updated_at=? WHERE id=? AND status='verifying'",AepCryptoUtil.encrypt(token),AepCryptoUtil.encrypt(link),now(),id);
-        }catch(BusinessException e){db.update("UPDATE video_asset_person SET status='failed',updated_at=? WHERE id=? AND status='verifying'",now(),id);throw e;}
+        }catch(BusinessException e){
+            db.update("UPDATE video_asset_person SET status='failed',ark_error=?,updated_at=? WHERE id=? AND status='verifying'",
+                    ArkAssetClient.officialError(e),now(),id);
+            throw e;
+        }
         return person(ownedPerson(owner,id));
     }
-    public void callback(String state) {
+    public void callback(String state, String bytedToken, String resultCode, String algorithmBaseRespCode) {
         if(state==null||state.length()>128)throw bad("VIDEO_ASSET_CALLBACK_INVALID","核验链接无效，请重新开始核验。");
         var rows=db.queryForList("SELECT * FROM video_asset_person WHERE callback_hash=?",hash(state));
         if(rows.isEmpty())throw bad("VIDEO_ASSET_CALLBACK_INVALID","核验链接无效，请重新开始核验。");
-        finishPerson(rows.get(0));
+        var row=rows.get(0);
+        // Callback codes are diagnostic only. An official GroupId is still required for approval.
+        if ("verifying".equals(row.get("status"))
+                && row.get("token_encrypted") instanceof String encrypted
+                && (bytedToken == null || bytedToken.isEmpty() || bytedToken.length() <= 256
+                    && MessageDigest.isEqual(bytedToken.getBytes(StandardCharsets.UTF_8),
+                            AepCryptoUtil.decrypt(encrypted).getBytes(StandardCharsets.UTF_8)))
+                && resultCode != null && resultCode.matches("[0-9]{1,12}") && !"10000".equals(resultCode)) {
+            String official = "【火山引擎】resultCode=" + resultCode;
+            if (algorithmBaseRespCode != null && algorithmBaseRespCode.matches("-?[0-9]{1,12}"))
+                official += " algorithmBaseRespCode=" + algorithmBaseRespCode;
+            savePersonError((String) row.get("id"), official);
+            return;
+        }
+        try {
+            finishPerson(row);
+        } catch (BusinessException e) {
+            // Return the browser to the owner's verification page, which reads the saved official error.
+            if (ArkAssetClient.officialError(e) == null || !"verifying".equals(row.get("status"))) throw e;
+        }
     }
     public Person refreshPerson(String owner,String id){var p=ownedPerson(owner,id);finishPerson(p);return person(ownedPerson(owner,id));}
     private void finishPerson(Map<String,Object> p) {
@@ -349,21 +410,31 @@ public class ArkPortraitLibrary {
             db.update("UPDATE video_asset_person SET status=?,token_encrypted=NULL,link_encrypted=NULL,updated_at=? WHERE id=? AND status IN ('verifying','revoked')",revoked?"revoked":"failed",now(),id);return;
         }
         if(p.get("token_encrypted")==null)return;
-        var result=api.call(library((String)p.get("library_id")),"GetVisualValidateResult",Map.of("BytedToken",AepCryptoUtil.decrypt((String)p.get("token_encrypted"))));
+        JsonNode result;
+        try {
+            result=api.call(library((String)p.get("library_id")),"GetVisualValidateResult",Map.of("BytedToken",AepCryptoUtil.decrypt((String)p.get("token_encrypted"))));
+        } catch (BusinessException e) {
+            String official = ArkAssetClient.officialError(e);
+            if (official != null && !revoked) savePersonError(id, official);
+            throw e;
+        }
         String group=result.path("GroupId").asText();
         if(group.startsWith("group-")) {
-            int saved=revoked?0:db.update("UPDATE video_asset_person SET group_id=?,status='active',token_encrypted=NULL,link_encrypted=NULL,updated_at=? WHERE id=? AND status='verifying'",group,now(),id);
+            int saved=revoked?0:db.update("UPDATE video_asset_person SET group_id=?,status='active',ark_error=NULL,token_encrypted=NULL,link_encrypted=NULL,updated_at=? WHERE id=? AND status='verifying'",group,now(),id);
             if(saved==0) {
                 deleteGroup(library((String)p.get("library_id")),group);
                 db.update("UPDATE video_asset_person SET token_encrypted=NULL,link_encrypted=NULL,updated_at=? WHERE id=? AND status='revoked'",now(),id);
             }
         }
     }
+    private void savePersonError(String id, String official) {
+        db.update("UPDATE video_asset_person SET ark_error=? WHERE id=? AND status='verifying'", official, id);
+    }
     public void revoke(String owner,String id) {
         var p=ownedPerson(owner,id);String lib=(String)p.get("library_id");var record=library(lib);
         // Local revocation takes effect first; failed provider deletion can be retried from this same record.
-        db.update("UPDATE video_asset_person SET status='revoked',link_encrypted=NULL,updated_at=? WHERE id=? AND owner_user_id=?",now(),id,owner);
-        db.update("UPDATE video_asset_portrait SET status='revoked',updated_at=? WHERE person_id=? AND owner_user_id=?",now(),id,owner);
+        db.update("UPDATE video_asset_person SET status='revoked',ark_error=NULL,link_encrypted=NULL,updated_at=? WHERE id=? AND owner_user_id=?",now(),id,owner);
+        db.update("UPDATE video_asset_portrait SET status='revoked',error_code=NULL,ark_error=NULL,updated_at=? WHERE person_id=? AND owner_user_id=?",now(),id,owner);
         if(p.get("group_id")!=null) {
             deleteGroup(record,(String)p.get("group_id"));
             db.update("UPDATE video_asset_person SET group_id=NULL,token_encrypted=NULL WHERE id=? AND status='revoked'",id);
@@ -371,10 +442,10 @@ public class ArkPortraitLibrary {
     }
     private void deleteGroup(VideoAssetLibraryRecord record,String group) {
         try{api.call(record,"DeleteAssetGroup",Map.of("Id",group));}
-        catch(BusinessException e){if(!"VIDEO_ASSET_REMOTE_NOT_FOUND".equals(e.getCode()))throw e;}
+        catch(BusinessException e){if(!ArkAssetClient.NOT_FOUND.equals(e.getCode()))throw e;}
     }
     public void forget(String owner,String lib,Collection<String> keys) {
-        for(String key:keys)db.update("UPDATE video_asset_portrait SET status='failed',error_code='VIDEO_ASSET_REMOTE_NOT_FOUND',updated_at=? WHERE id=? AND owner_user_id=? AND status='active'",now(),hash(owner,lib,key),owner);
+        for(String key:keys)db.update("UPDATE video_asset_portrait SET status='failed',error_code=?,ark_error=NULL,updated_at=? WHERE id=? AND owner_user_id=? AND status='active'",ArkAssetClient.NOT_FOUND,now(),hash(owner,lib,key),owner);
     }
     private Map<String,Object> ownedItem(String owner,String id){return owned("video_asset_portrait",owner,id);}
     private Map<String,Object> ownedPerson(String owner,String id){return owned("video_asset_person",owner,id);}
@@ -383,21 +454,24 @@ public class ArkPortraitLibrary {
         if(rows.isEmpty())throw BusinessException.notFound("VIDEO_ASSET_NOT_FOUND","未找到该人像记录，请刷新后重试。");return rows.get(0);
     }
     private Item item(Map<String,Object> r) {
-        String code=(String)r.get("error_code");String error=code==null?null:switch(code){
-            case "FaceMismatch"->"素材中的人脸与完成核验的本人不一致，请更换清晰的本人照片。";
-            case "ContentRestricted","InputImageSensitiveContentDetected","InputImageSensitiveContentDetected.PrivacyInformation"->"素材未通过审核；真人照片请完成本人核验后提交，虚拟人像请更换素材。";
+        String code=(String)r.get("error_code");
+        String official=(String)r.get("ark_error");
+        if (official == null && code != null && !code.startsWith("VIDEO_ASSET_") && !code.startsWith("IP_ASSET_")) {
+            official = ArkAssetClient.officialError(JSON.createObjectNode().put("Code", code));
+        }
+        String error=code==null||official!=null?null:switch(code){
             case SUBMISSION_UNKNOWN -> "素材提交结果待确认，请联系技术支持。";
             case "VIDEO_ASSET_RATE_LIMITED" -> "上次提交未完成，请重新提交审核。";
             case "VIDEO_ASSET_REVIEW_TIMEOUT"->"素材审核超时，请稍后重新提交。";
-            case "VIDEO_ASSET_REMOTE_NOT_FOUND"->"官方素材引用已失效，请重新提交入库。";
-            default->"素材暂未完成入库，请检查素材后重试。";};
+            case ArkAssetClient.NOT_FOUND->"官方素材引用已失效，请重新提交入库。";
+            default->"素材入库失败。";};
         return new Item((String)r.get("id"),(String)r.get("library_id"),(String)r.get("source_key"),(String)r.get("media_type"),(String)r.get("label"),
-                "image".equals(r.get("media_type"))?storage.signedUrl((String)r.get("source_key")):null,(String)r.get("status"),(String)r.get("placement"),(String)r.get("person_id"),error,iso(r,"updated_at"),SUBMISSION_UNKNOWN.equals(code));
+                "image".equals(r.get("media_type"))?storage.signedUrl((String)r.get("source_key")):null,(String)r.get("status"),(String)r.get("placement"),(String)r.get("person_id"),error,iso(r,"updated_at"),SUBMISSION_UNKNOWN.equals(code),official);
     }
     private Person person(Map<String,Object> r) {
         boolean live="verifying".equals(r.get("status"))&&((Timestamp)r.get("expires_at")).toInstant().isAfter(Instant.now());
         return new Person((String)r.get("id"),(String)r.get("library_id"),(String)r.get("name"),"verifying".equals(r.get("status"))&&!live?"failed":(String)r.get("status"),
-                live?AepCryptoUtil.decrypt((String)r.get("link_encrypted")):null,iso(r,"expires_at"),iso(r,"created_at"));
+                live?AepCryptoUtil.decrypt((String)r.get("link_encrypted")):null,iso(r,"expires_at"),iso(r,"created_at"),(String)r.get("ark_error"));
     }
     private static String iso(Map<String,Object> r,String key){return ((Timestamp)r.get(key)).toInstant().toString();}
     private static Timestamp now(){return Timestamp.from(Instant.now());}

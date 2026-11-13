@@ -6,6 +6,7 @@ import com.aistareco.common.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import db.migration.V78__ark_portrait_library;
 import db.migration.V82__portrait_review_queue;
+import db.migration.V83__portrait_official_errors;
 import org.flywaydb.core.api.migration.Context;
 import org.junit.jupiter.api.*;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,6 +34,7 @@ class ArkPortraitLibraryTest {
         db.update("INSERT INTO video_asset_library VALUES('ark-test','ark',?)", Timestamp.from(Instant.now().minusSeconds(60)));
         Context ctx=mock(Context.class);when(ctx.getConnection()).thenReturn(connection);new V78__ark_portrait_library().migrate(ctx);
         new V82__portrait_review_queue().migrate(ctx);
+        new V83__portrait_official_errors().migrate(ctx);
         var libraries=mock(VideoAssetLibraryRecordRepository.class);record=new VideoAssetLibraryRecord();record.setId("ark-test");record.setName("官方人像");record.setAdapter("ark");record.setCredentialEncrypted(AepCryptoUtil.encrypt("test:secret"));record.setConfigJson("{\"projectName\":\"test\",\"virtualGroupId\":\"group-virtual\"}");
         when(libraries.findById("ark-test")).thenReturn(Optional.of(record));when(libraries.findAll()).thenReturn(List.of(record));
         api=mock(ArkAssetClient.class);storage=mock(FileStorageService.class);when(storage.signedUrl(anyString())).thenAnswer(i->"preview:"+i.getArgument(0));when(storage.upstreamFetchUrl(anyString())).thenAnswer(i->"https://signed.example/"+i.getArgument(0));
@@ -51,6 +53,8 @@ class ArkPortraitLibraryTest {
         var spec=new VideoGenSpec("universal_reference_video","720p",null,null,null,List.of(new VideoGenSpec.Reference("image","first.jpg"),new VideoGenSpec.Reference("image","second.jpg")),false);
         assertTrue(service.flag("owner","ark-test",spec,400,"{\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\",\"message\":\"content[2].image_url may contain real person\"}}"));
         assertEquals("second.jpg",service.overview("owner").items().get(0).key());assertTrue(service.overview("other").items().isEmpty());
+        assertEquals("【火山引擎】InputImageSensitiveContentDetected.PrivacyInformation content[2].image_url may contain real person",
+                service.overview("owner").items().get(0).arkError());
         String id=service.overview("owner").items().get(0).id();
         assertThrows(BusinessException.class,()->service.declare("other",id,"virtual",null,true,ArkPortraitLibrary.VERSION));
         assertFalse(service.flag("owner","ark-test",spec,503,"timeout"));verifyNoInteractions(api);
@@ -151,7 +155,7 @@ class ArkPortraitLibraryTest {
         when(api.call(eq(record),eq("CreateVisualValidateSession"),anyMap())).thenReturn(json.readTree("{\"H5Link\":\"https://verify.example/?secret=one\",\"BytedToken\":\"private-token\"}"));
         var p=service.startPerson("owner","ark-test","本人","test-request-123456",true,ArkPortraitLibrary.VERSION);
         assertEquals(p.id(),service.startPerson("owner","ark-test","本人","test-request-123456",true,ArkPortraitLibrary.VERSION).id());
-        assertThrows(BusinessException.class,()->service.callback("forged-resultCode-10000"));
+        assertThrows(BusinessException.class,()->service.callback("forged-resultCode-10000",null,"10000",null));
         assertTrue(service.overview("other").persons().isEmpty());
         assertNotEquals("private-token",db.queryForObject("SELECT token_encrypted FROM video_asset_person WHERE id=?",String.class,p.id()));
         assertEquals("verifying",service.overview("owner").persons().get(0).status());
@@ -179,9 +183,66 @@ class ArkPortraitLibraryTest {
     }
     @Test void failedAssetHttp200IsNotTreatedAsSuccess() throws Exception {
         var item=image();uploadReturns("asset-image");service.declare("owner",item.id(),"virtual",null,true,ArkPortraitLibrary.VERSION);
-        when(api.call(eq(record),eq("GetAsset"),anyMap())).thenReturn(json.readTree("{\"Status\":\"Failed\",\"Error\":{\"Code\":\"FaceMismatch\"}}"));
+        when(api.call(eq(record),eq("GetAsset"),anyMap())).thenReturn(json.readTree("""
+                {"Status":"Failed","Error":{"Code":"FaceMismatch","Message":"Face consistency verification failed."}}
+                """));
         sendAndPoll();
-        var failed=service.refreshItem("owner",item.id());assertEquals("failed",failed.status());assertTrue(failed.errorMessage().contains("本人不一致"));
+        var failed=service.refreshItem("owner",item.id());
+        assertEquals("failed",failed.status());
+        assertEquals("【火山引擎】FaceMismatch Face consistency verification failed.",failed.arkError());
+        assertNull(failed.errorMessage());
         assertThrows(BusinessException.class,()->service.reference("owner","ark-test",item.key()));
+    }
+
+    @Test void officialSubmissionErrorSurvivesQueueAndKeepsOriginalCodeAndMessage() throws Exception {
+        var http = mock(HttpClient.class);
+        @SuppressWarnings("unchecked") HttpResponse<String> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(400);
+        when(response.body()).thenReturn("""
+                {"ResponseMetadata":{"Error":{"Code":"InvalidParameter.AspectRatioTooLarge",
+                "Message":"Aspect ratio must be between 0.4 and 2.5."}}}
+                """);
+        when(http.send(any(), org.mockito.ArgumentMatchers.<HttpResponse.BodyHandler<String>>any())).thenReturn(response);
+        var client = new ArkAssetClient(http);
+        var item = image();
+        service.declare("owner",item.id(),"virtual",null,true,ArkPortraitLibrary.VERSION);
+        when(api.call(eq(record),eq("CreateAsset"),anyMap())).thenAnswer(
+                call -> client.call(record,"CreateAsset",call.getArgument(2)));
+        service.dispatchQueued();
+        var failed = service.overview("owner").items().get(0);
+        assertEquals("failed",failed.status());
+        assertEquals("【火山引擎】InvalidParameter.AspectRatioTooLarge Aspect ratio must be between 0.4 and 2.5.",
+                failed.arkError());
+        assertEquals("queued",service.declare("owner",item.id(),"virtual",null,true,ArkPortraitLibrary.VERSION).status());
+        assertNull(service.overview("owner").items().get(0).arkError());
+    }
+
+    @Test void officialTextPreservesUnknownCodesAndRedactsOnlySensitiveValues() throws Exception {
+        var error = json.readTree("""
+                {"Code":"Future.DownloadError","Message":"Download failed: https://example.com/file?signature=123 and token vvs-private-value."}
+                """);
+        assertEquals("【火山引擎】Future.DownloadError Download failed: [链接已脱敏] and token [已脱敏].",
+                ArkAssetClient.officialError(error));
+    }
+
+    @Test void failedH5CallbackShowsOfficialCodesWithoutApprovingPerson() throws Exception {
+        when(api.call(eq(record),eq("CreateVisualValidateSession"),anyMap())).thenReturn(json.readTree("""
+                {"H5Link":"https://verify.example","BytedToken":"vvs-private-value"}
+                """));
+        var p=service.startPerson("owner","ark-test","本人","test-request-123456",true,ArkPortraitLibrary.VERSION);
+        var args = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(api).call(eq(record),eq("CreateVisualValidateSession"),args.capture());
+        String state = java.net.URI.create((String)args.getValue().get("CallbackURL")).getQuery().substring("state=".length());
+        service.callback(state,"vvs-private-value","50500","100000");
+        var current = service.overview("owner").persons().get(0);
+        assertEquals("verifying",current.status());
+        assertEquals("【火山引擎】resultCode=50500 algorithmBaseRespCode=100000",current.arkError());
+        verify(api,never()).call(eq(record),eq("GetVisualValidateResult"),anyMap());
+        when(api.call(eq(record),eq("GetVisualValidateResult"),anyMap())).thenReturn(json.readTree("""
+                {"GroupId":"group-real"}
+                """));
+        var active=service.refreshPerson("owner",p.id());
+        assertEquals("active",active.status());
+        assertNull(active.arkError());
     }
 }

@@ -264,3 +264,11 @@ it('a live StudioErrorNotice right after an action is that action\'s dialog; val
   await waitFor(() => expect(api.error).toHaveBeenCalledTimes(1));
   expect(titles()).toEqual(['「做同款」没有完成']);
 });
+it('preserves the official Ark error through API and Studio normalization', () => {
+  const official = '【火山引擎】Future.RateLimit The current quota does not permit this request.';
+  const apiError = new ApiError({ code: 'VIDEO_ASSET_PROVIDER_RATE_LIMITED', message: official,
+    details: { arkError: official }, logId: 'ABCDEF234567' }, 429);
+  expect(normalizeStudioError(normalizeStudioError(apiError))).toMatchObject({
+    message: official, logId: 'ABCDEF234567',
+  });
+});

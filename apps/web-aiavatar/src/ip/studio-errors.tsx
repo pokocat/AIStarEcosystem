@@ -13,7 +13,7 @@ import { PortraitReviewHost } from './portrait-review-host';
 import { observePortraitReviews } from './portrait-review-events';
 import { isStudioCreditShortage } from '@/canvas-bridge/studio-billing-cancel';
 
-export type StudioError = { code: string; message: string; logId?: string; taskId?: string; clientMessageId?: string };
+export type StudioError = { code: string; message: string; logId?: string; taskId?: string; clientMessageId?: string; arkError?: string };
 type ErrorInput = unknown;
 const remembered = new Map<string, StudioError>();
 const shown = new Map<string, string>();
@@ -45,8 +45,10 @@ export function normalizeStudioError(input: ErrorInput, fallback = '操作未完
   const suffix = raw.match(/\s*[·。]?\s*追查号[：:\s]+([^\s，。]+)(?:\s*[—-]+.*)?$/);
   const details = value.details && typeof value.details === 'object' ? value.details as Record<string, unknown> : {};
   const logId = typeof value.logId === 'string' ? value.logId : typeof details.logId === 'string' ? details.logId : suffix && /^[A-HJ-NP-Z2-9]{12}$/.test(suffix[1]) ? suffix[1] : undefined;
-  const visible = userFacingError(typeof value.errorCode === 'string' ? value.errorCode : typeof value.code === 'string' ? value.code : undefined,
-    suffix ? raw.slice(0, suffix.index).trim() || fallback : raw);
+  const code = typeof value.errorCode === 'string' ? value.errorCode : typeof value.code === 'string' ? value.code : undefined;
+  const arkError = details.arkError ?? value.arkError;
+  const official = typeof arkError === 'string' && arkError.startsWith('【火山引擎】') ? arkError : undefined;
+  const visible = official ? { code, message: official } : userFacingError(code, suffix ? raw.slice(0, suffix.index).trim() || fallback : raw);
   const network = input instanceof TypeError && /fetch|network|load failed/i.test(raw);
   // 没有错误码的英文是浏览器或代码抛的（Failed to fetch、Cannot read properties…）：用户看不懂也做不了什么，换成引导重试的话，原文只进控制台。
   const unreadable = !visible.code && !!visible.message && !/\p{Script=Han}/u.test(visible.message);
@@ -56,6 +58,7 @@ export function normalizeStudioError(input: ErrorInput, fallback = '操作未完
     message: unreadable ? (network ? NETWORK_MESSAGE : fallback) : visible.message ?? fallback,
     logId,
     taskId: typeof value.taskId === 'string' ? value.taskId : typeof value.runId === 'string' ? value.runId : undefined,
+    ...(official ? { arkError: official } : {}),
     ...(typeof value.clientMessageId === 'string' ? { clientMessageId: value.clientMessageId } : {}),
   };
   remembered.set(result.message, result);

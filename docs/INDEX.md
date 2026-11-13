@@ -10,7 +10,7 @@ AI 编导对话与修改建议：[浏览器验收及发布记录](releases/scrip
 
 AI 视频“重新编辑”统一入口：[浏览器验收与发布记录](releases/video-reedit-position-release-20261109.md)，last-reviewed：2026-11-09。
 
-Seedance 官方人像素材：[当前实现与边界](video-asset-library.md)；[正式发布记录](releases/ark-portrait-production-release-20261109.md)；[凭据切换及真实接口验收](releases/ark-bingbing-key-and-portrait-preparation-20261109.md)。已发布并绑定 Fast / Mini；真人刷脸和成片待验收，last-reviewed：2026-11-09。
+Seedance 官方人像素材：[当前实现与方舟错误展示](video-asset-library.md)；[正式发布记录](releases/ark-portrait-production-release-20261109.md)；[凭据切换及真实接口验收](releases/ark-bingbing-key-and-portrait-preparation-20261109.md)。last-reviewed：2026-11-13。
 
 Studio 视频复刻（2026-11-11 改成爆款复刻的三种方式，现行做法见 [复刻创作](ip-studio-recreation.md)「三种复刻方式」）：[工具箱与运行依赖](studio-video-clone-toolbox.md) · [本地功能验收](releases/studio-video-clone-local-validation-20261108.md) · [独立实验与集成边界](audits/studio-clone-independent-lab-20261109.md)。last-reviewed：2026-11-09。
 Studio 人像审核自动续跑与超时后单段重试：[生产发布及原任务验收](releases/studio-portrait-resume-release-20261111.md)，last-reviewed：2026-11-11。

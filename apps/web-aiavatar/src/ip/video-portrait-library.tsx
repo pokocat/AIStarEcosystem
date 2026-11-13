@@ -34,7 +34,10 @@ export function VideoPortraitLibrary() {
   });
   if (auth === 'no-platform') return <PlatformGateScreen />;
   const peopleColumns: TableColumnsType<VideoPortraitPerson> = [
-    { title: '人物', dataIndex: 'name', key: 'name', render: name => <Typography.Text strong>{name}</Typography.Text> },
+    { title: '人物', key: 'name', render: (_, person) => <Flex vertical gap={4}>
+      <Typography.Text strong>{person.name}</Typography.Text>
+      {person.arkError && <Typography.Text type="danger" className="portrait-secondary">{person.arkError}</Typography.Text>}
+    </Flex> },
     { title: '状态', key: 'status', width: 100, render: (_, person) => <PortraitStatus status={person.status === 'active' ? 'verified' : person.status} /> },
     { title: '核验时间', key: 'created', width: 175, responsive: ['lg'], render: (_, person) => <Typography.Text type="secondary">{formatDateTime(person.createdAt)}</Typography.Text> },
     { title: '操作', key: 'actions', align: 'right', width: 160, render: (_, person) => <Space wrap size={4}>

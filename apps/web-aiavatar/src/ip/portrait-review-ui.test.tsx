@@ -5,7 +5,7 @@ import type { VideoPortraitOverview, VideoPortraitItem } from '@ai-star-eco/type
 const mocks = vi.hoisted(() => ({ overview: vi.fn(), review: vi.fn(), declare: vi.fn(), declareBatch: vi.fn(), refresh: vi.fn(), resume: vi.fn(), report: vi.fn(), startPerson: vi.fn(), refreshPerson: vi.fn() }));
 vi.mock('./studio-errors', () => ({ normalizeStudioError: (e: Error) => ({ message: e.message }), reportStudioError: mocks.report }));
 vi.mock('./api/video-portrait-library', () => ({ portraitOverview: mocks.overview, portraitReview: mocks.review, declarePortrait: mocks.declare, declarePortraits: mocks.declareBatch, refreshPortrait: mocks.refresh, resumePortraitReview: mocks.resume, startPortraitPerson: mocks.startPerson, refreshPortraitPerson: mocks.refreshPerson }));
-import { PortraitGuide } from './portrait-review-ui';
+import { PortraitGuide, PortraitMaterialTable } from './portrait-review-ui';
 import { PortraitReviewHost } from './portrait-review-host';
 import { requestPortraitReview, finishPortraitReview } from './portrait-review-events';
 const item: VideoPortraitItem = { id: 'portrait', libraryId: 'ark', key: 'photo', label: '参考图', mediaType: 'image', status: 'needs_review', updatedAt: '2026-11-09T01:00:00Z' };
@@ -17,6 +17,13 @@ beforeAll(() => {
 beforeEach(() => { vi.clearAllMocks(); });
 afterEach(() => { finishPortraitReview('original-job:first', false); finishPortraitReview('defer-item', false); cleanup(); });
 const run = async (task: () => Promise<unknown>) => { await task(); return true; };
+it('shows the unmodified Ark rejection in the material list and confirmation dialog', () => {
+  const arkError = '【火山引擎】InputImageSensitiveContentDetected.PolicyViolation The request failed because the input image may be related to copyright restrictions.';
+  const failed = { ...item, status: 'failed' as const, arkError };
+  render(<><PortraitMaterialTable items={[failed]} onConfirm={vi.fn()} onRefresh={vi.fn()} />
+    <PortraitGuide item={failed} overview={data()} busy={false} act={run} /></>);
+  expect(screen.getAllByText(arkError)).toHaveLength(2);
+});
 it('submits a photo of an already verified person in one pass and resets consent when the type changes', async () => {
   mocks.declare.mockResolvedValue({ ...item, status: 'processing' });
   render(<PortraitGuide item={item} overview={data()} busy={false} act={run} />);

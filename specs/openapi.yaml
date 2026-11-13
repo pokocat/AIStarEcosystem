@@ -68,6 +68,7 @@ components:
         placement: {type: string, enum: [virtual, person]}
         personId: {type: string}
         errorMessage: {type: string}
+        arkError: {type: string, description: 火山引擎返回的原始错误码和消息。以【火山引擎】标注来源，凭据与链接脱敏。}
         submissionUnknown: {type: boolean, description: 供应商受理结果待确认，不能重新提交该素材}
         updatedAt: {type: string, format: date-time}
     VideoPortraitPerson:
@@ -79,6 +80,7 @@ components:
         name: {type: string}
         status: {type: string, enum: [verifying, active, failed, revoked]}
         verificationUrl: {type: string, description: 仅本人可读的短期官方 H5 核验地址，不得缓存或记录}
+        arkError: {type: string, description: 火山引擎返回的原始错误码和消息或 H5 回调错误码。凭据与链接脱敏。}
         expiresAt: {type: string, format: date-time}
         createdAt: {type: string, format: date-time}
     VideoPortraitOverview:

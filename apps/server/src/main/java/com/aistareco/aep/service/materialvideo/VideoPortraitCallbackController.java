@@ -9,8 +9,9 @@ public class VideoPortraitCallbackController {
     private final ArkPortraitLibrary portraits;
     public VideoPortraitCallbackController(ArkPortraitLibrary portraits){this.portraits=portraits;}
     @GetMapping("/api/v1/asset-library/callback")
-    public ResponseEntity<Void> callback(@RequestParam String state){
-        portraits.callback(state);
+    public ResponseEntity<Void> callback(@RequestParam String state, @RequestParam(required=false) String bytedToken,
+            @RequestParam(required=false) String resultCode, @RequestParam(required=false) String algorithmBaseRespCode){
+        portraits.callback(state, bytedToken, resultCode, algorithmBaseRespCode);
         // No caller-supplied redirect; strip all vendor callback credentials before reaching the browser UI.
         return ResponseEntity.status(HttpStatus.SEE_OTHER).cacheControl(CacheControl.noStore())
                 .header("Referrer-Policy","no-referrer").location(java.net.URI.create("https://aistar.aibuzz.cn/assets/verification")).build();

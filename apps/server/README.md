@@ -1461,6 +1461,8 @@ postgres双机的`AEP_STORAGE_REQUIRE_DURABLE_UPLOADS`默认true：混剪素材/
 
 ## Seedance 官方人像素材（2026-11-09，已发布）
 
+PostgreSQL V81、MySQL/H2 V83 为 `video_asset_portrait` 与 `video_asset_person` 增加可空 `ark_error`，记录脱敏后的方舟原始错误。本人接口通过 `arkError` 返回。平台状态码继续驱动限流退避、审核超时和防重提交。生产 API 以 Flyway 校验模式运行，发布前由迁移角色应用 V81。
+
 Fast / Mini 的生产 API Key 已切换；官方库 `bingbing` 已真实验证虚拟样本入库 Active 与本人 H5 会话。官方素材库 `ark-bingbing` 已绑定 Fast / Mini，V78 和页面已随 `20261109-ark-portraits-137b5754` 发布。生成前在积分冻结前检查引用，需要处理时在当前页弹窗，复用 Ant Design 控件；用户明确确认真人或虚拟声明后入库，Active 后继续原操作。官方明确拒绝且尚无供应商任务号时，保留原任务及冻结最多 30 分钟，审核后恢复同一任务，不二次冻结；超时释放。已有供应商任务继续对账。本人刷脸、真人一致性审核和真人成片尚未实测。真源：[视频素材库](../../docs/video-asset-library.md)。
 
 ### AI 视频编导修改建议（2026-11-09）
