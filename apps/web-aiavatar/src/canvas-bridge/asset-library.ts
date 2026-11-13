@@ -21,7 +21,21 @@ export const generateLibraryObject=async(id:string,body:LibraryGenerateRequest)=
 export const addLibraryVersion=(id:string,storageKey:string,main=true)=>apiFetch<LibraryObject>(`${LIBRARY_BASE}/objects/${id}/versions`,{method: "POST",body:{storageKey,main}});
 export const extractLibraryAssets=async(projectId:string,body:{billing?:EnterpriseBillingSelection;nodeId:string;analyze?:boolean;episodeNo?:number;clientRequestId?:string;model?:string;maxCost?:number})=>apiFetch<LibraryExtraction>(`/v1/ip-studio/projects/${projectId}/library/extract`,{method: "POST",body:body.analyze?await withStudioBilling(projectId,body,{operation:"asset-extract",textUsage:true}):body});
 export const saveLibraryExtraction=(projectId:string,body:{nodeId:string;sourceHash:string;folderId?:string;items:LibraryCandidate[]})=>apiFetch<LibraryObject[]>(`/v1/ip-studio/projects/${projectId}/library/save-extraction`,{method: "POST",body});
-export const uploadLibraryMedia=async(file:File,mediaType:'image'|'video'|'audio'='image',folderId?:string)=>{const body=new FormData();body.append('file',mediaType==='image'?await prepareStudioImageUpload(file):file);body.append('mediaType',mediaType);if(folderId)body.append('folderId',folderId);return apiFetch<StudioMediaImportResult>(`${LIBRARY_BASE}/uploads`,{method: "POST",body});};
+export async function uploadLibraryMedia(file: File, mediaType: 'image' | 'video' | 'audio' = 'image', folderId?: string) {
+  const body = new FormData();
+  if (mediaType === 'image') {
+    const image = await prepareStudioImageUpload(file);
+    // Safari 26.5.2 can send an empty multipart body for a file from the picker.
+    // Read the prepared image in the page before handing it to the network process.
+    const content = new Blob([await image.arrayBuffer()], { type: image.type });
+    body.append('file', content, image.name);
+  } else {
+    body.append('file', file);
+  }
+  body.append('mediaType', mediaType);
+  if (folderId) body.append('folderId', folderId);
+  return apiFetch<StudioMediaImportResult>(`${LIBRARY_BASE}/uploads`, { method: "POST", body });
+}
 export const mainLibraryVersion=(asset:LibraryObject)=>asset.versions.find(v=>v.id===asset.mainVersionId);
 
 export const canvasLibraryFolder=(projectId:string)=>apiFetch<{folderId:string}>(`/v1/ip-studio/projects/${projectId}/library/folder`);
