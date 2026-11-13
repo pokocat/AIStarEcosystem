@@ -35,26 +35,20 @@ class FeishuAlertClientTest {
         }
         verifyNoInteractions(http);
     }
-    @Test @SuppressWarnings("unchecked") void webhookSendsAnInteractiveTaskCardAndKeepsLinksWhenResponseIsLong() throws Exception {
+    @Test @SuppressWarnings("unchecked") void webhookStillSendsPreviouslyQueuedCards() throws Exception {
         var config=new FeishuAlertConfig();config.setWebhook(WEBHOOK);
         var http=mock(HttpClient.class);HttpResponse<String> response=mock(HttpResponse.class);
         when(response.statusCode()).thenReturn(200);when(response.body()).thenReturn("{\"code\":0}");
-        var card=new FeishuTaskCard();
-        card.field("用户","测试用户");
-        String page="https://aiavatar.aibuzz.cn/video?scene=recreation&draft=IPP-1";
-        card.field("报错操作链接",page);
+        String card = """
+                {"schema":"2.0","header":{"title":{"tag":"plain_text","content":"【模型任务告警】"}},"body":{"elements":[]}}
+                """;
         when(http.send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class))).thenAnswer(call->{
-            String payload=body(call.getArgument(0));
-            assertTrue(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=20000);
-            var wire=new ObjectMapper().readTree(payload);
+            var wire=new ObjectMapper().readTree(body(call.getArgument(0)));
             assertEquals("interactive",wire.path("msg_type").asText());
-            var content=wire.path("card");
-            assertEquals("【模型任务告警】",content.at("/header/title/content").asText());
-            assertTrue(content.toString().contains("完整内容见后台请求日志"));
-            assertEquals(page,content.at("/body/elements/4/behaviors/0/default_url").asText());
+            assertEquals(new ObjectMapper().readTree(card),wire.path("card"));
             return response;
         });
-        assertEquals("webhook:key",new FeishuAlertClient(config,new ObjectMapper(),http).send("key",card.finish("告警😀".repeat(10000),page)));
+        assertEquals("webhook:key",new FeishuAlertClient(config,new ObjectMapper(),http).send("key",card));
     }
     @Test @SuppressWarnings("unchecked") void webhookErrorsAreRedactedAndLongUnicodeAlertsFitThePayloadLimit() throws Exception {
         var config=new FeishuAlertConfig();config.setWebhook(WEBHOOK);
@@ -63,12 +57,19 @@ class FeishuAlertClientTest {
         when(http.send(any(HttpRequest.class),any(HttpResponse.BodyHandler.class))).thenAnswer(call->{
             String payload=body(call.getArgument(0));
             assertTrue(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=20000);
-            String text=new ObjectMapper().readTree(payload).path("content").path("text").asText();
+            var wire = new ObjectMapper().readTree(payload);
+            assertEquals("text", wire.path("msg_type").asText());
+            String text=wire.path("content").path("text").asText();
+            assertTrue(text.contains("- 用户：测试用户\n- 操作：元素替换\n- 报错操作链接：https://aiavatar.aibuzz.cn/video?scene=recreation&tool=replacement"));
+            assertTrue(text.contains("\n---\n\n服务方返回："));
             assertTrue(text.contains("告警过长已截断"));assertTrue(text.endsWith("https://admin.aibuzz.cn/admin/platform/ai-models"));
             assertFalse(text.contains("\uFFFD"));return response;
         });
         var client=new FeishuAlertClient(config,new ObjectMapper(),http);
-        assertEquals("Feishu code 19024",assertThrows(IllegalStateException.class,()->client.send("id","告警😀\n\"".repeat(10000))).getMessage());
+        String message = "【模型任务告警】\n\n- 用户：测试用户\n- 操作：元素替换\n"
+                + "- 报错操作链接：https://aiavatar.aibuzz.cn/video?scene=recreation&tool=replacement"
+                + "\n---\n\n服务方返回：\n" + "告警😀\n\"".repeat(10000) + FeishuModelAlerts.ADMIN_LINK;
+        assertEquals("Feishu code 19024",assertThrows(IllegalStateException.class,()->client.send("id",message)).getMessage());
     }
     @Test @SuppressWarnings("unchecked") void sendsAsBotAndUrgentlyNotifiesTheSelectedGroupMemberWithOneToken() throws Exception {
         var config=new FeishuAlertConfig();config.setAppId("app");config.setAppSecret("secret");config.setChatId("oc_group");config.setUserId("ou_person");

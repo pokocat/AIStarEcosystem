@@ -24,6 +24,7 @@ public class FeishuAlertClient {
         token=value;expiresAt=System.currentTimeMillis()+Math.max(1,response.path("expire").asLong(7200)-120)*1000;return token;
     }
     public String send(String id,String text) throws Exception {
+        // Queued messages created before the switch to text retain their original payload.
         JsonNode card = text.startsWith("{\"schema\":\"2.0\"") ? mapper.readTree(text) : null;
         String type = card == null ? "text" : "interactive";
         if(config.usesWebhook()) {
@@ -50,10 +51,12 @@ public class FeishuAlertClient {
     }
     private Object webhookBody(String text) throws Exception {
         // Custom-bot messages are limited to 20 KB, including JSON escaping and UTF-8 encoding.
-        String suffix="\n（告警过长已截断，完整详情请查看后台）\nhttps://admin.aibuzz.cn/admin/platform/ai-models";
-        int low=0,high=text.codePointCount(0,text.length());
         Object full=Map.of("msg_type","text","content",Map.of("text",text));
         if(mapper.writeValueAsBytes(full).length<=20000)return full;
+        String adminLink = FeishuModelAlerts.ADMIN_LINK;
+        String suffix = "\n（告警过长已截断，完整详情请查看后台）" + adminLink;
+        if (text.endsWith(adminLink)) text = text.substring(0, text.length() - adminLink.length());
+        int low=0,high=text.codePointCount(0,text.length());
         while(low<high) {
             int mid=(low+high+1)/2;
             Object body=Map.of("msg_type","text","content",Map.of("text",text.substring(0,text.offsetByCodePoints(0,mid))+suffix));

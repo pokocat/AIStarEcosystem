@@ -112,12 +112,12 @@ class FeishuModelAlertsTest {
                 {"status":"failed","error":{"category":"service_rejected","code":"InternalServiceError",
                 "reason":"copyright_audio","message":"生成的音频可能涉及版权限制，请关闭音频（generate_audio=false）或调整提示词后重试。"}}
                 """).attachTo(failure);
-        String card = FeishuModelAlerts.message("test-task", failure.getCode(), "ABCDEF234567", failure);
-        assertTrue(card.contains(reason), "the alert summary must retain the actionable customer reason");
-        assertTrue(card.contains("VIDEO_AUDIO_COPYRIGHT_RESTRICTED"));
-        assertTrue(card.contains("HTTP 200"));
-        assertTrue(card.contains("copyright_audio"));
-        assertTrue(card.contains("generate_audio=false"), "original supplier advice remains in diagnostics");
+        String text = FeishuModelAlerts.message("test-task", failure.getCode(), "ABCDEF234567", failure);
+        assertTrue(text.contains(reason), "the alert summary must retain the actionable customer reason");
+        assertTrue(text.contains("VIDEO_AUDIO_COPYRIGHT_RESTRICTED"));
+        assertTrue(text.contains("HTTP 200"));
+        assertTrue(text.contains("copyright_audio"));
+        assertTrue(text.contains("generate_audio=false"), "original supplier advice remains in diagnostics");
     }
     @Test void legacyDiagnosticsKeepIdNamesAndRejectSecretsOrTruncatedIds() throws Exception {
         String text=FeishuModelAlerts.message("task","FAIL","trace",new IllegalStateException(
@@ -125,8 +125,8 @@ class FeishuModelAlertsTest {
         for(String id:java.util.List.of("log_id=abc.123","requestId=req_456","x-tt-logid=789ABC","trace_id=trace:789"))assertTrue(text.contains(id),text);
         assertTrue(text.contains("远端 HTTP 状态：HTTP 503"));
         assertFalse(text.contains("sk-secret"));
-        var fields=new com.fasterxml.jackson.databind.ObjectMapper().readTree(text).at("/body/elements");
-        assertFalse(fields.get(4).at("/text/content").asText().contains("a".repeat(100)));
+        String remoteIds = text.lines().filter(line -> line.startsWith("- 远端追踪号：")).findFirst().orElseThrow();
+        assertFalse(remoteIds.contains("a".repeat(100)));
     }
     @Test void modelContextIsPersistedInTheOutgoingMessage() {
         var context=mock(ModelAlertContext.class);
@@ -135,14 +135,17 @@ class FeishuModelAlertsTest {
         org.springframework.test.util.ReflectionTestUtils.setField(alerts,"modelContext",context);
         alerts.enqueue("task","VIDEO_SUBMISSION_UNKNOWN","ABCDEF234567",new IllegalStateException(),"owner");
         String text=db.queryForObject("SELECT message_text FROM model_alert_delivery",String.class);
-        for(String value:java.util.List.of("远端任务 ID：remote-task","模型：minimax-h3","用户：创作者（owner）",
-                "操作：全能参考生视频","报错操作链接：https://aiavatar.aibuzz.cn/video?draft=IPP-1","打开报错页面"))assertTrue(text.contains(value),text);
+        assertTrue(text.startsWith("【模型任务告警】\n\n- 告警时间（北京时间）："), text);
+        for(String value:java.util.List.of("- 远端任务 ID：remote-task","- 模型：minimax-h3","- 用户：创作者（owner）",
+                "- 操作：全能参考生视频","- 报错操作链接：https://aiavatar.aibuzz.cn/video?draft=IPP-1"))assertTrue(text.contains(value),text);
+        assertTrue(text.contains("\n---\n\n服务方返回："), text);
+        assertTrue(text.endsWith("模型后台：https://admin.aibuzz.cn/admin/platform/ai-models"), text);
     }
     @Test void completeProviderErrorIsIncludedAndEmptyBoilerplateIsOmitted() {
         var error=ProviderResponseDiagnostics.attach(new IllegalStateException("模型返回内容不符合格式"),400,null,
                 "{\"error\":{\"code\":\"invalid_parameter\",\"message\":\"max_tokens 超过模型上限\",\"details\":{\"limit\":8192,\"actual\":16000}},\"request_id\":\"remote-123\"}");
         String text=FeishuModelAlerts.message("task","STUDIO_RUN_FAILED","TRACE123",error);
-        for(String value:java.util.List.of("模型返回内容不符合格式","invalid_parameter","max_tokens 超过模型上限","\\\"limit\\\":8192","\\\"actual\\\":16000","remote-123","服务方返回："))assertTrue(text.contains(value),text);
+        for(String value:java.util.List.of("模型返回内容不符合格式","invalid_parameter","max_tokens 超过模型上限","\"limit\":8192","\"actual\":16000","remote-123","服务方返回："))assertTrue(text.contains(value),text);
         for(String value:java.util.List.of("Unix","未获取","未记录","请查看后台详情","最终状态及积分","我方 HTTP 状态"))assertFalse(text.contains(value),text);
     }
     @Test void localFailureIncludesTheActualNestedCauseWithoutInventingAProviderResponse() {
