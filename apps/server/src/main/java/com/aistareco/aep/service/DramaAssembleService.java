@@ -501,8 +501,8 @@ public class DramaAssembleService {
         return (a == null ? "" : a.toLowerCase(Locale.ROOT)).equals(b == null ? "" : b.toLowerCase(Locale.ROOT));
     }
 
-    /** 片段宽高比与画布比例的容差（相对误差）：768×1344 ≈ 0.571 对 9:16 = 0.5625 差 1.6%，算同一比例。 */
-    static final double RATIO_TOLERANCE = 0.02;
+    /** 接受供应商按编码要求对齐后的像素尺寸，如 Seedance 480p 竖屏 496×864（相差 2.1%）。 */
+    static final double RATIO_TOLERANCE = 0.025;
 
     private static boolean ratioMatches(int width, int height, Double want) {
         return want == null || (width > 0 && height > 0

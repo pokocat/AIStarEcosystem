@@ -94,6 +94,13 @@ class DramaAssembleServiceNormalizeTest {
     }
 
     @Test
+    void targetSize_keepsSeedance480pPortraitWhenNormalizing() {
+        var old = clip(720, 960, "h264", null, 0, 0, 5);
+        var seedance = clip(496, 864, "h264", "aac", 44100, 2, 5);
+        assertArrayEquals(new int[]{496, 864}, DramaAssembleService.targetSize(List.of(old, seedance), "9:16"));
+    }
+
+    @Test
     void targetSize_canvasRatio_beatsMajorityOfOtherRatio() {
         FfmpegRunner.MediaProbe h3Old = clip(768, 1024, "h264", null, 0, 0, 5);
         assertArrayEquals(new int[]{720, 1280},
