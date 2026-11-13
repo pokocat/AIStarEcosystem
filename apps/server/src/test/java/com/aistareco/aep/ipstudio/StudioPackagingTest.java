@@ -67,6 +67,24 @@ class StudioPackagingTest {
         assertTrue(meanVolume(ffmpeg,src,0.5,2)<-30,"原声很小");
         assertTrue(meanVolume(ffmpeg,out,0.5,2)>-25,"响度被统一到正常水平");
     }
+    @Test void sparseCaptionsAndSeparateAudioRenderTogetherAtProductionResolution(@TempDir Path dir) throws Exception {
+        var ffmpeg=new FfmpegRunner(new MixcutProperties());
+        var fonts=new FontRegistry();fonts.load();
+        var svc=new StudioPackagingService(ffmpeg,fonts);
+        var src=dir.resolve("source.mp4");
+        var clean=dir.resolve("clean.wav");
+        ffmpeg.runFfmpeg(List.of("-v","error","-y","-f","lavfi","-i",
+                "color=black:size=1344x768:rate=24:duration=32","-c:v","libx264","-threads:v","2","-pix_fmt","yuv420p",src.toString()));
+        ffmpeg.runFfmpeg(List.of("-v","error","-y","-f","lavfi","-i","sine=frequency=880:duration=32",clean.toString()));
+        var out=svc.finish(src,dir,null,null,clean,null,List.of(new Caption(20.0,21.0,"A late caption")));
+        var probe=ffmpeg.probeMedia(out.toFile());
+        assertEquals(32,probe.durationSec(),.1);
+        assertEquals(1344,probe.width());
+        assertEquals("aac",probe.audioCodec());
+        assertTrue(changed(ffmpeg,out,dir,3.0,20.5)>100);
+        assertEquals(0,changed(ffmpeg,out,dir,3.0,27.0));
+        assertTrue(meanVolume(ffmpeg,out,27.0,2)>-25);
+    }
     @Test void musicDucksWhilePeopleTalkAndLoopsToTheEnd(@TempDir Path dir) throws Exception {
         var ffmpeg=new FfmpegRunner(new MixcutProperties());var fonts=new FontRegistry();fonts.load();
         var svc=new StudioPackagingService(ffmpeg,fonts);var src=dir.resolve("source.mp4");var music=dir.resolve("music.m4a");

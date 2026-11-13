@@ -64,8 +64,7 @@ public class StudioPackagingService {
         return finish(source,work,value,audio,null,null,value==null?null:value.captions());
     }
     /**
-     * 成片的最后一道（2026-11-07）：叠品牌文字和字幕、统一响度、混背景音乐，一次编码。
-     * 画面上没有要叠的东西时视频流直接复制，不重新编码。
+     * 成片的最后一道：叠品牌文字和字幕、统一响度、混背景音乐。画面最多编码一次。
      *
      * @param speech   配音，有它就替换片段原声
      * @param clean    {@link #cleanClipAudio} 处理过的片段原声，可空（空就用 source 里的声音）
@@ -78,21 +77,18 @@ public class StudioPackagingService {
         if(!probe.readable()||width<1||height<1||duration<=0)fail("包装来源视频无法读取");
         if(value!=null)checkCaptions(value,duration);
         boolean hasBrand=value!=null&&(!blank(value.brand())||!blank(value.title())||!blank(value.cta()));
-        boolean hasCaptions=captions!=null&&!captions.isEmpty(),repaint=hasBrand||hasCaptions;
+        boolean hasCaptions=captions!=null&&!captions.isEmpty();
+        // Render video separately. With sparse subtitle timestamps and audio filters in the same
+        // graph, FFmpeg 6 can buffer decoded video frames while it waits for the audio timeline.
+        Path picture=hasBrand||hasCaptions ? renderPicture(source,work,probe,hasBrand?value:null,captions,false) : source;
         List<String> args=new ArrayList<>(List.of("-y","-i",source.toString()));
         int next=1;
-        StringBuilder filter=new StringBuilder();String video="[v0]";
-        if(repaint)filter.append("[0:v]setsar=1[v0];");
-        if(hasBrand) {
-            Path base=work.resolve("studio-brand.png");ImageIO.write(overlay(width,height,value.brand(),value.title(),value.cta(),null),"png",base.toFile());
-            args.addAll(List.of("-loop","1","-i",base.toString()));
-            filter.append(video).append("[").append(next).append(":v]overlay=0:0[v1];");video="[v1]";next++;
+        String video="0:v";
+        if(!picture.equals(source)) {
+            args.addAll(List.of("-i",picture.toString()));
+            video=next++ + ":v";
         }
-        if(hasCaptions) {
-            Path track=captionTrack(work,captions,width,height,duration);
-            args.addAll(List.of("-f","concat","-safe","0","-i",track.toString()));
-            filter.append("[").append(next).append(":v]fps=30,format=rgba[ct];").append(video).append("[ct]overlay=0:0:eof_action=pass[v2];");video="[v2]";next++;
-        }
+        StringBuilder filter=new StringBuilder();
         String main=null;
         if(speech!=null) {
             checkSpeech(ffmpeg.probeMedia(speech.toFile()),duration);
@@ -123,10 +119,10 @@ public class StudioPackagingService {
         }
         Path out=work.resolve("studio-packaged.mp4");
         if(filter.length()>0)args.addAll(List.of("-filter_complex_threads","1","-filter_complex",filter.substring(0,filter.length()-1)));
-        args.addAll(List.of("-map",repaint?video:"0:v"));
+        args.addAll(List.of("-map",video));
         if(audio!=null)args.addAll(List.of("-map",audio));
         args.addAll(List.of("-t",Double.toString(duration)));
-        if(repaint)args.addAll(List.of("-c:v","libx264","-preset","veryfast","-crf","20","-pix_fmt","yuv420p"));else args.addAll(List.of("-c:v","copy"));
+        args.addAll(List.of("-c:v","copy"));
         if(audio!=null)args.addAll(List.of("-c:a","aac","-b:a","192k","-ar","48000","-ac","2"));
         args.addAll(List.of("-movflags","+faststart",out.toString()));
         ffmpeg.runFfmpeg(args);return out;
@@ -156,12 +152,35 @@ public class StudioPackagingService {
     }
     /** 把字幕叠到已经合成好的片子上（成片高级编辑导出时自动生成字幕用），声音不动。 */
     public Path burnCaptions(Path source,Path work,List<com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Caption> captions) throws Exception {
-        var probe=ffmpeg.probeMedia(source.toFile());
-        Path track=captionTrack(work,captions,probe.width(),probe.height(),probe.durationSec());
+        return renderPicture(source,work,ffmpeg.probeMedia(source.toFile()),null,captions,true);
+    }
+
+    private Path renderPicture(Path source,Path work,FfmpegRunner.MediaProbe probe,Packaging brand,
+                               List<com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Caption> captions,boolean copyAudio) throws Exception {
+        List<String> args=new ArrayList<>(List.of("-y","-filter_complex_threads","1","-threads:v","2","-i",source.toString()));
+        StringBuilder filter=new StringBuilder("[0:v]setsar=1[v0]");
+        String video="[v0]";
+        int next=1;
+        if(brand!=null) {
+            Path base=work.resolve("studio-brand.png");
+            ImageIO.write(overlay(probe.width(),probe.height(),brand.brand(),brand.title(),brand.cta(),null),"png",base.toFile());
+            args.addAll(List.of("-loop","1","-threads:v","1","-i",base.toString()));
+            filter.append(';').append(video).append('[').append(next++).append(":v]overlay=0:0[v1]");
+            video="[v1]";
+        }
+        if(captions!=null&&!captions.isEmpty()) {
+            Path track=captionTrack(work,captions,probe.width(),probe.height(),probe.durationSec());
+            args.addAll(List.of("-f","concat","-safe","0","-threads:v","1","-i",track.toString()));
+            // Framesync holds each PNG until the next cue. Keep the subtitle stream sparse.
+            filter.append(";[").append(next).append(":v]format=rgba[ct];").append(video).append("[ct]overlay=0:0:eof_action=pass[v2]");
+            video="[v2]";
+        }
         Path out=work.resolve("studio-captioned.mp4");
-        ffmpeg.runFfmpeg(List.of("-y","-v","error","-i",source.toString(),"-f","concat","-safe","0","-i",track.toString(),
-                "-filter_complex","[1:v]fps=30,format=rgba[ct];[0:v][ct]overlay=0:0:eof_action=pass[v]","-map","[v]","-map","0:a?","-t",Double.toString(probe.durationSec()),
-                "-c:v","libx264","-preset","veryfast","-crf","20","-pix_fmt","yuv420p","-c:a","copy","-movflags","+faststart",out.toString()));
+        args.addAll(List.of("-filter_complex",filter.toString(),"-map",video));
+        if(copyAudio)args.addAll(List.of("-map","0:a?","-c:a","copy"));
+        args.addAll(List.of("-t",Double.toString(probe.durationSec()),"-c:v","libx264","-threads:v","2",
+                "-preset","veryfast","-crf","20","-pix_fmt","yuv420p",out.toString()));
+        ffmpeg.runFfmpeg(args);
         return out;
     }
     /**
