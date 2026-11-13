@@ -1,7 +1,6 @@
 /* Controls, tables, tabs and dialogs are Ant Design; these rules only arrange the feature's content. */
 .portrait-library-page .ant-tabs { margin-top: 24px; }
 .portrait-secondary { font-size: 12px; line-height: 1.7; }
-.portrait-secondary, .portrait-provider-error { overflow-wrap: anywhere; white-space: pre-wrap; }
 .portrait-loading { padding: 48px 0; }
 
 /* Guided declaration: the photo stays in view while the steps change beside it; phones show a thumbnail above. */
