@@ -276,7 +276,7 @@ test("视频：按钮旁的价按服务端报价显示折扣（原价划掉）�
 test("视频：爆款复刻直接受理后台任务，保留原片与要求，不跳画布", async () => {
   window.history.replaceState(null, "", "/video?scene=recreation");
   api.videoModels.mockResolvedValue([H3]);
-  api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/v.mp4", url: "blob:v", mediaType: "video", mimeType: "video/mp4", bytes: 1, fileName: "v.mp4" });
+  api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/v.mp4", url: "blob:v", mediaType: "video", mimeType: "video/mp4", bytes: 1, fileName: "v.mp4", durationSec: 12 });
   await act(async () => { render(<SceneVideoStudio/>); });
   const send = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("请添加参考视频")).toBeTruthy());
@@ -294,7 +294,7 @@ test("视频：爆款复刻直接受理后台任务，保留原片与要求，�
 test("视频：爆款复刻在视频规格里开启默认关闭的自动检查", async () => {
   window.history.replaceState(null, "", "/video?scene=recreation");
   api.videoModels.mockResolvedValue([H3]);
-  api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/v.mp4", url: "blob:v", mediaType: "video", mimeType: "video/mp4", bytes: 1, fileName: "v.mp4" });
+  api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/v.mp4", url: "blob:v", mediaType: "video", mimeType: "video/mp4", bytes: 1, fileName: "v.mp4", durationSec: 12 });
   await act(async () => { render(<SceneVideoStudio/>); });
   const send = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("请添加参考视频")).toBeTruthy());
@@ -320,6 +320,7 @@ test("爆款复刻用所选清晰度生成并保存草稿", async () => {
   window.history.replaceState(null, "", "/video?scene=recreation");
   const tier = { tier: "1080p", canvases: [{ aspectRatio: "9:16", width: 1080, height: 1920, outputSizeCode: null }] };
   api.videoModels.mockResolvedValue([{ ...H3, contract: { ...H3.contract, tiers: [...H3.contract.tiers, tier] } }]);
+  api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/v.mp4", url: "blob:v", mediaType: "video", mimeType: "video/mp4", bytes: 1, fileName: "v.mp4", durationSec: 12 });
   await act(async () => { render(<SceneVideoStudio/>); });
   await pickFromLibrary("参考视频");
   fireEvent.click(screen.getByRole("button", { name: /^视频规格：/ }));
@@ -332,6 +333,46 @@ test("爆款复刻用所选清晰度生成并保存草稿", async () => {
   expect(api.taskStart).toHaveBeenCalledWith("IPP-1", expect.objectContaining({
     configuration: expect.objectContaining({ tier: "1080p" }),
     input: expect.objectContaining({ sceneVideoState: expect.objectContaining({ tier: "1080p" }) }),
+  }));
+});
+
+test("复刻时长可在选原片前输入，跟随与自定义分别报价，生成使用自定义秒数", async () => {
+  window.history.replaceState(null, "", "/video?scene=recreation&tool=replacement");
+  api.videoModels.mockResolvedValue([H3]);
+  api.capabilities.mockResolvedValue({ mock: false, operations: ["video-control"], imageCost: 8 });
+  api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/v.mp4", url: "blob:v", mediaType: "video", mimeType: "video/mp4", bytes: 1, fileName: "v.mp4" });
+  await act(async () => { render(<SceneVideoStudio/>); });
+
+  const spec = () => screen.getByRole("button", { name: /^视频规格：/ });
+  const go = () => screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
+  const custom = () => screen.getByRole("button", { name: "自定义" });
+  expect(spec().textContent).toBe("原片 · 9:16 · 768P");
+  fireEvent.click(spec());
+  fireEvent.click(custom());
+  const seconds = screen.getByRole("textbox", { name: "自定义时长（秒）" });
+  fireEvent.change(seconds, { target: { value: "8" } });
+  fireEvent.click(spec());
+  expect(go().textContent).not.toContain("积分");
+  await pickFromLibrary("参考视频");
+  fillField(screen.getByRole("textbox", { name: "想做的视频" }), "换成我的面霜");
+  await screen.findByText("正在读取参考视频时长…");
+  const source = screen.getByLabelText("已选择参考视频");
+  Object.defineProperty(source, "duration", { value: 12.2 });
+  fireEvent.loadedMetadata(source);
+  await waitFor(() => expect(go().textContent).toContain("约 320 积分"));
+
+  fireEvent.click(spec());
+  fireEvent.click(screen.getByRole("button", { name: "跟随原片 · 12 秒" }));
+  await waitFor(() => expect(go().textContent).toContain("约 480 积分"));
+  fireEvent.click(custom());
+  expect(spec().textContent).toBe("8 秒 · 9:16 · 768P");
+  await waitFor(() => expect(go().textContent).toContain("约 320 积分"));
+  fireEvent.click(spec());
+  await act(async () => { fireEvent.click(go()); });
+  expect(api.taskStart).toHaveBeenCalledWith("IPP-1", expect.objectContaining({
+    kind: "replacement",
+    configuration: expect.objectContaining({ duration: 8 }),
+    input: expect.objectContaining({ sceneVideoState: expect.objectContaining({ duration: 8, durationMode: "custom" }) }),
   }));
 });
 
@@ -404,7 +445,7 @@ for (const mode of ['depth', 'replacement'] as const) test(`视频工具：${mod
   window.history.replaceState(null, '', `/video?scene=recreation&tool=${mode}`);
   api.videoModels.mockResolvedValue([H3]);
   api.capabilities.mockResolvedValue({ mock: false, operations: ['video-control'], imageCost: 8 });
-  api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/original.mp4', url: 'blob:v', mediaType: 'video', mimeType: 'video/mp4', bytes: 1, fileName: '原片.mp4' });
+  api.importMedia.mockResolvedValue({ key: 'ipstudio/media/u/original.mp4', url: 'blob:v', mediaType: 'video', mimeType: 'video/mp4', bytes: 1, fileName: '原片.mp4', durationSec: 12 });
   await act(async () => { render(<SceneVideoStudio/>); });
   await pickFromLibrary('参考视频');
   fillField(screen.getByRole('textbox', { name: '想做的视频' }), '将主体换成一只穿蓝色衣服的小狐狸，保留动作和运镜');

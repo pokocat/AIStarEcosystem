@@ -195,7 +195,7 @@ export function SceneVideoStudio() {
   const [clipCustom, setClipCustom] = useState(false);
   const pickScene = useCallback((next: VideoScene) => {
     sceneNow.current = next.id; durationTouched.current = false;
-    setSceneId(next.id); setDuration(next.duration); setRatio(next.ratio); setPicked({});
+    setSceneId(next.id); setDuration(next.duration); setClipCustom(false); setRatio(next.ratio); setPicked({});
     // 爆款复刻没有编导这一页；停在还没开始的编导页时换过去要回到编辑。
     if (next.skill === RECREATION) setView("compose");
     writeQuery(next.id, draftRef.current?.id);
@@ -203,10 +203,10 @@ export function SceneVideoStudio() {
 
   // 每个场景没发出去的东西：一句话、选项、素材。离开时开着草稿就只记草稿号，回来时打开那份草稿（2026-10-30 审查 G03：
   // 以前开着草稿换场景全清空、没草稿换场景文字和图一起带走，两种做法不一样，而且门店照片会被当成商品图用）。
-  type Unsent = { text: string; picked: Record<string, string>; images: Media[]; character?: Media; voice?: Media; video?: Media; autoCheck?: boolean };
+  type Unsent = { text: string; picked: Record<string, string>; images: Media[]; character?: Media; voice?: Media; video?: Media; autoCheck?: boolean; customDuration?: number };
   const unsent = useRef(new Map<string, Unsent | { draftId: string }>());
   const inputsNow = useRef<Unsent>({ text: "", picked: {}, images: [] });
-  inputsNow.current = { text, picked, images, character, voice, video, autoCheck };
+  inputsNow.current = { text, picked, images, character, voice, video, autoCheck, ...(clipCustom ? { customDuration: duration } : {}) };
 
   const showDraft = useCallback((project: IpProject | undefined, ticket?: number) => {
     const shown = show(project, ticket);
@@ -219,7 +219,8 @@ export function SceneVideoStudio() {
     try { sessionStorage.removeItem(VIDEO_TASK_SELECTION); } catch { /* UI preference */ }
     showDraft(undefined, begin()); setText(""); setImages([]); setCharacter(undefined); setVoice(undefined); setVideo(undefined);
     setView("compose"); setScriptId(undefined); setRevise(""); setHint(""); setTab("example"); setAutoCheck(false);
-    if (next) writeQuery(next.id);
+    setClipCustom(false);
+    if (next) { setDuration(next.duration); writeQuery(next.id); }
   };
 
   /**
@@ -231,7 +232,7 @@ export function SceneVideoStudio() {
     const leaving = sceneNow.current, now = inputsNow.current, open = draftRef.current;
     if (leaving && leaving !== next.id) {
       if (open) unsent.current.set(leaving, { draftId: open.id });
-      else if (now.text.trim() || Object.keys(now.picked).length || now.images.length || now.character || now.voice || now.video || now.autoCheck) unsent.current.set(leaving, now);
+      else if (now.text.trim() || Object.keys(now.picked).length || now.images.length || now.character || now.voice || now.video || now.autoCheck || now.customDuration !== undefined) unsent.current.set(leaving, now);
       else unsent.current.delete(leaving);
     }
     const back = unsent.current.get(next.id);
@@ -241,6 +242,7 @@ export function SceneVideoStudio() {
     pickScene(next);
     if (back && !("draftId" in back)) {
       setText(back.text); setPicked(back.picked); setImages(back.images); setCharacter(back.character); setVoice(back.voice); setVideo(back.video); setAutoCheck(back.autoCheck === true);
+      if (back.customDuration !== undefined) { setClipCustom(true); setDuration(back.customDuration); }
       setNote(undefined);
       return;
     }
@@ -290,8 +292,9 @@ export function SceneVideoStudio() {
       setText(state.edit ? state.edit.prompt ?? "" : state.text); setPicked(state.options); setLanguage(state.language!); setTier(state.tier); setOptimize(state.optimize!);
       // 草稿里记过时长才算用户定的；没记过的按场景默认值，同样先按模型单段上限出。
       setDuration(state.duration!); setRatio(state.ratio!); durationTouched.current = !!project.doc.sceneVideoState?.duration;
-      // 复刻：草稿里记的时长比原片短，就是上次自己定的
-      setClipCustom(!!restoredVideo?.durationSec && state.duration! < Math.round(restoredVideo.durationSec));
+      // 老草稿没有记跟随模式，只能用保存的时长和原片时长推断。
+      setClipCustom(state.durationMode ? state.durationMode === 'custom'
+        : !!restoredVideo?.durationSec && state.duration! < Math.round(restoredVideo.durationSec));
       // 写过脚本还没采用：直接看编导写的那几版；采用过就回到编辑框接着改。
       setView(!state.edit && scriptNodes(project.doc).length ? "director" : "compose"); setScriptId(state.edit?.scriptId); setRevise(""); setNote(undefined);
       setHint(""); setTab(videoRows(project.doc).length || segmentedRecords(project).length ? "results" : "example");
@@ -563,14 +566,9 @@ export function SceneVideoStudio() {
   const revising = !!latestScript;
   // 复刻的时长默认跟随原片；也可以自己定，范围是模型单段的下限（深度复刻 / 元素替换还要够参考视频的下限）到原片时长，
   // 只截原片的前 N 秒来做（服务端 StudioCloneVideoPlan#minimumSeconds、StudioWorkflowService 的 limitSec）。
-  const sourceSeconds = video?.durationSec ? Math.min(MAX_SECONDS, Math.max(1, Math.round(video.durationSec))) : undefined;
   const cloneRef = nativeClone ? cloneReferenceMode(chosenVideo) : undefined;
   const cloneMin = Math.max(1, contract?.minSeconds ?? 1,
     !nativeClone ? 0 : cloneMode === 'replacement' && cloneRef?.edit ? cloneRef.edit.minSourceSec : cloneRef?.references?.video.minDurationSec ?? 0);
-  useEffect(() => {
-    if (!recreation || !sourceSeconds) return;
-    setDuration(d => clipCustom ? Math.min(sourceSeconds, Math.max(cloneMin, d)) : sourceSeconds);
-  }, [recreation, video?.key, sourceSeconds, clipCustom, cloneMin]);
   // 这条参考视频适合哪种复刻方式（按切镜数和镜头时长，服务端 StudioCloneVideoPlan#advise）。拿不到就不显示推荐，不挡生成。
   const [advice, setAdvice] = useState<{ key: string; value: StudioCloneAdvice }>();
   useEffect(() => {
@@ -580,6 +578,15 @@ export function SceneVideoStudio() {
     return () => controller.abort();
   }, [recreation, video?.key, caps?.mock, advice?.key]);
   const cloneAdviceShown = advice && advice.key === video?.key ? advice.value : undefined;
+  const sourceDuration = video?.durationSec ?? cloneAdviceShown?.durationSec;
+  const sourceSeconds = sourceDuration ? Math.max(1, Math.round(sourceDuration)) : undefined;
+  const cloneMax = Math.min(MAX_SECONDS, sourceSeconds ?? MAX_SECONDS);
+  const customDuration = Math.max(cloneMin, Math.min(cloneMax, duration));
+  const cloneDuration = clipCustom ? customDuration : sourceSeconds ?? duration;
+  const cloneDurationBlocker = !video ? ""
+    : !sourceDuration || !sourceSeconds ? "正在读取参考视频时长…"
+    : sourceDuration > MAX_SECONDS ? `参考视频最长 ${MAX_SECONDS} 秒，请先截取片段`
+    : sourceSeconds < cloneMin ? `当前模型至少需要 ${cloneMin} 秒的视频，请更换参考视频或模型` : "";
   /** 换复刻方式：左侧小卡和右侧「示例」里的「选用」走同一处。 */
   const pickCloneMode = (mode: StudioVideoCloneMode) => {
     if (!scene) return;
@@ -597,8 +604,7 @@ export function SceneVideoStudio() {
     : scene.video?.required && !video ? `请添加${scene.video.label}`
     : scene.images.required && !images.length ? `请添加${scene.images.label}`
     : scene.textRequired && !text.trim() ? "请填写要求"
-    // 三种方式都按原片分段出片，参考视频整条最长 60 秒（每段多长由服务端按模型定）
-    : video?.durationSec && video.durationSec > MAX_SECONDS ? `参考视频最长 ${MAX_SECONDS} 秒，请先截取片段` : '';
+    : cloneDurationBlocker;
 
   /**
    * 让编导写第一版（ask 是编辑框里的想法）或改一版（ask 是「修改意见」）。
@@ -771,8 +777,8 @@ export function SceneVideoStudio() {
   // 页面上的条件写进草稿（有草稿时）：刷新、从「最近」再打开都从离开的地方接着来。素材另记在 sceneInputs、视频模型在 sceneVideoModel。
   // 采用过脚本时，编辑框里的就是（可能改过的）脚本，记成 edit；没采用时记成那句想法。
   const videoState = useMemo<StudioSceneVideoState>(() => ({ text: scriptId ? "" : text, options: picked, language, ...(tier ? { tier } : {}), duration, ratio, optimize,
-    ...(scene?.skill === RECREATION ? { cloneMode, ...(autoCheck ? { autoCheck: true } : {}) } : {}),
-    ...(scriptId ? { edit: { scriptId, prompt: text } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, scriptId, cloneMode, autoCheck, scene?.skill]);
+    ...(scene?.skill === RECREATION ? { cloneMode, durationMode: clipCustom ? 'custom' : 'source', ...(autoCheck ? { autoCheck: true } : {}) } : {}),
+    ...(scriptId ? { edit: { scriptId, prompt: text } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, scriptId, cloneMode, clipCustom, autoCheck, scene?.skill]);
   useSceneStateSave("sceneVideoState", draft, videoState, persist, doc => openedVideoState(doc, videoDefaults(findVideoScene(catalogRef.current, draft?.sceneId))));
   const materials: SceneVideoMaterial[] = useMemo(() => {
     const nodes = doc.nodes as CanvasNodeData[];
@@ -816,7 +822,7 @@ export function SceneVideoStudio() {
   // 规格跟着选的视频模型走（画面比例、清晰度都按这个模型实际支持的给）。
   const ratios = contract ? ["9:16", "16:9"].filter(r => contract.tiers.some(t => t.canvases.some(c => c.aspectRatio === r))) : ["9:16", "16:9"];
   // 三种入口共用任务工作区，后台按实际制作方式推进。
-  const shownDuration = recreation || long ? duration : usedDuration;
+  const shownDuration = recreation ? cloneDuration : long ? duration : usedDuration;
   // 按钮旁的价按服务端报价显示（折扣、模型赠款、付款账户），本地价表只在报价回来之前垫着，也作为提交时的上限。
   const priceQuery = useMemo(() => chosenVideo && settings && videoQuote != null && !recreation && !long && caps && !caps.mock
     ? studioVideoPriceQuery(chosenVideo.selectableById ? chosenVideo.endpointId : undefined, settings, usedDuration, ratio) : undefined,
@@ -885,11 +891,10 @@ export function SceneVideoStudio() {
   const [taskQuote, setTaskQuote] = useState<{ key: string; price?: StudioVideoTaskQuote; error?: string }>();
   // 爆款复刻的分析要写明用哪个模型（服务端必填）；其余按原来的规则，不可按编号选的模型走默认。
   const taskModel = recreation ? chosenVideo?.endpointId : chosenVideo?.selectableById && !caps?.mock ? chosenVideo.endpointId : undefined;
-  // 爆款复刻的时长跟原片走：没加参考视频就不知道多长，不按场景默认时长报价（2026-11-11 用户：没传视频就显示约 3,440 积分）。
-  const sourceUnknown = recreation && !video;
-  const taskPriceKey = JSON.stringify([taskKind, chosenVideo?.endpointId, taskModel, settings?.mode, usedTier, shownDuration, ratio, images.length, !!character, !!voice, optimize, depthBlocked, sourceUnknown, priceRevision]);
+  const clonePriceBlocked = recreation && (!video || !!cloneDurationBlocker);
+  const taskPriceKey = JSON.stringify([taskKind, chosenVideo?.endpointId, taskModel, settings?.mode, usedTier, shownDuration, ratio, images.length, !!character, !!voice, optimize, depthBlocked, clonePriceBlocked, priceRevision]);
   useEffect(() => {
-    if (!chosenVideo || depthBlocked || sourceUnknown) return;
+    if (!chosenVideo || depthBlocked || clonePriceBlocked) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       videoTaskPrice({ kind: taskKind, model: taskModel, mode: settings?.mode, tier: usedTier, duration: shownDuration, ratio,
@@ -1142,7 +1147,7 @@ export function SceneVideoStudio() {
           slot: p.media.key === character?.key ? 'character' : p.media.key === voice?.key ? 'voice' : 'image' })) as StudioSegmentedVideoRequest['materials'];
         const clientRequestId = nanoid(), cap = taskQuote!.price!.cap;
         const configuration: StudioSegmentedVideoRequest = { clientRequestId, sceneId: scene.id, text: text.trim(), hasScript: !!scriptId,
-          options: sceneOptionValues(scene.options, picked), language, duration: kind === 'direct' ? usedDuration : duration, ratio,
+          options: sceneOptionValues(scene.options, picked), language, duration: shownDuration, ratio,
           model: taskModel, tier: usedTier, optimize: optimize || depthClone, materials, budgetCap: cap, ...(recreation ? { autoCheck } : {}) };
         const native = kind === 'direct' ? addVideoRow({ ...draftRef.current!.doc, nodes }, { title: scene.title, prompt: sentPrompt, script: text.trim(), scriptId,
           refIds: plan!.used.map(m => placed.find(p => p.media.key === m.key)?.node.id).filter((id): id is string => !!id),
@@ -1363,14 +1368,17 @@ export function SceneVideoStudio() {
       </div>
     </section>
   </div>;
+  const specTime = recreation && !clipCustom && !sourceSeconds ? "原片" : `${shownDuration} 秒`;
+  const specTimeLabel = recreation && !clipCustom ? `时长跟随原片${sourceSeconds ? `，${specTime}` : ''}` : specTime;
+  const specLabel = `视频规格：${language}，${specTimeLabel}，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`;
   const specPill =
     <div className="scene-setting-panel-host">
-      <button type="button" className="scene-pill" aria-expanded={settingsOpen} aria-label={`视频规格：${language}，${sourceUnknown ? "时长跟随原片" : `${shownDuration} 秒`}，${ratio}${usedTier ? `，${usedTier.toUpperCase()}` : ""}`} onClick={() => setSettingsOpen(v => !v)}>
-        <SlidersHorizontal size={14} strokeWidth={1.5}/><span>{language} · {sourceUnknown ? "跟随原片" : `${shownDuration} 秒`} · <RatioGlyph ratio={ratio}/>{ratio}{usedTier ? ` · ${usedTier.toUpperCase()}` : ""}</span><ChevronDown size={13} strokeWidth={1.6}/></button>
+      <button type="button" className="scene-pill is-video-spec" aria-expanded={settingsOpen} aria-label={specLabel} title={specLabel} onClick={() => setSettingsOpen(v => !v)}>
+        <SlidersHorizontal size={14} strokeWidth={1.5}/><span>{specTime} · {ratio}{usedTier ? ` · ${usedTier.toUpperCase()}` : ""}</span><ChevronDown size={13} strokeWidth={1.6}/></button>
       {settingsOpen && <VideoSettingsPanel min={recreation ? Math.min(...scene.durations) : contract?.minSeconds ?? Math.min(...scene.durations)}
         max={MAX_SECONDS} single={recreation ? undefined : contract?.maxSeconds} duration={duration} onDuration={pickDuration} segments={segments}
-        followsSource={recreation} sourceKnown={!!video?.durationSec}
-        clipCustom={clipCustom} onClipCustom={on => { setClipCustom(on); setHint(""); }} clipMin={cloneMin} clipMax={sourceSeconds}
+        cloneDuration={recreation ? { sourceSeconds, custom: clipCustom, onCustom: on => { setClipCustom(on); setHint(""); },
+          duration: customDuration, onDuration: pickDuration, min: cloneMin, max: cloneMax } : undefined}
         ratios={ratios} ratio={ratio} onRatio={setRatio}
         tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
         language={language} onLanguage={setLanguage} optimizable={!!chosenVideo?.supportsPromptOptimization} optimize={optimize || depthClone} onOptimize={setOptimize}
@@ -1641,10 +1649,9 @@ function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onReuse, onS
 
 /** 视频规格：台词语言、时长（拖动，超过单段上限分段）、画面比例、清晰度，以及场景的几组选项。就地展开在按钮上方。 */
 function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, ratios, ratio, onRatio, tiers, tier, onTier, language, onLanguage,
-  optimizable, optimize, onOptimize, optimizeFixed, options, picked, onPick, onClose, followsSource, sourceKnown, clipCustom, onClipCustom, clipMin, clipMax, extra }: {
+  optimizable, optimize, onOptimize, optimizeFixed, options, picked, onPick, onClose, cloneDuration, extra }: {
   min: number; max: number; single?: number; duration: number; onDuration: (n: number) => void; segments: number[];
-  /** 爆款复刻：时长默认跟随参考视频，也可以自己定（clipMin 到原片时长 clipMax，只截原片的前 N 秒） */ followsSource?: boolean; sourceKnown?: boolean;
-  clipCustom?: boolean; onClipCustom?: (on: boolean) => void; clipMin?: number; clipMax?: number;
+  cloneDuration?: Parameters<typeof CloneDurationSetting>[0];
   extra?: ReactNode;
   ratios: string[]; ratio: string; onRatio: (r: string) => void; tiers: string[]; tier?: string; onTier: (t: string) => void;
   language: string; onLanguage: (l: string) => void; optimizable: boolean; optimize: boolean; onOptimize: (on: boolean) => void; optimizeFixed?: boolean;
@@ -1668,8 +1675,7 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
   return <div ref={panel} className="scene-settings-panel" role="group" aria-label="视频规格">
     <div className="scene-setting-row"><span>台词语言</span>
       <div className="scene-choice-row">{LANGUAGES.map(l => <button key={l} type="button" aria-pressed={l === language} onClick={() => onLanguage(l)}>{l}</button>)}</div></div>
-    {followsSource ? <CloneDurationSetting known={!!sourceKnown && !!clipMax} custom={!!clipCustom} onCustom={on => onClipCustom?.(on)}
-      duration={duration} onDuration={onDuration} min={clipMin ?? 1} max={clipMax ?? duration}/>
+    {cloneDuration ? <CloneDurationSetting {...cloneDuration}/>
     : <div className="scene-setting-row is-stack">
       <label htmlFor="scene-video-duration">时长<b>{duration} 秒</b></label>
       <input id="scene-video-duration" className="scene-range" type="range" min={min} max={max} step={1} value={duration} style={{ "--p": `${fill}%` } as CSSProperties}
@@ -1700,29 +1706,38 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
   </div>;
 }
 
-/** 爆款复刻的时长：跟随原片，或自己定（只截原片的前 N 秒）。原片已经是最短的时候不能再缩短，原因写在按钮下面。 */
-function CloneDurationSetting({ known, custom, onCustom, duration, onDuration, min, max }: {
-  known: boolean; custom: boolean; onCustom: (on: boolean) => void; duration: number; onDuration: (n: number) => void; min: number; max: number;
+/** 自定义时长使用原片开头的 N 秒。 */
+function CloneDurationSetting({ sourceSeconds, custom, onCustom, duration, onDuration, min, max }: {
+  sourceSeconds?: number; custom: boolean; onCustom: (on: boolean) => void; duration: number; onDuration: (n: number) => void; min: number; max: number;
 }) {
-  if (!known) return <div className="scene-setting-row"><span>时长</span><p className="scene-setting-text">跟随参考视频</p></div>;
-  const canTrim = max > min;
-  const fill = canTrim ? ((duration - min) / (max - min)) * 100 : 100;
-  return <>
-    <div className="scene-setting-row"><span>时长</span>
-      <div className="scene-choice-row">
-        <button type="button" aria-pressed={!custom} onClick={() => onCustom(false)}>跟随原片 · {max} 秒</button>
-        <button type="button" aria-pressed={custom} disabled={!canTrim} onClick={() => onCustom(true)}>自定义</button>
-      </div>
-      {!canTrim && <p>原片只有 {max} 秒，不能再缩短。</p>}
+  const [editing, setEditing] = useState<string>();
+  const invalid = editing !== undefined && (!/^\d+$/.test(editing) || Number(editing) < min || Number(editing) > max);
+  const canEdit = max >= min;
+  return <div className="scene-setting-row" role="group" aria-label="时长">
+    <span>时长</span>
+    <div className="scene-choice-row">
+      <button type="button" aria-pressed={!custom} onClick={() => onCustom(false)}>{sourceSeconds ? `跟随原片 · ${sourceSeconds} 秒` : "跟随原片"}</button>
+      <button type="button" aria-pressed={custom} disabled={!canEdit} onClick={() => onCustom(true)}>自定义</button>
     </div>
-    {custom && canTrim && <div className="scene-setting-row is-stack">
-      <label htmlFor="scene-clone-duration">截取原片前<b>{duration} 秒</b></label>
-      <input id="scene-clone-duration" className="scene-range" type="range" min={min} max={max} step={1} value={duration} style={{ "--p": `${fill}%` } as CSSProperties}
-        aria-valuetext={`截取原片前 ${duration} 秒`} onChange={e => onDuration(Number(e.target.value))}/>
-      <div className="scene-range-scale"><span>{min} 秒</span><span>{max} 秒</span></div>
-      <p>从原片开头截取，后面的部分不做。</p>
-    </div>}
-  </>;
+    {!canEdit && <p>原片只有 {sourceSeconds} 秒，当前模型至少需要 {min} 秒。</p>}
+    {custom && canEdit && <>
+      <label className="scene-clone-duration-field" htmlFor="scene-clone-duration">截取原片前
+        <span><input id="scene-clone-duration" type="text" inputMode="numeric" aria-label="自定义时长（秒）"
+          aria-describedby="scene-clone-duration-hint" aria-invalid={invalid || undefined} value={editing ?? duration}
+          onChange={e => {
+            const value = e.target.value, seconds = Number(value);
+            setEditing(value);
+            if (/^\d+$/.test(value) && seconds >= min && seconds <= max) onDuration(seconds);
+          }} onBlur={() => setEditing(undefined)} onKeyDown={e => {
+            if (e.key === "Enter") { e.preventDefault(); if (!invalid) e.currentTarget.blur(); }
+          }}/><span>秒</span></span>
+      </label>
+      {max > min && <input className="scene-range" type="range" min={min} max={max} step={1} value={duration}
+        style={{ "--p": `${((duration - min) / (max - min)) * 100}%` } as CSSProperties} aria-label="截取原片前" aria-valuetext={`${duration} 秒`}
+        onChange={e => { setEditing(undefined); onDuration(Number(e.target.value)); }}/>}
+      <p id="scene-clone-duration-hint">{min === max ? `可选时长为 ${min} 秒。` : `请输入 ${min}–${max} 秒。`}{sourceSeconds === undefined && "添加参考视频后按原片时长调整。"}</p>
+    </>}
+  </div>;
 }
 
 /** 旧草稿：此前交给画布里的创作助手的那份做到哪了。没有确认方案之前还没开始做，也照实说。 */

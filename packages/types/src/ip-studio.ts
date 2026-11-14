@@ -99,6 +99,7 @@ export interface StudioSceneImageState {
 /** AI 视频页这份草稿当前的条件：输入框里没发的话、选项、台词语言和出片设置，以及「生成视频」里改了一半的脚本。素材见 sceneInputs，视频模型见 sceneVideoModel。 */
 export interface StudioSceneVideoState {
   cloneMode?: import('./ip-studio-video-task').StudioVideoCloneMode;
+  durationMode?: 'source' | 'custom';
   text: string;
   options: Record<string, string>;
   language?: string;

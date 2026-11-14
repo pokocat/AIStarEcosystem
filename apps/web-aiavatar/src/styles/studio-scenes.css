@@ -284,6 +284,11 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-pill>svg { flex-shrink: 0; color: var(--ip-muted); }
 .scene-pill>svg:last-child { margin-left: auto; }
 .scene-pill>span { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.scene-pill.is-video-spec>span { display: block; }
+.scene-video-studio .scene-go-group { container-type: inline-size; }
+@container (max-width: 300px) {
+  .scene-video-studio .scene-pills { grid-template-columns: minmax(0, 1fr); }
+}
 span.scene-pill { cursor: default; }
 button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-select:hover { background: #eceef1; }
 .scene-pill.is-select { padding: 0 0 0 11px; }
@@ -296,6 +301,10 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-setting-row>span, .scene-setting-row>label { display: flex; align-items: baseline; justify-content: space-between; color: var(--ip-muted); font-size: 12px; }
 .scene-setting-row>label b { color: var(--ip-ink); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .scene-setting-row>p { margin: 0; color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
+.scene-setting-row>.scene-clone-duration-field { align-items: center; }
+.scene-clone-duration-field>span { display: inline-flex; align-items: center; gap: 6px; }
+.scene-clone-duration-field input { box-sizing: border-box; width: 64px; height: 36px; padding: 0 8px; border: 1px solid var(--ip-line); border-radius: 9px; background: var(--ip-paper); color: var(--ip-ink); font: inherit; font-size: 16px; text-align: center; font-variant-numeric: tabular-nums; }
+.scene-clone-duration-field input[aria-invalid="true"] { border-color: #b34b3b; }
 .scene-choice-row { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 6px; }
 .scene-choice-row button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 32px; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; background: var(--ip-soft); color: var(--sn-text-2); font: inherit; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .scene-choice-row button:hover { background: #eceef1; color: var(--ip-ink); }

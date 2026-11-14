@@ -369,6 +369,7 @@ export function openedVideoState(doc: IpProjectDoc, defaults: { language: string
   const edit = state.edit && (!state.edit.scriptId || scripts.some(s => s.id === state.edit!.scriptId)) ? state.edit : undefined;
   return { text: state.text, options: state.options, language: state.language ?? defaults.language, ...(state.tier ? { tier: state.tier } : {}),
     ...(state.cloneMode ? { cloneMode: state.cloneMode } : {}), ...(state.autoCheck === true ? { autoCheck: true } : {}),
+    ...(state.durationMode ? { durationMode: state.durationMode } : {}),
     duration: state.duration ?? turn?.duration ?? defaults.duration, ratio: state.ratio ?? turn?.ratio ?? defaults.ratio,
     optimize: state.optimize ?? true, ...(edit ? { edit } : {}) };
 }
