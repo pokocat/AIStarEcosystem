@@ -61,6 +61,39 @@ class StudioWorkflowWorkerSkillTest {
         verifyNoInteractions(errors);
     }
 
+    @Test void editBoundaryUsesOnePlayableClipWhenTheSoundtrackExtendsPastThirtySeconds() throws Exception {
+        var ffmpeg=new com.aistareco.aep.service.mixcut.FfmpegRunner(new com.aistareco.aep.config.MixcutProperties());
+        Path original=directory.resolve("boundary.mp4");
+        ffmpeg.runFfmpeg(List.of("-v","error","-f","lavfi","-i","color=blue:s=160x90:r=30:d=30",
+                "-f","lavfi","-i","sine=frequency=660:sample_rate=48000:duration=30.01",
+                "-c:v","libx264","-threads","2","-c:a","aac",original.toString()),30_000);
+        double seconds=ffmpeg.probeMedia(original.toFile()).durationSec();
+        assertTrue(seconds>30&&seconds<30.05,"the original must reproduce the audio overrun: "+seconds);
+        var storage=mock(FileStorageService.class);
+        when(storage.openForRead("original")).thenReturn(original);
+        when(storage.store(any(byte[].class),anyString(),anyString(),anyString(),anyString())).thenAnswer(call->{
+            byte[] bytes=call.getArgument(0);String key="stored."+call.getArgument(3);
+            java.nio.file.Files.write(directory.resolve(key),bytes);
+            return new FileStorageService.StoredFile(key,"","","",bytes.length,call.getArgument(4));
+        });
+        var input=json.createObjectNode().put("operation","recreation").put("mode","cuts");
+        var exec=input.putObject("_exec").put("cutsOnly",true);
+        exec.putObject("recreationSource").put("storageKey","original").put("durationSec",seconds);
+        exec.putObject("segmentCap").put("maxSegmentSec",30).put("clipMinSec",4).put("maxSegments",8);
+        var h=harness(input,"studio-recreation","",storage);
+        h.run().setCost(0);
+        h.worker().runBlocking("r");
+        assertEquals("done",h.run().getStatus());
+        var segments=json.readTree(h.run().getOutputJson()).path("filmStudy").path("segments");
+        assertEquals(1,segments.size());
+        assertEquals(30,segments.get(0).path("endSec").asDouble());
+        var clip=ffmpeg.probeMedia(directory.resolve("stored.mp4").toFile());
+        assertTrue(clip.hasVideo()&&clip.hasAudio());
+        assertTrue(clip.durationSec()>=29.8&&clip.durationSec()<=30,"clipped MP4 must fit the provider's hard cap");
+        verifyNoInteractions(h.models());
+        System.out.println("Seedance 2.5 boundary: "+seconds+"s original, one "+clip.durationSec()+"s clip with audio");
+    }
+
     @Test void checkRunSamplesTheRecordedTimesKeepsUnknownAndSettlesRealTokens() throws Exception {
         Path clip=directory.resolve("made.mp4");
         var ffmpeg=new ProcessBuilder("ffmpeg","-v","error","-y","-f","lavfi","-i","testsrc2=s=160x90:r=10:d=8","-c:v","libx264","-threads","2",clip.toString()).start();

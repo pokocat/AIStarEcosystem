@@ -86,7 +86,7 @@ public class StudioDepthVideoService {
     public void requireConfigured() {
         if(!configured())throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_DEPTH_NOT_CONFIGURED","深度复刻暂不可用，请联系平台处理。");
     }
-    public record Source(String key,double seconds,int width,int height) {}
+    public record Source(String key,double seconds,int width,int height,double containerSeconds) {}
     /** Decode real bytes before accepting a task; do not trust client duration metadata. */
     public Source source(String user,String key) {
         String owned=projects.requireOwnedAssetKey(user,key);
@@ -96,7 +96,8 @@ public class StudioDepthVideoService {
     }
     private Source inspect(String key,Path path) throws Exception {
         var info=mapper.readTree(ffmpeg.runFfprobe(List.of("-v","error","-show_streams","-show_format","-of","json",path.toString())));
-        double seconds=info.path("format").path("duration").asDouble();int width=0,height=0,count=0;
+        double containerSeconds=info.path("format").path("duration").asDouble();
+        double seconds=containerSeconds;int width=0,height=0,count=0;
         for(var stream:info.path("streams"))if("video".equals(stream.path("codec_type").asText())) {
             width=stream.path("width").asInt();height=stream.path("height").asInt();count++;
             // The picture is what the control video follows; an audio tail must not count (2026-11-08 review).
@@ -104,7 +105,7 @@ public class StudioDepthVideoService {
         }
         if(count!=1||width<=0||height<=0||!Double.isFinite(seconds)||seconds<=0||Files.size(path)>200L*1024*1024)
             throw BusinessException.badRequest("STUDIO_CLONE_VIDEO_INVALID","请选择不超过 200 MB、可播放的单画面视频。");
-        return new Source(key,seconds,width,height);
+        return new Source(key,seconds,width,height,containerSeconds);
     }
     public ObjectNode convert(String user,String key,BooleanSupplier heartbeat) throws Exception {
         requireConfigured();Source source=source(user,key);

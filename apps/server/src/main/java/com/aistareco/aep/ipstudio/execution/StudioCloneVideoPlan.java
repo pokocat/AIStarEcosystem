@@ -124,7 +124,8 @@ public class StudioCloneVideoPlan {
         var source=depth.source(user,key);
         if(duration<Math.round(source.seconds()))return null;
         var bounds=clip(model,kind);
-        if(source.seconds()>bounds.maxSec()+.05||source.seconds()<bounds.minSec())return null;
+        // 视频参考上传校验读的是容器时长。原声音轨可能比画面多出几个毫秒。
+        if(!(source.containerSeconds()>=bounds.minSec()&&source.containerSeconds()<=bounds.maxSec()))return null;
         var rule=referenceMode(model).references().video();
         try {
             var path=storage.openForRead(source.key());

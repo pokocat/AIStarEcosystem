@@ -17,6 +17,38 @@ class StudioFilmStudyTest {
   assertEquals(List.of(3.8,6.8,13.8,17.067),StudioFilmStudy.boundaries(om.readTree("{\"segments\":[{\"endSec\":3.8},{\"endSec\":3.8},{\"endSec\":-1},{\"endSec\":6.8},{\"endSec\":13.8},{\"endSec\":17}]}"),source));
   assertEquals(List.of(4.0,9.0,17.067),StudioFilmStudy.boundaries(om.createObjectNode(),source));
  }
+ @Test void realCutsStayWithinThirtySecondsAndKeepTheirOriginalSound() throws Exception {
+  var ffmpeg=new com.aistareco.aep.service.mixcut.FfmpegRunner(new com.aistareco.aep.config.MixcutProperties());
+  Path input=directory.resolve("boundary.mp4");
+  ffmpeg.runFfmpeg(List.of("-v","error","-f","lavfi","-i","color=blue:s=160x90:r=30000/1001:d=60",
+          "-f","lavfi","-i","sine=frequency=660:sample_rate=48000:duration=60",
+          "-c:v","libx264","-threads","2","-c:a","aac",input.toString()),30_000);
+  var storage=mock(FileStorageService.class);
+  when(storage.store(any(byte[].class),anyString(),anyString(),anyString(),anyString())).thenAnswer(call->{
+   var bytes=call.<byte[]>getArgument(0);
+   return new FileStorageService.StoredFile("stored."+call.getArgument(3),"","","",bytes.length,call.getArgument(4));
+  });
+  for(int no=0;no<2;no++) {
+   var segment=om.createObjectNode().put("no",no).put("startSec",30*no).put("endSec",30*(no+1));
+   StudioFilmStudy.cut(input,directory,segment,storage,"owner",30);
+   Path clip=directory.resolve("segment-"+no+".mp4");
+   var probe=ffmpeg.probeMedia(clip.toFile());
+   assertTrue(probe.hasVideo()&&probe.hasAudio());
+   assertTrue(probe.durationSec()>=29.8&&probe.durationSec()<=30,"actual clip duration "+probe.durationSec());
+   assertEquals(probe.durationSec(),segment.path("durationSec").asDouble());
+   Path samples=directory.resolve("audio-"+no+".raw");
+   ffmpeg.runFfmpeg(List.of("-v","error","-ss","28","-i",clip.toString(),"-t","1",
+           "-vn","-ac","1","-ar","8000","-f","s16le",samples.toString()),20_000);
+   byte[] pcm=Files.readAllBytes(samples);int crossings=0,previous=0;
+   for(int i=0;i+1<pcm.length;i+=2){
+    int sample=(short)((pcm[i]&255)|(pcm[i+1]<<8));
+    if(previous<0&&sample>=0)crossings++;
+    previous=sample;
+   }
+   assertEquals(660,crossings,5,"each segment must keep the original signal near its end");
+   System.out.println("Seedance 2.5 clip "+(no+1)+": "+probe.durationSec()+"s, original audio crossings/s="+crossings);
+  }
+ }
  @Test void actualClipsRetainAudioAndSourceDurationAndDoNotGradeModelProse() throws Exception {
   Path input=directory.resolve("source.mp4");var ffmpeg=new ProcessBuilder("ffmpeg","-v","error","-y","-f","lavfi","-i","testsrc2=s=320x180:r=30:d=3","-f","lavfi","-i","sine=frequency=400:duration=3","-c:v","libx264","-threads","2","-c:a","aac","-shortest",input.toString()).start();assertTrue(ffmpeg.waitFor(30,TimeUnit.SECONDS));assertEquals(0,ffmpeg.exitValue());
   var storage=mock(FileStorageService.class);when(storage.openForRead("source")).thenReturn(input);var saved=new HashMap<String,byte[]>();

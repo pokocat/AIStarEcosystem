@@ -186,16 +186,32 @@ public final class StudioFilmStudy {
         ends.add(duration);return ends;
     }
     static void cut(Path input,Path directory,ObjectNode segment,FileStorageService storage,String owner) throws Exception {
+        cut(input,directory,segment,storage,owner,Double.POSITIVE_INFINITY);
+    }
+    static void cut(Path input,Path directory,ObjectNode segment,FileStorageService storage,String owner,double maxSeconds) throws Exception {
         double start=segment.path("startSec").asDouble(),length=segment.path("endSec").asDouble()-start;
         Path clip=directory.resolve("segment-"+segment.path("no").asInt()+".mp4"),cover=directory.resolve("cover-"+segment.path("no").asInt()+".jpg");
-        process(List.of("ffmpeg","-v","error","-nostdin","-y","-threads","2","-i",input.toString(),"-ss",String.format(Locale.ROOT,"%.6f",start),"-t",String.format(Locale.ROOT,"%.6f",length),"-map","0:v:0","-map","0:a:0?","-vf","scale=1280:1280:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1","-c:v","libx264","-threads","2","-preset","veryfast","-crf","21","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-movflags","+faststart","-avoid_negative_ts","make_zero",clip.toString()));
+        encodeClip(input,clip,start,Math.min(length,maxSeconds),Double.isFinite(maxSeconds)?"disabled":"make_zero");
         JsonNode probe=StudioLipSyncMedia.probe(clip);double actual=probe.path("format").path("duration").asDouble();
-        if(actual<=0||Math.abs(actual-length)>.3)throw new IllegalStateException("Invalid cut duration");
+        if(actual>maxSeconds) {
+            // FFmpeg may finish on the next frame or audio packet. Re-encode with a short margin and probe the MP4 again.
+            encodeClip(input,clip,start,maxSeconds-(actual-maxSeconds)-.05,"disabled");
+            probe=StudioLipSyncMedia.probe(clip);actual=probe.path("format").path("duration").asDouble();
+        }
+        if(!Double.isFinite(actual)||actual<=0||actual>maxSeconds||Math.abs(actual-length)>.3)
+            throw new IllegalStateException("Invalid cut duration");
         JsonNode video=java.util.stream.StreamSupport.stream(probe.path("streams").spliterator(),false).filter(s->"video".equals(s.path("codec_type").asText())).findFirst().orElseThrow();
         process(List.of("ffmpeg","-v","error","-nostdin","-y","-threads","2","-i",clip.toString(),"-frames:v","1","-threads","2",cover.toString()));
         var file=storage.store(Files.readAllBytes(clip),IpProjectService.CATEGORY_GEN,owner,"mp4","video/mp4");
         segment.put("storageKey",file.key()).put("durationSec",actual).put("width",video.path("width").asInt()).put("height",video.path("height").asInt());
         var image=storage.store(Files.readAllBytes(cover),IpProjectService.CATEGORY_GEN,owner,"jpg","image/jpeg");segment.put("coverStorageKey",image.key());
+    }
+    private static void encodeClip(Path input,Path clip,double start,double length,String timestampPolicy) throws Exception {
+        process(List.of("ffmpeg","-v","error","-nostdin","-y","-threads","2","-i",input.toString(),
+                "-ss",String.format(Locale.ROOT,"%.6f",start),"-t",String.format(Locale.ROOT,"%.6f",length),"-map","0:v:0","-map","0:a:0?",
+                "-vf","scale=1280:1280:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1","-c:v","libx264","-threads","2",
+                "-preset","veryfast","-crf","21","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-movflags","+faststart",
+                "-avoid_negative_ts",timestampPolicy,clip.toString()));
     }
     private static void process(List<String> command) throws Exception {
         Process process=StudioHypitMedia.configureMediaRuntime(new ProcessBuilder(command)).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();

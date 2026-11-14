@@ -125,7 +125,7 @@ public class StudioWorkflowWorker {
             ObjectNode output=preservedOutput; output.put("mock",mock);
             String operation=input.path("operation").asText();
             boolean cutsOnly=input.path("_exec").path("cutsOnly").asBoolean(false);
-            if("recreation".equals(operation)&&!mock&&!trimSource(id,run,input))return;
+            if("recreation".equals(operation)&&!mock&&!trimSource(id,run,input,cutsOnly))return;
             if("recreation".equals(operation)&&!mock&&!cutsOnly) {
                 if(!progress(id,12,"recreation.audio"))return;
                 var audio=StudioSourceAudio.extract(input.path("_exec").path("recreationSource"),input.path("_exec").path("resumeSourceAudio"),storage,run.getOwnerUserId());
@@ -399,16 +399,17 @@ public class StudioWorkflowWorker {
      * 页面上自己定了比原片短的时长（{@code recreationSource.limitSec}）：先截出原片的前 N 秒存成本人的文件，之后的拉片、切分、截图和原声
      * 都用这一段（只改这次运行读到的 recreationSource，受理记录不变）。重来时再截一次，便宜。返回 false = 任务已停止。
      */
-    private boolean trimSource(String id,IpRun run,JsonNode input) throws Exception {
+    private boolean trimSource(String id,IpRun run,JsonNode input,boolean cutsOnly) throws Exception {
         JsonNode node=input.path("_exec").path("recreationSource");
         if(!(node instanceof ObjectNode source))return true;
         double limit=source.path("limitSec").asDouble(0),duration=source.path("durationSec").asDouble();
-        if(!(limit>0&&limit<duration-.05))return true;
+        if(!(limit>0&&limit<duration-(cutsOnly?0:.05)))return true;
         if(!progress(id,11,"recreation.trim"))return false;
         java.nio.file.Path directory=java.nio.file.Files.createTempDirectory("studio-trim-");
         try {
             ObjectNode segment=mapper.createObjectNode().put("no",0).put("startSec",0).put("endSec",limit);
-            StudioFilmStudy.cut(storage.openForRead(source.path("storageKey").asText()),directory,segment,storage,run.getOwnerUserId());
+            StudioFilmStudy.cut(storage.openForRead(source.path("storageKey").asText()),directory,segment,storage,run.getOwnerUserId(),
+                    cutsOnly?limit:Double.POSITIVE_INFINITY);
             log.info("[studio-workflow] source trimmed run={} from={} to={} key={}",id,duration,segment.path("durationSec").asDouble(),segment.path("storageKey").asText());
             source.put("originalStorageKey",source.path("storageKey").asText()).put("storageKey",segment.path("storageKey").asText())
                     .put("durationSec",segment.path("durationSec").asDouble(limit));
@@ -428,6 +429,8 @@ public class StudioWorkflowWorker {
         var source=exec.path("recreationSource");double duration=source.path("durationSec").asDouble();
         var capNode=exec.path("segmentCap");
         double max=capNode.path("maxSegmentSec").asDouble(15),min=Math.max(capNode.path("contract").path("minSeconds").asDouble(0),capNode.path("clipMinSec").asDouble(0));
+        // 已报价为一段的边界原片（例如 30.01 秒）只修整多出来的尾端，避免生成一个极短的尾段。
+        if(duration>max&&duration<=max+.05)duration=max;
         int maxUnits=capNode.path("maxSegments").asInt(8);
         ObjectNode study=mapper.createObjectNode();study.set("source",source.deepCopy());study.put("strategy","cuts-v1");
         java.nio.file.Path directory=java.nio.file.Files.createTempDirectory("studio-cuts-");
@@ -445,7 +448,7 @@ public class StudioWorkflowWorker {
             for(int i=0;i<segments.size();i++) {
                 ObjectNode segment=(ObjectNode)segments.get(i);
                 if(!checkpointFilmStudy(id,20+i*75/segments.size(),"film.cut",study,mapper.missingNode()))return;
-                try{StudioFilmStudy.cut(original,directory,segment,storage,run.getOwnerUserId());}
+                try{StudioFilmStudy.cut(original,directory,segment,storage,run.getOwnerUserId(),max);}
                 catch(Exception error){segment.put("error","这段原片没有切好，可以重试");throw error;}
                 segment.put("status","done");
             }

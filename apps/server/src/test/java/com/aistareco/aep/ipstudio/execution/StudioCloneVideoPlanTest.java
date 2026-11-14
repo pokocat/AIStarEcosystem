@@ -79,12 +79,16 @@ class StudioCloneVideoPlanTest {
     }
     @Test void replacementUsesTheSourceDirectlyOnlyWhenItFitsOneSegmentAsIs() throws Exception {
         var editing=editingModel();
-        when(depth.source("u","k")).thenReturn(new StudioDepthVideoService.Source("k",24.4,720,1280));
+        when(depth.source("u","k")).thenReturn(new StudioDepthVideoService.Source("k",24.4,720,1280,24.4));
         when(storage.openForRead("k")).thenReturn(mp4("isom"));
         assertNotNull(service.directSource("u","replacement",editing,"k",24),"24 秒原片在编辑的 30 秒上限内，直接交给模型");
         assertNull(service.directSource("u","replacement",editing,"k",20),"自己定了更短的时长要先截取");
         assertNull(service.directSource("u","depth",editing,"k",24),"深度复刻要先转成动作参考");
         assertNull(service.directSource("u","replacement",editingModelWithout(),"k",24),"普通参考视频最长 15 秒，24 秒要切分");
+        when(depth.source("u","k")).thenReturn(new StudioDepthVideoService.Source("k",30,720,1280,30),
+                new StudioDepthVideoService.Source("k",30,720,1280,30.01));
+        assertNotNull(service.directSource("u","replacement",editing,"k",30));
+        assertNull(service.directSource("u","replacement",editing,"k",30),"音轨使容器超过 30 秒时必须先修整");
         when(storage.openForRead("k")).thenReturn(mp4("qt  "));
         assertNull(service.directSource("u","replacement",editing,"k",24),"MOV 不是参考视频收的格式，要转码");
     }
