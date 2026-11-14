@@ -400,10 +400,11 @@ function MLightbox({ images, index, onClose, onIndex }) {
 
 function MPublicShowcase({ char }) {
   const shots = char.shotImages || {};
-  // 标准三机位：正面半身（= 定妆主图）/ 右侧脸 / 左侧脸；缺图时退回定妆主图
-  const order: [string, string][] = [['front-half', '正面半身'], ['right', '右侧脸'], ['left', '左侧脸']];
-  const imgs: any[] = order.filter(([k]) => shots[k]).map(([k, label]) => ({ src: shots[k], label }));
-  if (!imgs.length && char.imageUrl) imgs.push({ src: char.imageUrl, label: '正面半身' });
+  const order: [string, string][] = shots['three-view']
+    ? [['three-view', '形象设定图'], ['front-half', '头像']]
+    : [['front-half', '正面半身'], ['right', '右侧脸'], ['left', '左侧脸']];
+  const imgs = order.filter(([k]) => shots[k]).map(([k, label]) => ({ src: shots[k], label, wide: k === 'three-view' }));
+  if (!imgs.length && char.imageUrl) imgs.push({ src: char.imageUrl, label: '正面半身', wide: false });
   const [lb, setLb] = useStateML(-1);   // 灯箱打开的图片下标（-1 = 关闭）
   const def = char.def || {};
   const entries = Object.entries(def).filter(([k]) => k !== '设定语');
@@ -417,8 +418,8 @@ function MPublicShowcase({ char }) {
       hML('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 } },
         imgs.map((t, i) => hML('button', { key: i, onClick: () => setLb(i), className: 'm-press', style: {
             display: 'block', padding: 0, border: 'none', background: 'none', cursor: 'pointer', width: '100%', textAlign: 'left',
-            position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
-          hML('img', { src: t.src, alt: t.label, loading: 'lazy', decoding: 'async', style: { display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover' } }),
+            gridColumn: t.wide ? '1 / -1' : undefined, position: 'relative', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
+          hML('img', { src: t.src, alt: t.label, loading: 'lazy', decoding: 'async', style: { display: 'block', width: '100%', aspectRatio: t.wide ? '4 / 3' : '3 / 4', objectFit: t.wide ? 'contain' : 'cover' } }),
           hML('div', { style: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 7, background: 'rgba(20,24,30,.45)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', color: '#fff' } }, hML(Icons.expand, { size: 12, stroke: 2 })),
           hML('div', { className: 'ph-label', style: { left: 7, bottom: 7 } }, t.label)))),
       hML('div', { style: { fontSize: 11.5, color: 'var(--ink-4)', marginTop: 8 } }, '点击图片查看大图')),

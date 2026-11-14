@@ -86,7 +86,7 @@ public class DapAvatarController {
                                      @RequestParam(required = false) Boolean fav,
                                      @RequestParam(required = false) String q) {
         if ("public".equals(scope)) {
-            // 官方形象 = dap_public_avatar（内置 10 个启动时入库，见 DapBuiltinPublicAvatarSeeder）。
+            // 官方形象 = dap_public_avatar（内置形象启动时入库，见 DapBuiltinPublicAvatarSeeder）。
             // 内置的还没入库（入库失败 / test profile）时补上目录里的那份，只能看、不能用于生成。
             List<Map<String, Object>> stored = publicAvatars.listPublicWire();
             java.util.Set<Object> ids = new java.util.HashSet<>();

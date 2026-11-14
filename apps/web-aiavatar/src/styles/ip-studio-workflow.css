@@ -58,6 +58,8 @@
 .studio-library-toolbar strong { font-size:15px; white-space:nowrap; }
 .studio-library-toolbar .ant-input-affix-wrapper { flex:1; min-width:180px; max-width:320px; }
 .studio-library-toolbar .ant-select { min-width:116px; }
+.studio-library-categories { flex-shrink:0; padding:12px 24px 0; }
+html[data-layout="mobile"] .studio-library-categories { padding-inline:12px; }
 .studio-library-count { padding:20px 24px 14px; color:var(--ink-2); font-size:12px; }
 .studio-character-grid { padding:0 24px 24px; display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:16px; align-content:start; overflow:auto; }
 .studio-character-card { min-width:0; padding:0; text-align:left; color:var(--ink); border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--surface); cursor:pointer; transition:border-color .15s; }

@@ -294,15 +294,18 @@ html[data-layout="desktop"] .lmp-audio { flex: 0 1 340px; }
 
 /* 官方形象（2026-11-10）：卡片复用人物卡；详情左图右信息，手机上上下排。 */
 .assets-official-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
-html[data-layout="desktop"] .assets-official-detail { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+html[data-layout="desktop"] .assets-official-detail:not(.is-three-view) { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
 .assets-official-visual { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .assets-official-hero { display: block; width: 100%; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 14px; background: var(--ip-soft, #f3f4f6); }
 .assets-official-hero img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.assets-official-hero.is-three-view { aspect-ratio: 4 / 3; }
+.assets-official-hero.is-three-view img { object-fit: contain; }
 .assets-official-views { display: flex; gap: 8px; }
-.assets-official-views button { display: flex; flex: 0 0 72px; flex-direction: column; gap: 4px; padding: 0; border: 0; background: none; font: inherit; color: var(--ip-muted, #5b6572); cursor: pointer; }
-.assets-official-views button img { display: block; width: 72px; height: 90px; border-radius: 10px; object-fit: cover; }
+.assets-official-views button { display: flex; flex: 0 1 72px; min-width: 0; flex-direction: column; gap: 4px; padding: 0; border: 0; background: none; font: inherit; color: var(--ip-muted, #5b6572); cursor: pointer; }
+.assets-official-views button img { display: block; width: 100%; height: 76px; border-radius: 10px; object-fit: cover; }
+.assets-official-views button.is-three-view img { object-fit: contain; background: var(--ip-soft, #f3f4f6); }
 .assets-official-views button[aria-pressed="true"] img { outline: 2px solid var(--ip-ink, #17202a); outline-offset: 2px; }
-.assets-official-views small { overflow: hidden; font-size: 11.5px; white-space: nowrap; text-overflow: ellipsis; }
+.assets-official-views small { font-size: 11.5px; }
 .assets-official-info { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .assets-official-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .assets-official-desc { margin: 0; font-size: 13.5px; line-height: 1.7; color: var(--sn-text-2, #3d4651); }
@@ -318,6 +321,19 @@ html[data-layout="desktop"] .assets-official-detail { grid-template-columns: min
 .lmp-sources button { position: relative; padding: 0 0 10px; border: 0; background: none; font: inherit; font-size: 13.5px; color: var(--ip-muted, #5b6572); cursor: pointer; }
 .lmp-sources button[aria-selected="true"] { color: var(--ip-ink, #17202a); font-weight: 500; }
 .lmp-sources button[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--ip-ink, #17202a); }
-.lmp-category.ant-select { min-width: 132px; height: 34px; }
+.official-category-filter { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.official-category-filter label { position: relative; }
+.official-category-filter input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.official-category-filter span {
+  display: inline-flex; align-items: center; min-height: 34px; padding: 0 12px;
+  border: 1px solid var(--ip-line, #eceef1); border-radius: 8px;
+  color: var(--ip-muted, #5b6572); font-size: 13px; white-space: nowrap; cursor: pointer;
+}
+.official-category-filter input:not(:disabled) + span:hover { border-color: var(--ip-ink, #17202a); color: var(--ip-ink, #17202a); }
+.official-category-filter input:checked + span,
+.official-category-filter input:checked + span:hover { border-color: var(--ip-ink, #17202a); background: var(--ip-ink, #17202a); color: #fff; }
+.official-category-filter input:focus-visible + span { outline: 2px solid var(--ip-ink, #17202a); outline-offset: 2px; }
+.official-category-filter input:disabled + span { opacity: .55; cursor: default; }
+html[data-layout="mobile"] .lmp.is-official .lmp-search { flex-basis: 100%; }
 .lmp-access { position: absolute; top: 8px; right: 8px; z-index: 1; padding: 0 7px; border-radius: 999px; background: #e9f4ed; font-size: 11px; line-height: 20px; color: #2f6b4f; }
 .lmp-access.is-locked { background: #fcf3e2; color: #8a5a10; }

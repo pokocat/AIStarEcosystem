@@ -79,19 +79,20 @@ public class StudioIpAssetService {
         return result;
     }
     /**
-     * 官方形象（dap_public_avatar，含内置 10 个）：正面一张当主形象，两张侧脸归到「视角」。
+     * 官方形象（dap_public_avatar）：正面一张当主形象，已有侧脸归到「视角」。
      * 需授权的也列出来（选择框里显示但不能选），用不用得了以 {@link #officialUsable} 为准。
      */
     List<IpAsset> officialAvatars() {
         if(publicAvatars==null)return List.of();
         var result=new ArrayList<IpAsset>();
         for(var a:publicAvatars.findAllByOrderBySortOrderAscCreatedAtDesc()) {
-            if(a.getFrontKey()==null)continue;
+            if(a.isRetired()||a.getFrontKey()==null)continue;
             String id="official:"+a.getId();String access=a.accessOrDefault();
             Map<String,String> attributes=new LinkedHashMap<>();
             if(a.getDef()!=null)a.getDef().forEach((k,v)->{if(attributes.size()<24 && k!=null && k.length()<=32 && v instanceof String text && !text.isBlank())attributes.put(k,text.substring(0,Math.min(text.length(),300)));});
             String description=a.getTagline();
             result.add(new IpAsset(null,id,1,a.getFrontKey(),a.getName(),storage.signedUrl(a.getFrontKey()),true,null,a.getName(),"ai","main",description,attributes,"official",access,a.getCat()));
+            if(a.getThreeViewKey()!=null)result.add(new IpAsset(null,id,1,a.getThreeViewKey(),"形象设定图",storage.signedUrl(a.getThreeViewKey()),false,"three-view",a.getName(),"ai","three-view",description,attributes,"official",access,a.getCat()));
             if(a.getRightKey()!=null)result.add(new IpAsset(null,id,1,a.getRightKey(),"右侧脸",storage.signedUrl(a.getRightKey()),false,"right",a.getName(),"ai","side",description,attributes,"official",access,a.getCat()));
             if(a.getLeftKey()!=null)result.add(new IpAsset(null,id,1,a.getLeftKey(),"左侧脸",storage.signedUrl(a.getLeftKey()),false,"left",a.getName(),"ai","side",description,attributes,"official",access,a.getCat()));
         }

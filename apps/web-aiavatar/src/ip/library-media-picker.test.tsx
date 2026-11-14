@@ -27,7 +27,6 @@ vi.mock('antd', () => ({
   Button: ({ icon, loading, type, size, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
   Input: ({ prefix, allowClear, ...p }: any) => <input {...p}/>,
   Skeleton: () => <p>正在读取</p>,
-  Select: ({ options, value, onChange, getPopupContainer, popupMatchSelectWidth, ...p }: any) => <select {...p} value={value} onChange={e => onChange(e.target.value)}>{options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>,
   ConfigProvider: ({ children }: any) => children,
   Modal: ({ open, title, children, onCancel }: any) => open ? <div role="dialog" aria-label={title}><button type="button" onClick={onCancel}>关闭 {title}</button>{children}</div> : null,
 }));
@@ -252,12 +251,13 @@ test('the existing file-upload button remains available while library data is lo
   expect((screen.getByRole('button', { name: '录音', exact: true }) as HTMLButtonElement).disabled).toBe(true);
 });
 
-test('官方形象 selects one main image per person and keeps licensed people locked', async () => {
+test('官方形象 shows one portrait per person and selects the combined character sheet when available', async () => {
   const free = { avatarId: 'official:PA-01', version: 1, current: true, name: 'Annie 安妮', characterName: 'Annie 安妮', url: 'https://cdn/annie', storageKey: 'dap_plaza/annie.jpg',
     assetRole: 'main', librarySource: 'official', access: 'free', category: 'pro', description: '商务主持' };
   api.ips.mockResolvedValue([
     { ...free, current: false, lookId: 'right', name: '右侧脸', assetRole: 'side', storageKey: 'dap_plaza/annie-r.jpg', url: 'https://cdn/annie-r' },
     free,
+    { ...free, current: false, lookId: 'three-view', name: '形象设定图', assetRole: 'three-view', storageKey: 'dap_plaza/annie-three-view.jpg', url: 'https://cdn/annie-three-view' },
     { ...free, avatarId: 'official:PA-02', name: '博文', characterName: '博文', storageKey: 'dap_plaza/bowen.jpg', url: 'https://cdn/bowen' },
     { ...free, avatarId: 'official:PA-x', name: '签约艺人', characterName: '签约艺人', access: 'license', category: 'life', storageKey: 'dap_plaza/x.jpg', url: 'https://cdn/x' },
     { avatarId: 'mine-1', version: 1, current: true, name: '我的人物', characterName: '我的人物', url: 'https://cdn/m', storageKey: 'ip/m', assetRole: 'main' },
@@ -271,15 +271,29 @@ test('官方形象 selects one main image per person and keeps licensed people l
   expect(screen.queryByRole('button', { name: /我的人物/ })).toBeNull();
   expect(screen.getAllByRole('button', { name: /选择 Annie 安妮/ })).toHaveLength(1);
   expect(screen.queryByRole('navigation', { name: '资产库' })).toBeNull();
-  fireEvent.change(screen.getByRole('combobox', { name: '按分类筛选官方形象' }), { target: { value: 'pro' } });
-  fireEvent.click(await screen.findByRole('button', { name: '选择 Annie 安妮', exact: true }));
+  const business = screen.getByRole<HTMLInputElement>('radio', { name: '商务专业' });
+  fireEvent.click(business);
+  expect(business.checked).toBe(true);
+  expect(screen.queryByRole('button', { name: /签约艺人/ })).toBeNull();
+  const search = screen.getByRole('textbox', { name: '搜索资产' });
+  fireEvent.change(search, { target: { value: '博文' } });
+  expect(screen.getAllByRole('button', { name: /^选择 / }).map(button => button.getAttribute('aria-label'))).toEqual(['选择 博文']);
+  fireEvent.change(search, { target: { value: '' } });
+  expect(api.ips).toHaveBeenCalledTimes(1);
+  const annie = await screen.findByRole('button', { name: '选择 Annie 安妮', exact: true });
+  expect(annie.querySelector('img')?.getAttribute('src')).toBe('https://cdn/annie');
+  fireEvent.click(screen.getByRole('button', { name: '放大预览 Annie 安妮' }));
+  const preview = within(screen.getByRole('dialog', { name: 'Annie 安妮' }));
+  expect(preview.getByRole('img').getAttribute('src')).toBe('https://cdn/annie-three-view');
+  fireEvent.click(preview.getByRole('button', { name: '关闭 Annie 安妮' }));
+  fireEvent.click(annie);
   expect(screen.queryByRole('button', { name: /签约艺人/ })).toBeNull();
   expect(screen.getByText('已选 1/3')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '选择 博文' }));
   expect(screen.getByText('已选 2/3')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '使用' }));
   await waitFor(() => expect(onAssets).toHaveBeenCalledWith([
-    expect.objectContaining({ data: expect.objectContaining({ storageKey: 'dap_plaza/annie.jpg' }) }),
+    expect.objectContaining({ data: expect.objectContaining({ storageKey: 'dap_plaza/annie-three-view.jpg' }) }),
     expect.objectContaining({ data: expect.objectContaining({ storageKey: 'dap_plaza/bowen.jpg' }) }),
   ]));
 });

@@ -17,7 +17,7 @@ import java.util.UUID;
 
 /**
  * 数字人广场 · 运营可管理的公开数字人（DB 表 dap_public_avatar）。
- * 与 DapCatalogService 内置 10 个静态样板合并对外，但本表可由运营 CRUD + 上传 OSS 形象。
+ * 与 DapCatalogService 内置静态样板合并对外，本表可由运营管理。
  */
 @Service
 public class DapPublicAvatarService {
@@ -34,12 +34,12 @@ public class DapPublicAvatarService {
 
     /** 全部运营公开数字人的 wire（与 DapCatalogService.publicAvatars() 同形，附 managed=true）。 */
     public List<Map<String, Object>> listPublicWire() {
-        return repo.findAllByOrderBySortOrderAscCreatedAtDesc().stream().map(this::toWire).toList();
+        return repo.findAllByOrderBySortOrderAscCreatedAtDesc().stream().filter(a -> !a.isRetired()).map(this::toWire).toList();
     }
 
     /** 单个（详情永久链接冷还原 / 另存为来源查找）。 */
     public Map<String, Object> findWire(String id) {
-        return repo.findById(id).map(this::toWire).orElse(null);
+        return repo.findById(id).filter(a -> !a.isRetired()).map(this::toWire).orElse(null);
     }
 
     /** 形象图的存储分类。运营上传与内置入库都写这里，生成链只认这个分类下的官方形象图。 */
@@ -73,7 +73,7 @@ public class DapPublicAvatarService {
     }
 
     public DapPublicAvatar findEntity(String id) {
-        return repo.findById(id).orElse(null);
+        return repo.findById(id).filter(a -> !a.isRetired()).orElse(null);
     }
 
     private Map<String, Object> toWire(DapPublicAvatar a) {
@@ -81,6 +81,7 @@ public class DapPublicAvatarService {
         if (a.getFrontKey() != null) shots.put("front-half", storage.signedUrl(a.getFrontKey()));
         if (a.getRightKey() != null) shots.put("right", storage.signedUrl(a.getRightKey()));
         if (a.getLeftKey() != null) shots.put("left", storage.signedUrl(a.getLeftKey()));
+        if (a.getThreeViewKey() != null) shots.put("three-view", storage.signedUrl(a.getThreeViewKey()));
 
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", a.getId());
@@ -104,7 +105,7 @@ public class DapPublicAvatarService {
         if (a.getFrontKey() != null) m.put("imageUrl", storage.signedUrl(a.getFrontKey()));
         m.put("shotImages", shots);
         m.put("access", a.accessOrDefault());
-        m.put("managed", true);   // 前端据此对运营开放编辑 / 删除（内置 10 个无此标记）
+        m.put("managed", true);   // 前端据此对运营开放编辑 / 删除。
         return m;
     }
 

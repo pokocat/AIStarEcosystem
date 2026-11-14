@@ -16,7 +16,6 @@ vi.mock('./studio-errors', async () => {
 vi.mock('antd', () => ({
   Button: ({ icon, loading, type, size, block, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
   Input: ({ prefix, allowClear, ...p }: any) => <input {...p}/>,
-  Dropdown: ({ children, menu }: any) => <span>{children}<span role="menu">{menu.items.map((i: any) => <button key={i.key} role="menuitem" onClick={() => menu.onClick({ key: i.key })}>{i.label}</button>)}</span></span>,
   Modal: ({ open, title, children, footer }: any) => open ? <div role="dialog" aria-label={title}>{children}{footer}</div> : null,
 }));
 
@@ -26,6 +25,7 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.resetAllMocks();
   api.ips.mockResolvedValue([free,
+    { ...free, current: false, lookId: 'three-view', name: '形象设定图', assetRole: 'three-view', storageKey: 'dap_plaza/a-sheet.jpg', url: 'https://cdn/annie-sheet' },
     { ...free, current: false, lookId: 'right', name: '右侧脸', assetRole: 'side', storageKey: 'dap_plaza/a-r.jpg', url: 'https://cdn/annie-r' },
     { ...free, avatarId: 'official:PA-x', name: '签约艺人', characterName: '签约艺人', access: 'license', category: 'life', storageKey: 'dap_plaza/x.jpg', description: '居家好物种草', attributes: {} },
     { avatarId: 'mine', version: 1, current: true, name: '我的人物', characterName: '我的人物', url: 'u', storageKey: 'ip/m' },
@@ -40,9 +40,9 @@ test('lists only official avatars with 免费 / 需授权 and filters by categor
   expect(screen.getByRole('button', { name: '查看 签约艺人' }).textContent).toContain('需授权');
   expect(screen.queryByRole('button', { name: /我的人物/ })).toBeNull();
   expect(screen.getByText('2 个形象')).toBeTruthy();
-  fireEvent.click(screen.getByRole('menuitem', { name: '生活方式' }));
+  fireEvent.click(screen.getByRole('radio', { name: '生活方式' }));
   await waitFor(() => expect(screen.queryByRole('button', { name: '查看 Annie 安妮' })).toBeNull());
-  fireEvent.click(screen.getByRole('menuitem', { name: '全部分类' }));
+  fireEvent.click(screen.getByRole('radio', { name: '全部分类' }));
   fireEvent.change(screen.getByRole('textbox', { name: '搜索官方形象' }), { target: { value: '发布会' } });
   await waitFor(() => expect(screen.queryByRole('button', { name: '查看 签约艺人' })).toBeNull());
 });
@@ -51,7 +51,12 @@ test('a free avatar shows its views without 申请授权; a licensed one offers 
   render(<AssetsOfficial/>);
   fireEvent.click(await screen.findByRole('button', { name: '查看 Annie 安妮' }));
   expect(screen.getByRole('dialog', { name: 'Annie 安妮' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: '查看右侧脸' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '查看头像' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '查看形象设定图' }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: '查看头像' }));
+  expect(screen.getByRole('button', { name: '查看头像' }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: '查看形象设定图' }));
+  expect(screen.getByRole('button', { name: '查看形象设定图' }).getAttribute('aria-pressed')).toBe('true');
   expect(screen.queryByRole('button', { name: '申请授权' })).toBeNull();
   cleanup();
   render(<AssetsOfficial/>);

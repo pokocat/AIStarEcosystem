@@ -681,10 +681,10 @@ export const DATA = {
 // ── 数字人广场 / 应用中心 / 场景库 / 账户（原先内联在屏幕里的 mock，统一收口为数据源）──
 
 /**
- * 数字人广场（公开只读数字人）。10 个不同风格 / 元素 / 特征的样板形象，
+ * 数字人广场（公开只读数字人）。四类内置形象，
  * 全部为平台 AI 原创，**只读**；用户「另存为我的数字人」后得到可自由修改的副本。
  *
- * 图片：每人 3 张（codex-cli imagegen 生成，存 public/plaza/PA-XX-{1,2,3}.jpg）。
+ * 图片存 public/plaza。内置形象提供头像与形象设定图，设定图含面部与全身三视图。
  *   imageUrl = 正面定妆（-1）；shotImages.right = 右侧 3/4（-2）；shotImages.left = 左侧（-3）。
  *   根相对路径 → 无论 mock / live 都由本 app 的 /public 直出，server 无需托管。
  */
@@ -695,8 +695,20 @@ const paImgs = (id: string) => ({
     "front-half": `/plaza/${id}-1.jpg`,
     right: `/plaza/${id}-2.jpg`,
     left: `/plaza/${id}-3.jpg`,
+    "three-view": `/plaza/${id}-three-view.jpg`,
   } as Record<string, string>,
 });
+
+function plazaPortrait(id: string, name: string, cat: string, profession: string, age: number, hue: number,
+  voiceName: string, temperament: string, clothing: string, styling: string, usage: string) {
+  const imageUrl = `/plaza/${id}-1.jpg`;
+  return {
+    id, name, codename: `plaza-${id.slice(3)}`, path: "ai", archetype: profession, tagline: usage,
+    hue, cat, fav: false, status: "archived", updated: "已就绪", versions: 1, engine: "OpenAI ImageGen", voiceName, access: "free",
+    def: { 年龄: `${age} 岁`, 职业: profession, 气质: temperament, 服饰: clothing, 妆发: styling, 用途: usage, 形象来源: "AI 原创虚构" },
+    palette: {}, counts: {}, deriv: {}, imageUrl, shotImages: { "front-half": imageUrl, "three-view": `/plaza/${id}-three-view.jpg` },
+  };
+}
 
 export const PUBLIC_AVATARS: any[] = [
   {
@@ -748,30 +760,6 @@ export const PUBLIC_AVATARS: any[] = [
     counts: {}, deriv: {}, ...paImgs("PA-06"),
   },
   {
-    id: "PA-07", name: "Selena 星澜", codename: "selena-stellar", path: "ai", archetype: "二次元星界少女",
-    tagline: "星界主题虚拟主播与二次元 IP", hue: 258, cat: "community", fav: false,
-    status: "archived", updated: "已就绪", versions: 1, engine: "SDXL", voiceName: "少女甜嗓",
-    palette: { bg1: "#9A7BFF", bg2: "#2C1E66", skin: "#F3DEC8", hair: "#CBB7FF", cloth: "#6E4DD6", accent: "#FFD36B" },
-    def: { 年龄: "设定 17 岁", 气质: "空灵 · 神秘 · 治愈", 用途: "虚拟主播 / IP 立绘 / 周边", 性格: ["温柔", "疏离", "坚定"], 服饰: "星河长裙 · 流光", 形象来源: "AI 原创虚构", 设定语: "银河彼端的观星少女，能听见每一颗星辰的低语。" },
-    counts: {}, deriv: {}, ...paImgs("PA-07"),
-  },
-  {
-    id: "PA-08", name: "Vex 维克斯", codename: "vex-runner", path: "ai", archetype: "赛博机甲猎人",
-    tagline: "赛博朋克赏金猎人与游戏概念角色", hue: 332, cat: "ugc", fav: false,
-    status: "archived", updated: "已就绪", versions: 1, engine: "SDXL", voiceName: "沉稳大叔低音",
-    palette: { bg1: "#FF3D77", bg2: "#1A1030", skin: "#E2BFA6", hair: "#15121C", cloth: "#201A2E", accent: "#38E0FF" },
-    def: { 年龄: "外观 26 岁", 气质: "凌厉 · 冷峻 · 孤傲", 用途: "游戏角色 / 剧情 / 概念设计", 性格: ["寡言", "果决", "重义"], 服饰: "战术夹克 · 义体回路", 形象来源: "AI 原创虚构", 设定语: "左臂是义体，右眼是瞄具，在霓虹雨夜只认筹码与道义。" },
-    counts: {}, deriv: {}, ...paImgs("PA-08"),
-  },
-  {
-    id: "PA-09", name: "Cha 阿茶", codename: "cha-mascot", path: "ai", archetype: "萌系吉祥物",
-    tagline: "萌系奶茶吉祥物与品牌 IP 形象", hue: 32, cat: "community", fav: true,
-    status: "archived", updated: "已就绪", versions: 1, engine: "FLUX", voiceName: "少女甜嗓",
-    palette: { bg1: "#F4D8B0", bg2: "#B07B4E", skin: "#F6E2C8", hair: "#C99B6A", cloth: "#EBD2B0", accent: "#8FD0E8" },
-    def: { 年龄: "设定 ∞", 气质: "呆萌 · 治愈 · 暖心", 用途: "品牌 IP / 吉祥物 / 表情包", 性格: ["好奇", "贴心", "话痨"], 服饰: "奶茶色连帽卫衣 · 萌系", 形象来源: "AI 原创虚构", 设定语: "一杯奶茶里跳出来的快乐使者，负责把可爱传染给每个人。" },
-    counts: {}, deriv: {}, ...paImgs("PA-09"),
-  },
-  {
     id: "PA-10", name: "Mubai 慕白", codename: "mubai-ink", path: "ai", archetype: "新中式国风雅士",
     tagline: "新中式国风雅士与文旅时尚形象", hue: 158, cat: "life", fav: false,
     status: "archived", updated: "已就绪", versions: 1, engine: "SDXL", voiceName: "播音正经男声",
@@ -779,6 +767,72 @@ export const PUBLIC_AVATARS: any[] = [
     def: { 年龄: "约 27 岁", 气质: "清雅 · 内敛 · 风骨", 用途: "国风 / 文旅 / 时尚大片", 性格: ["儒雅", "沉静", "讲究"], 服饰: "新中式墨竹长衫 · 雅致", 形象来源: "AI 原创虚构", 设定语: "一身墨色入画来，把东方的留白与风骨穿在身上。" },
     counts: {}, deriv: {}, ...paImgs("PA-10"),
   },
+  plazaPortrait("PA-11", "Maya 乔宁", "pro", "城市规划师", 38, 82, "御姐优雅女声",
+    "克制、干练", "橄榄绿无领西装与银色耳钉", "利落的齐下巴短发，淡雾面妆", "为城市更新、街区设计和建筑提案做解说"),
+  plazaPortrait("PA-12", "Daniel 周启", "pro", "财务顾问", 52, 345, "沉稳大叔低音",
+    "严谨、内敛", "深莓色羊毛西装与浅灰衬衣", "后梳花白短发，修整整齐的短须", "适合财务知识讲解和企业经营分析"),
+  plazaPortrait("PA-13", "Nora 顾川", "pro", "工业设计师", 27, 210, "新闻播报女声",
+    "理性、专注", "浅灰工装短外套与黑色高领内搭", "深棕寸短发，浅棕眉妆", "适合产品拆解、设计评审和工艺讲解"),
+  plazaPortrait("PA-14", "Owen 唐砚", "pro", "纪录片制片人", 43, 223, "沉稳大叔低音",
+    "沉稳、温和", "靛蓝粗花呢西装与米白衬衫", "偏分卷发，短络腮胡", "适合纪实访谈、幕后制作和专题旁白"),
+  plazaPortrait("PA-15", "Grace 叶岚", "pro", "博物馆策展人", 61, 5, "御姐优雅女声",
+    "从容、知性", "黑色丝绒外套与朱红丝巾", "银灰低盘发，红棕唇色", "适合展品导览、艺术史和文化访谈"),
+  plazaPortrait("PA-16", "Ethan 陆衡", "pro", "材料工程师", 35, 200, "青年清爽男声",
+    "务实、清爽", "蓝灰实验室工作夹克与白色衬衫", "黑色圆寸，无须", "适合材料科普、工艺说明和产品演示"),
+  plazaPortrait("PA-17", "Iris 江瑜", "pro", "品牌策略师", 31, 34, "新闻播报女声",
+    "利落、敏锐", "琥珀色双排扣西装与细金耳圈", "高马尾，自然眉与暖桃色唇妆", "适合品牌发布、案例分享和行业访谈"),
+  plazaPortrait("PA-18", "Victor 魏哲", "pro", "烹饪讲师", 57, 148, "沉稳大叔低音",
+    "亲切、严谨", "墨绿厨师服与咖啡色围裙", "平头，灰白八字胡", "适合烹饪课程、厨具演示和餐饮培训"),
+  plazaPortrait("PA-19", "Mei 许梅", "life", "社区花艺师", 46, 108, "御姐优雅女声",
+    "明朗、自在", "鼠尾草绿围裙与浅杏色衬衣", "松散低盘发，橘调淡妆", "适合花艺教学、家居布置和社区日常"),
+  plazaPortrait("PA-20", "Leo 程野", "life", "城市骑行向导", 25, 68, "青年清爽男声",
+    "开朗、轻盈", "黄绿色防风骑行夹克", "黑色自然碎发，晒痕和雀斑", "适合城市骑行、路线介绍和户外装备分享"),
+  plazaPortrait("PA-21", "Yun 何云", "life", "茶艺师", 63, 315, "御姐优雅女声",
+    "平和、雅致", "烟紫亚麻对襟上衣与木质耳饰", "灰白短卷发，淡妆", "适合茶席演示、茶器介绍和慢生活短片"),
+  plazaPortrait("PA-22", "Sami 阿麦", "life", "手冲咖啡师", 28, 43, "青年清爽男声",
+    "随和、俏皮", "赭黄背带围裙与奶白条纹衫", "浓密短卷发，细短胡茬", "适合咖啡冲煮、门店探访和器具测评"),
+  plazaPortrait("PA-23", "Juno 夏果", "life", "手作烘焙师", 22, 45, "亲和邻家女声",
+    "灵动、甜美", "蓝白细格衬衫与淡黄色围裙", "双低辫，雀斑与珊瑚色腮红", "适合烘焙教程、食谱演示和居家好物分享"),
+  plazaPortrait("PA-24", "Kai 林航", "life", "徒步领队", 48, 15, "沉稳大叔低音",
+    "坚韧、爽朗", "铁锈红冲锋衣与深绿内搭", "风吹短发，粗胡茬", "适合徒步攻略、户外装备讲解和风景纪录"),
+  plazaPortrait("PA-25", "June 罗晴", "life", "旧物修复师", 35, 222, "亲和邻家女声",
+    "沉静、细致", "靛蓝牛仔工作衫与棕色皮围裙", "黑色齐耳卷发，裸色妆", "适合旧物修复、家居改造和手作纪录"),
+  plazaPortrait("PA-26", "Milo 林朔", "ugc", "数码评测博主", 23, 222, "青年清爽男声",
+    "机灵、直接", "深蓝机能马甲与白 T 恤", "银蓝挑染短发，透明框眼镜", "适合科技新品评测、开箱和使用教程"),
+  plazaPortrait("PA-27", "Ada 吴玥", "ugc", "独立美妆博主", 30, 248, "亲和邻家女声",
+    "鲜明、利落", "白色结构感夹克与不对称耳饰", "铂金短寸，深红唇与钴蓝眼线", "适合彩妆教程、妆容演示和创意妆测评"),
+  plazaPortrait("PA-28", "Leon 章桥", "ugc", "旅行摄影师", 41, 90, "沉稳大叔低音",
+    "随性、开阔", "卡其摄影背心与深绿衬衫", "肩上卷发，浓短须", "适合旅行纪实、摄影教学和相机测评"),
+  plazaPortrait("PA-29", "Tina 赵小满", "ugc", "街头美食解说", 56, 15, "御姐优雅女声",
+    "爽快、幽默", "砖红棒球外套与米色 T 恤", "暗棕短烫发，柔橘色口红", "适合街头探店、市集见闻和地方美食口播"),
+  plazaPortrait("PA-30", "Noah 温河", "ugc", "科学实验创作者", 32, 205, "青年清爽男声",
+    "好奇、耐心", "米色灯芯绒衬衫叠穿蓝灰卫衣", "侧夹卷发，黑色圆框眼镜", "适合实验演示、生活科普和知识短片"),
+  plazaPortrait("PA-31", "Emi 白梨", "ugc", "独立游戏主播", 26, 272, "亲和邻家女声",
+    "俏皮、冷感", "紫色水洗卫衣叠穿烟灰网纱", "墨黑水母头，银色内眼角妆", "适合游戏实况、攻略讲解和直播片段"),
+  plazaPortrait("PA-32", "Bo 任博", "ugc", "木工教学博主", 64, 212, "沉稳大叔低音",
+    "敦实、耐心", "靛青粗布围裙与赭红格纹法兰绒", "稀疏灰白短发，白色山羊胡", "适合工具讲解、手工木作和修缮教学"),
+  plazaPortrait("PA-33", "Renee 乔苇", "ugc", "运动训练创作者", 36, 230, "亲和邻家女声",
+    "有力量、开朗", "钴蓝拉链运动上衣", "贴头辫束成低髻，自然妆", "适合居家训练、力量课程和运动装备展示"),
+  plazaPortrait("PA-34", "Sean 段寻", "ugc", "桌游解说", 20, 28, "青年清爽男声",
+    "活泼、亲切", "橙棕针织开衫与浅蓝格纹衬衫", "栗棕蘑菇头，无须", "适合桌游规则教学、开箱和聚会玩法"),
+  plazaPortrait("PA-35", "Luna 陆灵", "community", "舞台歌手", 29, 295, "亲和邻家女声",
+    "明艳、张扬", "亮银流苏夹克", "乌黑高髻，莓红唇与银色眼妆", "适合舞台短片、音乐宣传和演出预告"),
+  plazaPortrait("PA-36", "Ray 金弋", "community", "复古唱片 DJ", 38, 350, "青年清爽男声",
+    "松弛、复古", "酒红丝绒衬衣与金属细项链", "黑色复古飞机头，细八字胡", "适合黑胶文化、派对预告和复古主题短片"),
+  plazaPortrait("PA-37", "Qin 沈琴", "community", "戏曲演员", 46, 147, "御姐优雅女声",
+    "典雅、有台风", "墨绿织金戏服", "规整包头，戏曲红粉眼妆", "适合戏曲展示、表演教学和文化推广"),
+  plazaPortrait("PA-38", "Fox 梁枫", "community", "街舞编舞师", 21, 24, "青年清爽男声",
+    "锐利、活泼", "橘色拼布飞行夹克与深灰 T 恤", "短脏辫与剃短鬓角，无须", "适合街舞教学、潮流穿搭和演出宣传"),
+  plazaPortrait("PA-39", "Pearl 江珍", "community", "爵士乐主唱", 62, 215, "御姐优雅女声",
+    "华丽、洒脱", "宝蓝缎面西装与珍珠耳夹", "银白手推波纹，酒红唇妆", "适合爵士演出、音乐访谈和复古舞台"),
+  plazaPortrait("PA-40", "Will 纪望", "community", "奇幻剧演员", 34, 3, "青年清爽男声",
+    "神秘、冷峻", "墨黑丝绸长袍与暗红刺绣", "乌黑半束长发，淡墨色眼妆", "适合武侠剧情、古装短片和角色演绎"),
+  plazaPortrait("PA-41", "Celia 宋霁", "community", "古典舞演员", 25, 151, "亲和邻家女声",
+    "轻盈、清雅", "淡青色小立领纱质表演服", "侧分低髻，桃花色淡妆", "适合古典舞展示、国风短片和文旅宣传"),
+  plazaPortrait("PA-42", "Felix 余风", "community", "独立乐队贝斯手", 50, 230, "沉稳大叔低音",
+    "叛逆、沉着", "黑色钉扣牛仔夹克与炭灰内搭", "盐灰短狼尾，短胡尖", "适合乐队纪实、摇滚主题和演出预告"),
+  plazaPortrait("PA-43", "Vera 冉青", "community", "先锋时装造型师", 32, 282, "亲和邻家女声",
+    "前卫、凌厉", "灰紫不对称高领服装", "几何短刘海，烟紫色眼妆", "适合时装大片、造型解读和创意短片"),
 ];
 
 export interface ApplicationTool {

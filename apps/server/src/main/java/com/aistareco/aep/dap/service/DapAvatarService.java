@@ -302,6 +302,7 @@ public class DapAvatarService {
             if (dbPub.getFrontKey() != null) shotKeys.put("front-half", dbPub.getFrontKey());
             if (dbPub.getRightKey() != null) shotKeys.put("right", dbPub.getRightKey());
             if (dbPub.getLeftKey() != null) shotKeys.put("left", dbPub.getLeftKey());
+            if (dbPub.getThreeViewKey() != null) shotKeys.put("three-view", dbPub.getThreeViewKey());
             b.name(name)
                     .codename((dbPub.getCodename() != null ? dbPub.getCodename() : "avatar") + "-copy")
                     .archetype(dbPub.getArchetype() != null ? dbPub.getArchetype() : "AI 原创形象")

@@ -718,11 +718,12 @@ GET /v1/avatars/{id}/references（v0.61 反向「应用于」视图）
 否则 400 `IP_ASSET_KEY_INVALID` —— 不校验就等于：抄别人的 key 拿别人的脸出图（越权），
 或用 `../` 让 `FileStorageService.openForRead`（`Paths.get(localDir, key)`，无包含性检查）
 把本机任意文件 base64 上行给外部模型（路径穿越 + 外泄）。
-**官方形象例外（2026-11-10）**：登记在 `dap_public_avatar`（front / right / left）、位于 `dap_plaza/` 分类、且
+**官方形象例外（2026-11-10）**：登记在 `dap_public_avatar`、位于 `dap_plaza/` 分类、且
 `access=free` 的图，所有登录用户都可作为参考图（判断只在 `DapPublicAvatarService#usableImageKey`）。
 `access=license` 的需授权形象暂未开放授权，一律 `IP_ASSET_KEY_INVALID`；运营后台手填的 key 不在 `dap_plaza/` 下也不放行
-（否则把别人的私有图登记成免费，就等于公开了那张图）。V81 之前的行一律按 license 处理。内置 PA-01…PA-10
-由 `DapBuiltinPublicAvatarSeeder` 启动时入库一次并标 free（平台配置 `dap.builtin-public-avatars.seeded` 存在即不再写）。
+（否则把别人的私有图登记成免费，就等于公开了那张图）。V81 之前的行一律按 license 处理。内置形象由
+`DapBuiltinPublicAvatarSeeder` 按批次入库并标 free。人物卡用头像预览，已有形象设定图的人物默认引用这张合图，图中包含面部正脸和左右侧脸，以及全身正面、侧面、背面。
+PA-07、PA-08 与 PA-09 已从官方目录下架，保留素材记录供旧画布和个人副本读取。
 `selectedRunId` 走 `IpProjectService.ownedRun` 的 **owner + project 双限定**，
 不符 → 参考图装配 404 `IP_RUN_NOT_FOUND` / 发布 400 `IP_PUBLISH_SELECTION_REQUIRED`，
 **绝不退化成「没选主图」静默继续**。

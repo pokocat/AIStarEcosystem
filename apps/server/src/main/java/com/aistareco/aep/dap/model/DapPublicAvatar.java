@@ -15,16 +15,17 @@ import lombok.Setter;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 数字人广场 · 运营可管理的公开数字人（v0.58）。
  *
- * <p>与 {@link com.aistareco.aep.dap.service.DapCatalogService#publicAvatars()} 内置 10 个静态样板并列：
+ * <p>与 {@link com.aistareco.aep.dap.service.DapCatalogService#publicAvatars()} 内置静态样板并列：
  * 内置样板用 app 自带静态图（/plaza/*），只读；本表是运营（OPERATOR / SUPER_ADMIN）通过
  * web-aiavatar 内嵌后台「新增公开数字人」上传的形象，图存 OSS（§4.7，存 storage key，URL 由
  * DTO 出 wire 时经 FileStorageService 派生）。两者在 GET /api/v1/avatars?scope=public 合并返回。
  *
- * <p>id 以 "PA-" 前缀（前端据此判定只读 / 另存为）。运营新增的用 PA-<hex>；内置 PA-01..PA-10 自 2026-11-10 起
+ * <p>id 以 "PA-" 前缀（前端据此判定只读 / 另存为）。运营新增的用 PA-<hex>；内置形象自 2026-11-10 起
  * 由 {@code DapBuiltinPublicAvatarSeeder} 把图存进存储后也写进本表，本表因此是官方形象的唯一来源。
  */
 @Entity
@@ -37,6 +38,13 @@ import java.util.Map;
 @AllArgsConstructor
 @Builder
 public class DapPublicAvatar {
+
+    private static final Set<String> RETIRED_BUILTIN_IDS = Set.of("PA-07", "PA-08", "PA-09");
+
+    /** 下架形象保留原行和存储 key，供已经引用这些素材的画布、任务和个人副本使用。 */
+    public boolean isRetired() {
+        return RETIRED_BUILTIN_IDS.contains(id);
+    }
 
     /** 业务 id，形如 PA-7f3a9c2b，直接暴露给前端。 */
     @Id
@@ -93,6 +101,10 @@ public class DapPublicAvatar {
     /** 左侧脸 storage key。 */
     @Column(length = 512)
     private String leftKey;
+
+    /** 包含面部三视图与全身正侧背的形象设定图。 */
+    @Column(length = 512)
+    private String threeViewKey;
 
     private boolean fav;
 

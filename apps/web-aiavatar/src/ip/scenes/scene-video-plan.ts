@@ -5,6 +5,8 @@ import { studioVideoSettings, type StudioVideoAsset } from "@/canvas-bridge/stud
 /** AI 视频页的一份素材：图（商品 / 门店 / 出镜人物）或声音，带它在草稿画布上的节点。 */
 export type SceneVideoMaterial = { key: string; mediaType: "image" | "audio"; title: string; nodeId: string };
 
+const CHARACTER_SHEET_KEY = /(?:^|\/)dap_plaza\/platform\/PA-\d+-three-view\.jpg$/;
+
 /**
  * 按脚本出一条视频时，素材怎么交给所选模型 —— 只在这里判（§8.0.1 ④）：
  * 能全能参考就把图和声音都交给它（按编导写脚本时的编号顺序，图1、图2…）；只能看首帧就用第一张图；都不行就只按脚本出。
@@ -29,10 +31,17 @@ export function sceneVideoInputs(model: VideoStudioModel, materials: SceneVideoM
       return pick(reference, [...images, ...audios], dropped > 0 ? `当前模型最多使用 ${rules.image.maxCount} 张图片、${rules.audio.maxCount} 段声音，超出部分不会使用` : undefined);
     }
   }
-  if (firstFrame && pictures.length)
-    return pick(firstFrame, [pictures[0]], pictures.length > 1 || voices.length ? `当前模型仅使用第一张图片作为首帧${voices.length ? "，不使用声音" : ""}` : undefined);
+  // 官方设定图包含同一个人的多角度拼图，只适合参考模式，不能直接变成成片首帧。
+  const frame = pictures.find(p => !CHARACTER_SHEET_KEY.test(p.key));
+  const hasCharacterSheet = pictures.some(p => CHARACTER_SHEET_KEY.test(p.key));
+  if (firstFrame && frame) {
+    const note = hasCharacterSheet ? "首帧使用普通图片，形象设定图需要支持参考图的模型" :
+      pictures.length > 1 || voices.length ? `当前模型仅使用第一张图片作为首帧${voices.length ? "，不使用声音" : ""}` : undefined;
+    return pick(firstFrame, [frame], note);
+  }
   const fallback = textOnly ?? modes[0];
-  return pick(fallback, [], materials.length ? "当前模型不使用参考素材，仅按脚本生成" : undefined);
+  return pick(fallback, [], hasCharacterSheet ? "形象设定图需要支持参考图的模型" :
+    materials.length ? "当前模型不使用参考素材，仅按脚本生成" : undefined);
 }
 
 /** 交给接口的视频设置；会先改写描述的模型（H3）一律由我们先按它的写法优化再出片（同创作助手的 auto）。 */

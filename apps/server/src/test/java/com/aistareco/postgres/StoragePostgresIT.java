@@ -42,17 +42,18 @@ class StoragePostgresIT {
     @Autowired com.aistareco.aep.repository.SellingChannelRepository channels;
     @Test void emptySchemaValidatesAllEntitiesWithoutLegacyMigrations() {
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=true ORDER BY installed_rank",String.class))
-                .containsExactly("74", "75", "76", "77", "78", "79", "80", "81", "82");
+                .containsExactly("74", "75", "76", "77", "78", "79", "80", "81", "82", "83");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",Integer.class)).isEqualTo(197);
         assertThat(jdbc.queryForObject("SELECT data_type FROM information_schema.columns WHERE table_name='card_profile' AND column_name='payload_json'",String.class)).isEqualTo("text");
         assertThat(jdbc.queryForObject("SELECT data_type FROM information_schema.columns WHERE table_name='aep_enterprise_members' AND column_name='billing_default'",String.class)).isEqualTo("character varying");
     }
     @Test void copiedOfficialAvatarAccessAndUsageTaskLookupPreserveSourceValues() {
         jdbc.update("INSERT INTO dap_public_avatar(id,name,access,fav,hue,sort_order) VALUES('pg-licensed-avatar','Synthetic','license',false,0,0)");
-        jdbc.update("INSERT INTO dap_public_avatar(id,name,access,fav,hue,sort_order) VALUES('pg-free-avatar','Synthetic','free',false,0,0)");
+        jdbc.update("INSERT INTO dap_public_avatar(id,name,access,fav,hue,sort_order,three_view_key) VALUES('pg-free-avatar','Synthetic','free',false,0,0,'dap_plaza/platform/PA-11-three-view.jpg')");
         new TransactionTemplate(manager).executeWithoutResult(tx->{
             assertThat(em.find(com.aistareco.aep.dap.model.DapPublicAvatar.class,"pg-licensed-avatar").getAccess()).isEqualTo("license");
             assertThat(em.find(com.aistareco.aep.dap.model.DapPublicAvatar.class,"pg-free-avatar").getAccess()).isEqualTo("free");
+            assertThat(em.find(com.aistareco.aep.dap.model.DapPublicAvatar.class,"pg-free-avatar").getThreeViewKey()).isEqualTo("dap_plaza/platform/PA-11-three-view.jpg");
         });
         assertThat(jdbc.queryForObject("SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname='idx_aiusage_task'",Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT character_maximum_length FROM information_schema.columns WHERE table_schema='public' AND table_name='ai_model_usage_record' AND column_name='task_id'",Integer.class)).isEqualTo(64);

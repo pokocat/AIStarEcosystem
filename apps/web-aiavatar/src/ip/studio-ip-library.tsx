@@ -9,7 +9,7 @@ import { SignedAudio } from '@/canvas-bridge/signed-audio';
 import { classifyStudioIpAsset,studioVoiceProfiles } from '@/canvas-bridge/studio-api';
 import { editableIpAssetRoles,filterStudioCharacters,groupStudioIpAssets,ipAssetIdentity,ipAssetRole,ipAssetRoles } from '@/canvas-bridge/studio-ip-library';
 import { studioOverlayContainer } from './studio-overlay';
-import { inOfficialCategory, OfficialLicenseButton, officialAccessLabel, officialCategoryLabel, officialCategoryOptions, officialUsable } from './official-avatars';
+import { inOfficialCategory, OfficialCategoryFilter, OfficialLicenseButton, officialAccessLabel, officialCategoryLabel, officialCategoryOptions, officialReference, officialUsable } from './official-avatars';
 
 export type StudioIpLibraryProps={actionLabel?:string;open:boolean;assets:StudioIpAsset[];loading:boolean;error:string;onClose:()=>void;onRefresh:()=>void;onImport:(asset:StudioIpAsset,voice?:StudioVoiceProfile)=>Promise<void>;onAssetChange:(asset:StudioIpAsset)=>void;embedded?:boolean;onBusyChange?:(busy:boolean)=>void};
 const container=studioOverlayContainer;
@@ -26,7 +26,7 @@ export function StudioIpLibrary({actionLabel,open,assets,loading,error,onClose,o
   const sourceCharacters=characters.filter(c=>(c.main.librarySource||'mine')===source&&(source!=='official'||inOfficialCategory(c.main,category)));
   const shown=filterStudioCharacters(sourceCharacters,search,path,role,attribute?attribute.split('\u0000') as [string,string]:undefined);
   const person=characters.find(c=>c.id===personId),index=shown.findIndex(c=>c.id===personId);
-  const selected=person?.assets.find(a=>ipAssetIdentity(a)===selectedId)||person?.main;
+  const selected=person?.assets.find(a=>ipAssetIdentity(a)===selectedId)||(person?.main.librarySource==='official'?officialReference(person):person?.main);
   const performer=voices?.performers.find(p=>p.avatarId===personId),voice=voices?.profiles.find(v=>v.avatarId===personId&&v.voiceId===performer?.voiceId);
   const openPerson=(id:string)=>{setPersonId(id);setSelectedId(undefined);setActionError('');};
   const pick=(asset:StudioIpAsset)=>setSelectedId(ipAssetIdentity(asset));
@@ -36,7 +36,10 @@ export function StudioIpLibrary({actionLabel,open,assets,loading,error,onClose,o
   const content = <div className="studio-library-shell">
       <aside className="studio-library-sidebar"><h2><UserRound size={19}/>IP 人物库</h2><p>人物与可复用素材</p><nav aria-label="IP 库来源">{([['mine','我的 IP'],['official','官方形象']] as const).map(([value,label])=><button type="button" key={value} disabled={busy} aria-pressed={source===value} onClick={()=>{setSource(value);setPersonId(undefined);}}>{label}<span>{characters.filter(c=>(c.main.librarySource||'mine')===value).length}</span></button>)}</nav><div className="studio-library-sidebar-note">主形象、设定图、视角和声音<br/>都归在同一个人物下</div></aside>
       <main className="studio-library-main">
-        <header className="studio-library-toolbar"><strong>{person?person.name:source==='official'?'官方形象':'我的 IP'}</strong>{!person&&<><Input aria-label="搜索 IP 人物" placeholder="搜索人物名称或设定" prefix={<Search size={16}/>} allowClear value={search} onChange={e=>setSearch(e.target.value)}/><Select aria-label="筛选素材类别" value={role} onChange={setRole} options={[{value:'all',label:'全部素材'},...Object.entries(ipAssetRoles).filter(([k])=>k!=='history').map(([value,label])=>({value,label}))]}/>{source==='official'&&<Select aria-label="按分类筛选官方形象" value={category} onChange={setCategory} options={officialCategoryOptions(characters.filter(c=>c.main.librarySource==='official').map(c=>c.main))}/>}<Select aria-label="筛选人物属性" allowClear placeholder="人物属性" value={attribute} onChange={setAttribute} options={attributeOptions}/></>}<Button disabled={loading||busy} onClick={onRefresh}>刷新</Button></header>
+        <header className="studio-library-toolbar"><strong>{person?person.name:source==='official'?'官方形象':'我的 IP'}</strong>{!person&&<><Input aria-label="搜索 IP 人物" placeholder="搜索人物名称或设定" prefix={<Search size={16}/>} allowClear value={search} onChange={e=>setSearch(e.target.value)}/><Select aria-label="筛选素材类别" value={role} onChange={setRole} options={[{value:'all',label:'全部素材'},...Object.entries(ipAssetRoles).filter(([k])=>k!=='history').map(([value,label])=>({value,label}))]}/><Select aria-label="筛选人物属性" allowClear placeholder="人物属性" value={attribute} onChange={setAttribute} options={attributeOptions}/></>}<Button disabled={loading||busy} onClick={onRefresh}>刷新</Button></header>
+        {!person && source === 'official' && <div className="studio-library-categories">
+          <OfficialCategoryFilter options={officialCategoryOptions(characters.filter(c => c.main.librarySource === 'official').map(c => c.main))} value={category} onChange={setCategory} disabled={busy}/>
+        </div>}
         {loading?<div className="studio-library-state" role="status">正在加载人物…</div>:error?<div className="studio-library-state"><StudioErrorNotice error={error}/><Button onClick={onRefresh}>重试</Button></div>:person&&selected?<>
           <div className="studio-character-navigation"><button type="button" disabled={busy} onClick={()=>setPersonId(undefined)}><ArrowLeft size={15}/>返回人物库</button><span>{index>=0?`${index+1} / ${shown.length}`:'人物详情'}</span><div><button type="button" aria-label="上一个人物" disabled={busy||index<=0} onClick={()=>openPerson(shown[index-1].id)}><ChevronLeft size={18}/></button><button type="button" aria-label="下一个人物" disabled={busy||index<0||index>=shown.length-1} onClick={()=>openPerson(shown[index+1].id)}><ChevronRight size={18}/></button></div></div>
           <div className="studio-character-detail"><div className="studio-character-visuals">

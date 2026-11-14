@@ -24,6 +24,13 @@ describe("按脚本出片时素材怎么交给模型", () => {
     expect(plan.used.map(u => u.key)).toEqual(["a"]);
     expect(plan.note).toBe("当前模型仅使用第一张图片作为首帧，不使用声音");
   });
+  test("官方形象设定图按一张参考图传入，首帧模式使用普通图片", () => {
+    const sheet = m("media/dap_plaza/platform/PA-11-three-view.jpg"), frame = m("first");
+    expect(sceneVideoInputs(model([mode("t2v"), firstFrame, reference]), [sheet]).assets)
+      .toEqual([{ mediaType: "image", storageKey: sheet.key }]);
+    expect(sceneVideoInputs(model([mode("t2v"), firstFrame]), [sheet, frame]).used).toEqual([frame]);
+    expect(sceneVideoInputs(model([mode("t2v"), firstFrame]), [sheet])).toMatchObject({ used: [], spec: { mode: "t2v" }, note: "形象设定图需要支持参考图的模型" });
+  });
   test("不看素材的模型只按脚本出，并且说清楚；没有素材时不多嘴", () => {
     expect(sceneVideoInputs(model([mode("t2v")]), [m("a")])).toMatchObject({ used: [], note: "当前模型不使用参考素材，仅按脚本生成" });
     expect(sceneVideoInputs(model([mode("t2v"), reference]), []).note).toBeUndefined();

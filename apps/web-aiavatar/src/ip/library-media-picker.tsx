@@ -3,23 +3,22 @@ import { IMAGE_UPLOAD_ACCEPT } from '@ai-star-eco/api-client/image-upload-policy
 // AI 图片 / AI 视频素材位的资产选择框（2026-10-31，设计稿「选择框 · 商品图 / 声音」）：
 // 左边是资产库，默认打开这张画布绑定的库，没有就打开上次用的；图片位上面能切「图片 / 人物」，视频和声音位只列这一类文件。
 // 新文件在框里「上传到这个库」，传完自动选中。
-// 图片位分「我的资产 / 官方形象」。选中免费官方人物时引用主形象，需授权的人物仅展示。
+// 图片位分「我的资产 / 官方形象」。官方人物用头像预览，有形象设定图时优先引用设定图。
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Button, ConfigProvider, Input, Modal, Select, Skeleton, Spin } from 'antd';
+import { Button, ConfigProvider, Input, Modal, Skeleton, Spin } from 'antd';
 import { AudioLines, Check, ChevronDown, Folder, LayoutGrid, Maximize2, Mic, Search, Upload } from 'lucide-react';
 import type { IpSavedAsset, LibraryFolder, LibraryObject } from '@ai-star-eco/types';
-import type { StudioIpAsset } from '@ai-star-eco/types/ip-studio-workflow';
 import { canvasLibraryFolder, libraryFolders, libraryMaterials, libraryObjects, uploadLibraryMedia } from '@/canvas-bridge/asset-library';
 import { libraryObjectAsset, studioIpAssetReference } from '@/canvas-bridge/library-reference';
 import { listStudioIpAssets } from '@/canvas-bridge/studio-api';
-import { groupStudioIpAssets } from '@/canvas-bridge/studio-ip-library';
+import { groupStudioIpAssets, type StudioLibraryCharacter } from '@/canvas-bridge/studio-ip-library';
 import { SignedAudio } from '@/canvas-bridge/signed-audio';
 import { SignedImage } from '@/canvas-bridge/signed-image';
 import { SignedVideo } from '@/canvas-bridge/signed-video';
 import { AssetThumb } from './asset-thumb';
 import { selectUploadedAssets, uploadAssetBatch } from './asset-upload-batch';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
-import { inOfficialCategory, isOfficialAsset, OFFICIAL_LICENSE_REASON, officialAccessLabel, officialCategoryOptions, officialUsable } from './official-avatars';
+import { inOfficialCategory, isOfficialAsset, OFFICIAL_LICENSE_REASON, officialAccessLabel, OfficialCategoryFilter, officialCategoryOptions, officialReference, officialUsable } from './official-avatars';
 import { AI_LIBRARY, lastLibrary, libraryQuery, rememberLibrary, sourceLabel } from './assets-hub-shared';
 import { AiMark } from './studio-ai-icon';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
@@ -48,7 +47,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   const [tab, setTab] = useState<PickerTab>('files');
   const [source, setSource] = useState<PickerSource>('mine');
   const [category, setCategory] = useState('all');
-  const [officialAll, setOfficialAll] = useState<StudioIpAsset[]>([]);
+  const [officialAll, setOfficialAll] = useState<StudioLibraryCharacter[]>([]);
   const [keyword, setKeyword] = useState('');
   const [items, setItems] = useState<IpSavedAsset[]>([]);
   const [page, setPage] = useState(0);
@@ -65,11 +64,18 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   const [revision, setRevision] = useState(0);
   const epoch = useRef(0), fileInput = useRef<HTMLInputElement>(null), uploadedKeys = useRef<string[]>([]);
   const withPeople = people && mediaType === 'image';
+  const official = withPeople && source === 'official';
+  const libraryKeyword = official ? '' : keyword;
+  const needle = keyword.trim().toLocaleLowerCase();
+  const shownItems = official
+    ? officialAll.filter(({ main, name }) => inOfficialCategory(main, category) && (!needle || [name, main.description, ...Object.values(main.attributes || {})].join(' ').toLocaleLowerCase().includes(needle))).map(officialItem)
+    : items;
+  const officialPeople = new Map(officialAll.map(person => [`official:${person.id}`, person]));
 
   useEffect(() => {
     if (!open) { setRecording(false); setHoveredVideo(undefined); setPreview(undefined); return; }
     uploadedKeys.current = [];
-    setSelected({}); setKeyword(''); setTab('files'); setSource('mine'); setCategory('all'); setError(''); setUploadError(''); setLibrary(undefined);
+    setSelected({}); setKeyword(''); setTab('files'); setSource('mine'); setCategory('all'); setOfficialAll([]); setError(''); setUploadError(''); setLibrary(undefined);
     const remembered = lastLibrary();
     setLast(remembered);
     Promise.all([libraryFolders(), projectId ? canvasLibraryFolder(projectId) : Promise.resolve({ folderId: '' })])
@@ -78,14 +84,11 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   }, [open, projectId, preferred, setError, setUploadError]);
 
   const folderName = (id?: string) => folders.find(f => f.id === id)?.name;
-  const fetchPage = async (n: number): Promise<{ items: IpSavedAsset[]; hasMore: boolean }> => {
+  const fetchPage = async (n: number): Promise<{ items: IpSavedAsset[]; hasMore: boolean; officialPeople?: StudioLibraryCharacter[] }> => {
     if (withPeople && source === 'official') {
-      if (n > 0) return { items: [], hasMore: false };
-      const mainImages = (await listStudioIpAssets()).filter(a => isOfficialAsset(a) && a.current && !a.lookId && a.storageKey && a.url);
-      const people = groupStudioIpAssets(mainImages).map(person => person.main);
-      setOfficialAll(people);
-      const needle = keyword.trim().toLocaleLowerCase();
-      return { items: people.filter(a => inOfficialCategory(a, category) && (!needle || `${a.characterName || a.name} ${a.description || ''}`.toLocaleLowerCase().includes(needle))).map(officialItem), hasMore: false };
+      const assets = (await listStudioIpAssets()).filter(a => isOfficialAsset(a) && a.storageKey && a.url);
+      const people = groupStudioIpAssets(assets).filter(({ main }) => main.current && !main.lookId);
+      return { items: [], hasMore: false, officialPeople: people };
     }
     if (!library) return { items: [], hasMore: false };
     if (tab !== 'files') {
@@ -115,6 +118,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
     const timer = setTimeout(() => {
       fetchPage(0).then(r => {
         if (id !== epoch.current) return;
+        if (r.officialPeople) setOfficialAll(r.officialPeople);
         setItems(r.items); setPage(0); setHasMore(r.hasMore); setError('');
         if (source === 'mine' && tab === 'files' && uploadedKeys.current.length) {
           const keys = uploadedKeys.current;
@@ -126,14 +130,14 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
     return () => { clearTimeout(timer); epoch.current++; };
     // fetchPage 只读这些值
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, library, tab, keyword, revision, source, category]);
+  }, [open, library, tab, libraryKeyword, revision, source]);
   const loadMore = async () => {
     const id = epoch.current; setLoading(true);
     try { const r = await fetchPage(page + 1); if (id !== epoch.current) return; setItems(old => [...old, ...r.items.filter(i => !old.some(o => o.id === i.id))]); setPage(page + 1); setHasMore(r.hasMore); setError(''); }
     catch (e) { if (id === epoch.current) setError(e); }
     finally { if (id === epoch.current) setLoading(false); }
   };
-  const end = useLoadMoreOnScroll<HTMLLIElement>(open && hasMore && !loading && !error && !busy && !uploading && !preview && !recording, page, loadMore);
+  const end = useLoadMoreOnScroll<HTMLLIElement>(open && !official && hasMore && !loading && !error && !busy && !uploading && !preview && !recording, page, loadMore);
 
   const choose = (asset: IpSavedAsset) => setSelected(old => {
     if (old[asset.id]) { const next = { ...old }; delete next[asset.id]; return next; }
@@ -168,7 +172,6 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
 
   const picked = Object.values(selected);
   const locked = busy || uploading;
-  const official = withPeople && source === 'official';
   const canUpload = upload && !official;
   const uploadTile = canUpload && mediaType !== 'audio';
   const uploadLabel = library && library !== 'all' && library !== AI_LIBRARY ? '上传到此资产库' : uploadTile ? `上传${NOUN[mediaType]}` : '上传';
@@ -190,7 +193,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
       </nav>}
       <div className="lmp-main">
         <div className="lmp-bar">
-          {official && <Select className="lmp-category" aria-label="按分类筛选官方形象" value={category} disabled={busy} onChange={setCategory} options={officialCategoryOptions(officialAll)} getPopupContainer={studioOverlayContainer} popupMatchSelectWidth={false}/>}
+          {official && <OfficialCategoryFilter options={officialCategoryOptions(officialAll.map(person => person.main))} value={category} disabled={locked} onChange={setCategory}/>}
           {withPeople && !official && <div className="lmp-seg" role="tablist" aria-label="类型">
             <button type="button" role="tab" aria-selected={tab === 'files'} disabled={locked} onClick={() => setTab('files')}>图片</button>
             {OBJECT_TABS.map(t => <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} disabled={locked} onClick={() => setTab(t.key)}>{t.label}</button>)}
@@ -205,20 +208,21 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
         {canUpload && <input ref={fileInput} type="file" multiple hidden disabled={locked} aria-label="选择要上传到资产库的文件" accept={ACCEPT[mediaType]} onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ''; if (files.length) void putInLibrary(files); }}/>}
         {uploadError && <p className="lmp-error"><StudioErrorNotice error={uploadError} autoReport={false}/></p>}
         {error && <p className="lmp-error"><StudioErrorNotice error={error}/><Button size="small" disabled={loading || locked} onClick={() => setRevision(n => n + 1)}>重试</Button></p>}
-        {(uploadTile || items.length > 0 || hasMore) && <ul className={`lmp-grid${mediaType === 'audio' ? ' is-list' : ''}`}>
+        {(uploadTile || shownItems.length > 0 || (!official && hasMore)) && <ul className={`lmp-grid${mediaType === 'audio' ? ' is-list' : ''}`}>
           {uploadTile && <li><Button type="dashed" className="lmp-upload" icon={<span className="assets-upload-plus"><Upload size={21}/></span>}
             loading={uploading} disabled={busy || uploading || !library} onClick={() => fileInput.current?.click()}>
             {uploading ? '正在上传…' : uploadLabel}
           </Button></li>}
-          {items.map(a => {
+          {shownItems.map(a => {
             const on = !!selected[a.id], unavailable = a.metadata?.unavailable === true;
             const access = typeof a.metadata?.officialAccess === 'string' ? a.metadata.officialAccess : undefined;
+            const portrait = official ? officialPeople.get(a.id)?.main : undefined;
             const full = !on && max > 1 && picked.length >= max;
             return <li key={a.id} className="lmp-cell"
               onPointerEnter={a.kind === 'video' ? e => { if (e.pointerType === 'mouse') setHoveredVideo(a.id); } : undefined}
               onPointerLeave={a.kind === 'video' ? () => setHoveredVideo(undefined) : undefined}>
               <button type="button" className="lmp-item" aria-pressed={on} aria-label={`选择 ${a.title}`} title={unavailable && access ? `${a.title}（${OFFICIAL_LICENSE_REASON}）` : a.title} disabled={locked || unavailable || full} onClick={() => choose(a)}>
-                {a.kind === 'image' ? <span className="lmp-thumb"><AssetThumb kind="image" src={a.data.dataUrl} storageKey={a.data.storageKey}/></span>
+                {a.kind === 'image' ? <span className="lmp-thumb"><AssetThumb kind="image" src={portrait?.url || a.data.dataUrl} storageKey={portrait?.storageKey || a.data.storageKey}/></span>
                   : a.kind === 'video' ? <span className="lmp-thumb"><AssetThumb kind="video" src={a.data.url} storageKey={a.data.storageKey} playing={open && !preview && hoveredVideo === a.id}/></span>
                   : <span className="lmp-voice-icon">{on ? <Check size={15} strokeWidth={2.4}/> : <AudioLines size={16} strokeWidth={1.6}/>}</span>}
                 {on && a.kind !== 'audio' && <span className="lmp-check"><Check size={11} strokeWidth={2.6}/></span>}
@@ -231,9 +235,9 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
               {a.kind === 'audio' && <SignedAudio className="lmp-audio" quiet src={a.data.url} storageKey={a.data.storageKey} controls preload="none"/>}
             </li>;
           })}
-          {hasMore && !error && <li ref={end} className="scroll-more lmp-grid-end">{loading ? <Spin size="small"/> : <ChevronDown size={18} aria-hidden/>}</li>}
+          {!official && hasMore && !error && <li ref={end} className="scroll-more lmp-grid-end">{loading ? <Spin size="small"/> : <ChevronDown size={18} aria-hidden/>}</li>}
         </ul>}
-        {!items.length && (loading ? <Skeleton active/> : error ? null
+        {!shownItems.length && (loading ? <Skeleton active/> : error ? null
           : !official && library === AI_LIBRARY && tab !== 'files' ? <div className="lmp-empty"><p>AI 生成库仅保存图片、视频和音频。请在「全部」中选择{OBJECT_TABS.find(t => t.key === tab)?.label}。</p><Button onClick={() => setLibrary('all')}>查看全部{OBJECT_TABS.find(t => t.key === tab)?.label}</Button></div>
           : <p className="lmp-empty">{official ? keyword.trim() || category !== 'all' ? '没有找到匹配的官方形象。' : '暂无官方形象。' : tab !== 'files' ? `暂无带图的${OBJECT_TABS.find(t => t.key === tab)?.label}。` : library === AI_LIBRARY ? `还没有 AI 生成的${NOUN[mediaType]}。` : keyword.trim() ? '没有找到匹配的素材，请尝试其他名称。' : canUpload && !uploadTile ? `暂无${NOUN[mediaType]}，可点击「上传」添加。` : `暂无${NOUN[mediaType]}。`}</p>)}
       </div>
@@ -254,8 +258,9 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
   }}/></ConfigProvider>;
 }
 
-function officialItem(a: StudioIpAsset): IpSavedAsset {
-  const base = studioIpAssetReference(a), usable = officialUsable(a);
-  return { ...base, id: `official:${a.avatarId}`, title: a.characterName || a.name, source: '官方形象',
-    metadata: { ...base.metadata, officialAccess: officialAccessLabel(a), ...(usable ? {} : { unavailable: true }) } };
+function officialItem(person: StudioLibraryCharacter): IpSavedAsset {
+  const reference = officialReference(person);
+  const base = studioIpAssetReference(reference), usable = officialUsable(person.main) && officialUsable(reference);
+  return { ...base, id: `official:${person.id}`, title: person.name, source: '官方形象',
+    metadata: { ...base.metadata, officialAccess: officialAccessLabel(person.main), ...(usable ? {} : { unavailable: true }) } };
 }

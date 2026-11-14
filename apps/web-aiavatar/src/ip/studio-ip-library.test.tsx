@@ -45,7 +45,7 @@ test('a licensed official avatar can be viewed but not added; 申请授权 only 
   const paid={...free,avatarId:'official:PA-x',name:'签约艺人',characterName:'签约艺人',access:'license' as const,category:'life',storageKey:'paid-key'};
   const p={...props(),assets:[free,paid]};render(<StudioIpLibrary {...p}/>);
   fireEvent.click(screen.getByRole('button',{name:/官方形象/}));
-  fireEvent.change(screen.getByRole('combobox',{name:'按分类筛选官方形象'}),{target:{value:'life'}});
+  fireEvent.click(screen.getByRole('radio',{name:'生活方式'}));
   expect(screen.queryByRole('button',{name:'查看人物 Annie 安妮'})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'查看人物 签约艺人'}));
   expect(screen.queryByRole('button',{name:'添加选中素材到画布'})).toBeNull();

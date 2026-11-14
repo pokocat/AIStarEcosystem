@@ -2,13 +2,13 @@
 // 资产页「官方形象」（2026-11-10）：平台提供的人物形象。原来在「发现」页，现在放这里。
 // 免费的在画布、AI 图片、AI 视频选择人物时可直接使用；需授权的只能看，「申请授权」暂未开放。
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Dropdown, Input, Modal } from 'antd';
-import { ChevronDown, Search } from 'lucide-react';
+import { Button, Input, Modal } from 'antd';
+import { Search } from 'lucide-react';
 import type { StudioIpAsset } from '@ai-star-eco/types/ip-studio-workflow';
 import { listStudioIpAssets } from '@/canvas-bridge/studio-api';
 import { groupStudioIpAssets, ipAssetIdentity, ipAssetRole, ipAssetRoles, type StudioLibraryCharacter } from '@/canvas-bridge/studio-ip-library';
 import { AssetThumb } from './asset-thumb';
-import { inOfficialCategory, isOfficialAsset, OfficialLicenseButton, officialAccessLabel, officialCategoryLabel, officialCategoryOptions, officialUsable } from './official-avatars';
+import { inOfficialCategory, isOfficialAsset, OfficialCategoryFilter, OfficialLicenseButton, officialAccessLabel, officialCategoryLabel, officialCategoryOptions, officialReference, officialUsable } from './official-avatars';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { studioOverlayContainer } from './studio-overlay';
 
@@ -33,10 +33,8 @@ export function AssetsOfficial() {
   const filtered = !!needle || category !== 'all';
   return <div className="assets-official">
     <div className="assets-toolbar">
+      <OfficialCategoryFilter options={categories} value={category} onChange={setCategory}/>
       <Input className="assets-search" prefix={<Search size={14}/>} allowClear aria-label="搜索官方形象" placeholder="搜索名字或设定" value={keyword} onChange={e => setKeyword(e.target.value)}/>
-      <Dropdown trigger={['click']} getPopupContainer={studioOverlayContainer} menu={{ items: categories.map(o => ({ key: o.value, label: o.label })), selectable: true, selectedKeys: [category], onClick: ({ key }) => setCategory(key) }}>
-        <button type="button" className="assets-select" aria-label="按分类筛选官方形象">{categories.find(o => o.value === category)?.label || '全部分类'}<ChevronDown size={14}/></button>
-      </Dropdown>
       <span className="assets-toolbar-gap"/>
       <span className="assets-count" aria-live="polite">{loading ? '正在加载…' : `${shown.length} 个形象`}</span>
     </div>
@@ -60,17 +58,20 @@ export function AssetsOfficial() {
 
 function OfficialAvatarDetail({ person, onClose }: { person?: StudioLibraryCharacter; onClose: () => void }) {
   const [current, setCurrent] = useState<StudioIpAsset>();
-  useEffect(() => setCurrent(person?.main), [person]);
+  useEffect(() => setCurrent(undefined), [person]);
   if (!person) return null;
-  const shown = current || person.main, usable = officialUsable(person.main);
+  const shown = current || officialReference(person), usable = officialUsable(person.main);
+  const hasThreeView = person.assets.some(asset => asset.assetRole === 'three-view');
+  const views = hasThreeView ? person.assets.filter(a => a.current || a.assetRole === 'three-view') : person.assets;
   return <Modal open title={person.name} footer={null} width={760} centered getContainer={studioOverlayContainer} className="assets-official-dialog" onCancel={onClose} destroyOnHidden>
-    <div className="assets-official-detail">
+    <div className={`assets-official-detail${shown.assetRole === 'three-view' ? ' is-three-view' : ''}`}>
       <div className="assets-official-visual">
-        <span className="assets-official-hero"><AssetThumb kind="image" src={shown.url} storageKey={shown.storageKey}/></span>
-        {person.assets.length > 1 && <div className="assets-official-views" role="group" aria-label="形象图">{person.assets.map(a => {
+        <span className={`assets-official-hero${shown.assetRole === 'three-view' ? ' is-three-view' : ''}`}><AssetThumb kind="image" src={shown.url} storageKey={shown.storageKey}/></span>
+        {views.length > 1 && <div className="assets-official-views" role="group" aria-label="形象图">{views.map(a => {
           const on = ipAssetIdentity(a) === ipAssetIdentity(shown);
-          return <button key={ipAssetIdentity(a)} type="button" aria-pressed={on} aria-label={`查看${a.lookId ? a.name : ipAssetRoles[ipAssetRole(a)]}`} onClick={() => setCurrent(a)}>
-            <AssetThumb kind="image" src={a.url} storageKey={a.storageKey}/><small>{a.lookId ? a.name : ipAssetRoles[ipAssetRole(a)]}</small>
+          const label = a.lookId ? a.name : hasThreeView ? '头像' : ipAssetRoles[ipAssetRole(a)];
+          return <button key={ipAssetIdentity(a)} type="button" className={a.assetRole === 'three-view' ? 'is-three-view' : undefined} aria-pressed={on} aria-label={`查看${label}`} onClick={() => setCurrent(a)}>
+            <AssetThumb kind="image" src={a.url} storageKey={a.storageKey}/><small>{label}</small>
           </button>;
         })}</div>}
       </div>
