@@ -19,6 +19,13 @@ Studio「爆款复刻 → 元素替换」已开启 OneToken Seedance 2.5 的原�
 - 15:16 Studio 前端独立 ALB 切到 A100/B0，双 VIP 和 ALB 健康通过。A 的 BUILD_ID 为 `ygy5Kj1e3NW9FKL9Ejow1`，包 SHA-256 `d71b3324edf13a89b6cd1a31eb48ab94a98afbf0b8f9e0ee58426502b2a601e8`。B 保留 `FNTQyS1iEuc6CYoJ3u0_x`。登录生产 Studio，进入元素替换并选中 Seedance 2.5，核实三档清晰度、30 秒设置、默认勾选且可切换的「保留原声」及独立参考声音入口隐藏。验收未在 Studio 提交付费订单。[Studio 生产构建](https://github.com/pokocat/AIStarEcosystem/actions/runs/43568447533)
 - 同一 OneToken 生产接入点受理并完成了两条合成测试素材的元素替换。30 秒测试 `sdn_fd8b17acc5364997ba4f75321d326a58` 带一张替换图，原片内嵌 660 Hz 测试音。供应商成片实际 1280×720、30.02 秒，替换画面符合要求，输出音轨无原片的测试音。应用的 FFmpeg 回填流程验证了原片音轨合入后的视频时长、画幅及 1、8、15、23、28 秒位置的 660 Hz 测试音。首次供应商试片为 480P，30 秒样片为 720P。
 
+## 替换图上限修正
+
+同日发布 `3b9e0792701524757a0202d739599ec273392704`。选中 Seedance 2.5 时，Studio 显示最多九张替换图，添加素材、报价和提交均使用端点上限。超过上限的已有草稿提示移除多余图片。Mac mini 后端定向检查、Studio 类型检查、33 条交互测试和接口契约检查通过，主线 CI 30 项全通过。[后端 CI](https://github.com/pokocat/AIStarEcosystem/actions/runs/43570840096) · [Studio 构建](https://github.com/pokocat/AIStarEcosystem/actions/runs/43570855486)
+
+- 15:43 API 切到 B100/A0，A 保留 `b84a3bbc49f88c21`。B 的 API 和 A 的独立后台运行 `dccdfee3ae3fd32a`。JAR SHA-256 `dccdfee3ae3fd32a0406cd727ecc267d94b0f1935e17bbc1b216a6ec7ded8f19`，镜像配置 `sha256:26307b9f36f9936151f6b627a507f5cae433fba7e2189af2a435e00e3786d82f`，镜像归档摘要 `66dc68204dfe66437c6a85d4ba21bb9ebde2c29bd3617eb81f24dc305813ae7e`。云端发布包下载遇到 SSH 连接中断，续传后用云端摘要复核了完整包。两个正式 VIP 的严格 TLS、就绪和鉴权通过，独立后台就绪、重启数为零，SLS 仍收到新日志。既有编辑合同和费率读回一致。
+- 15:46 Studio 前端切到 B100/A0。两处 VIP 的元素替换页面均为 200，BUILD_ID 为 `GG_gtwXDkJ7aiImMFPUR8`，包 SHA-256 `f8503476c039cedb0d14e64b152fc82052c3c403229eb3edf213a6467ffa46e0`。A 保留 `ygy5Kj1e3NW9FKL9Ejow1`。线上登录复验「图片 0 / 9」、30 秒、原声默认开启和三档清晰度。未在 Studio 提交付费订单。
+
 ## 恢复配置
 
-先暂停新接编辑任务，核对并保留在途编辑任务。需要切回旧 API 或后台时，在新版上通过审计命令用改前备份移除该端点的 `edit`，并恢复该端点的编辑费率条目。确认没有需要按编辑合同继续提交的在途任务后，再按生产手册切回已验收的版本。旧热备的端点规格解析器无法读取本次新增字段。无需回滚 PostgreSQL 结构。
+当前热备 `3b6e5c32c` 支持编辑合同与原声音轨。需要回退至早于本次原声发布的版本时，先暂停新接编辑任务，核对并保留在途编辑任务。确认没有需要按编辑合同继续提交的在途任务后，在新版上通过审计命令用改前备份移除端点 `edit`，恢复该端点的编辑费率条目，再按生产手册切回已验收的版本。早于 `d4f9f8ff5` 的端点规格解析器无法读取新增字段。无需回滚 PostgreSQL 结构。
