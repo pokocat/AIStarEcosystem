@@ -486,6 +486,8 @@ src/main/java/com/aistareco/aep/
 
 > 服务 apps/web-aiavatar（/api/v1/**）。账户复用 aep_users + 钱包；多模态大模型（文本/图片/视频）经 `DapMultimodalClient` 统一从后台「AI 应用绑定」端点解析（purpose=DAP_PERSONA/DAP_IMAGE/DAP_VIDEO，无 env 兜底）。
 >
+> **2026-11-14 七牛下线**：本人确认改用火山引擎本人核验。`POST /v1/captures/{id}/verify` 带 `{personId, agreementVersion, agreementAccepted}`（`personId` = `video_asset_person` 里本人 status=active 且有 group_id 的人物，`ArkPortraitLibrary.requireVerifiedPerson`），同请求接受 `DapConsent`（协议 `real-avatar-v2.0-2026-11-14`），LIC 记 `verificationProvider=volcengine_ark`、`verificationReference`/`livenessGroupId` = 人物编号，凭证 V3。不带 personId → 410 `DAP_REAL_AUTH_RETIRED`；`POST /real-auth/sessions`、`/restart`、`/materials` 同样 410。`DapModelinkPoller` 受 `aep.dap.modelink.poll-enabled`（默认 false）控制。`DapMaterialService.requireApprovedGenerationAsset` 在授权由火山登记且生效时直接放行（不再要七牛 approved 素材）。代码与历史数据保留。下面 v0.105 一段只对历史七牛授权适用。
+>
 > **v0.105**：真人授权链路接七牛云 modelink —— `captures/{id}/verify` 不再「有素材即通过」，必须先有 **active 的刷脸认证会话**（`POST /v1/real-auth/sessions` → 上游 h5 刷脸 → 浏览器回跳 `GET /v1/real-auth/callback`（permitAll，靠不可枚举 state 防伪）→ 服务端回传 result_code + byted_token → 轮询上游确认 active），否则 409 `DAP_AUTH_NOT_COMPLETED`。核验通过登记的 LIC 标 `verifyMethod=liveness` + `livenessGroupId`。素材送审（`/v1/materials`）把捕获素材与定妆图推给 modelink 审核，结论由 `DapModelinkPoller` 收敛。接入点走后台「AI 应用绑定」的新用途 `DAP_REAL_AVATAR`；未配置且 `aep.dap.modelink.allow-mock=false`（生产默认）→ 503 `DAP_MODELINK_NOT_CONFIGURED`，不建会话不产假授权（§8.0）。同版把合成路径的授权硬闸前移到**生成入口**：真人复刻缺生效 LIC → 403 `DAP_LICENSE_REQUIRED`，不建任务不冻结积分。
 >
 > **v0.104**：数字人不再是唯一的资产种类，而是六类之一 —— `DH-` 人物 / `IP-` 品牌 / `SC-` 场景 / `PD-` 产品 / `VO-` 声音 / `ST-` 风格。授权登记只发给真人肖像人物与 IP；场景 / 产品 / 风格是轻资产只记来源。IP 是容器（成员靠各实体的 `ipId` 指向），合成产物回流为它的衍生物并双向记引用。

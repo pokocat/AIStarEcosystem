@@ -38,6 +38,7 @@ vi.mock('./library-source-select', () => ({ LibrarySourceSelect: ({ value, onCha
 // 选择框换成一个按钮：点一下就把 picks.next 交回去。
 vi.mock('./library-reference-picker', () => ({ LibraryReferencePicker: ({ title, onAssets, onClose }: any) => <button onClick={async () => { await onAssets([picks.next.shift()]); onClose(); }}>{title}·选好了</button> }));
 vi.mock('antd', () => ({
+  Tooltip: ({ children }: any) => children,
   Button: ({ icon, loading, type, size, danger, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
   Input: ({ prefix, allowClear, ...p }: any) => <input {...p}/>,
   Checkbox: ({ checked, onChange, children }: any) => <input type="checkbox" aria-label="确认" checked={checked} onChange={onChange}/>,
@@ -111,8 +112,8 @@ test('人物 puts IPs, roles and stars together; only confirmed real people get 
   api.objects.mockResolvedValue({ items: [role('o1', '林夏', { sources: [{ title: '合租室友' }] })], total: 1, page: 0, hasMore: false });
   render(<AssetsPeople library="all" folders={[]}/>);
   const tang = await screen.findByRole('link', { name: '查看 唐唐' });
-  expect(within(tang).getByRole('img', { name: '本人已刷脸确认' })).toBeDefined();
-  expect(within(await screen.findByRole('link', { name: '查看 老周' })).queryByRole('img', { name: '本人已刷脸确认' })).toBeNull();
+  expect(within(tang).getByRole('img', { name: '已通过人脸核验。' })).toBeDefined();
+  expect(within(await screen.findByRole('link', { name: '查看 老周' })).queryByRole('img', { name: '已通过人脸核验。' })).toBeNull();
   expect(await screen.findByRole('link', { name: '查看 安安' })).toBeDefined();
   expect(screen.queryByText('没批')).toBeNull();
   expect(api.objects).toHaveBeenCalledWith(expect.objectContaining({ kind: 'character', folder: 'all' }));
@@ -156,7 +157,7 @@ test('batch delete only picks library roles; my IPs are greyed out and never del
   api.confirm.mockImplementation((o: any) => void o.onOk());
   render(<AssetsPeople library="all" folders={[]}/>);
   await screen.findByRole('button', { name: '查看 测试角色一' });
-  fireEvent.click(screen.getByRole('button', { name: '批量选择' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择' }));
   expect((screen.getByRole('button', { name: '小紫' }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: '选择 测试角色一' }));
   fireEvent.click(screen.getByRole('button', { name: '选择 测试角色二' }));

@@ -54,6 +54,12 @@ components:
 
   # ── Reusable response wrappers ──────────
   schemas:
+    VideoPortraitVerified:
+      type: object
+      required: [key, placement]
+      properties:
+        key: {type: string}
+        placement: {type: string, enum: [person, virtual]}
     VideoPortraitItem:
       type: object
       required: [id, libraryId, key, mediaType, label, status, updatedAt]
@@ -13986,16 +13992,28 @@ paths:
       tags: [dap]
       operationId: dapVerifyCapture
       description: >-
-        本人刷脸核验 + 自动登记授权。前置条件：该次捕获必须同时绑定当前平台协议确认快照，且七牛真人组为 active。
-        通过后标 verified，并把 consentId / 协议版本与摘要 / 七牛 qgroupid / 核验时间写入 LIC 证据链；
-        随后 best-effort 把捕获素材送审（送审失败只告警，不回滚授权证据）。
+        本人确认 + 自动登记授权（2026-11-14 起改用火山引擎本人核验，七牛不再接入）。请求带 personId（资产页「人像核验」里本人核验已通过的人物，
+        只认服务端已确认的结果，不查供应商）并同时确认当前真人数字形象授权说明。通过后标 verified，LIC 写入 consentId / 协议版本与摘要 /
+        核验人物编号 / 核验时间（verificationProvider=volcengine_ark）。不向七牛送审；授权由火山核验登记且生效时，真人生成不再要求七牛素材审核。
+        不带 personId 的旧调用返回 410 DAP_REAL_AUTH_RETIRED。
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                personId: { type: string }
+                agreementVersion: { type: string }
+                agreementAccepted: { type: boolean }
       responses:
-        '200': { description: 'ok（passed / captureId / authSessionId / licenseId）' }
-        '400': { description: 'DAP_NO_FOOTAGE 未上传素材' }
-        '409': { description: 'DAP_AUTH_NOT_COMPLETED 尚未完成刷脸认证' }
-        '503': { description: 'DAP_MODELINK_NOT_CONFIGURED 未配置素材合规服务（会话阶段即报错）' }
+        '200': { description: 'ok（passed / captureId / personId / licenseId）' }
+        '400': { description: 'DAP_NO_FOOTAGE 未上传素材；DAP_CONSENT_REQUIRED / DAP_CONSENT_VERSION_CHANGED 未确认或说明已更新' }
+        '409': { description: 'DAP_PERSON_NOT_VERIFIED 所选人物尚未通过本人核验' }
+        '410': { description: 'DAP_REAL_AUTH_RETIRED 七牛刷脸已停用' }
 
   # ── 真人授权确认 + 本人刷脸 + 素材送审（v0.106；七牛 modelink）──
+  # 2026-11-14 七牛不再接入：POST real-auth/sessions、sessions/{id}/restart、materials 一律 410 DAP_REAL_AUTH_RETIRED（代码保留）；GET 只读历史。
   # 接入点由 admin「AI 应用绑定」的用途 DAP_REAL_AVATAR 提供；未配置且不允许 mock → 503（§8.0，不产假授权）。
   /v1/real-auth/agreement:
     get:
@@ -18406,6 +18424,13 @@ paths:
       description: 仅本人可见，Cache-Control no-store；GET 不触发供应商核验或入库。
       responses:
         '200': {description: 人像素材、核验人物及当前授权说明, content: {application/json: {schema: {type: object, properties: {data: {$ref: '#/components/schemas/VideoPortraitOverview'}}}}}}
+  /v1/ip-studio/asset-library/verified:
+    get:
+      tags: [ipstudio]
+      summary: 本人已进入素材库的人像图片
+      description: 资产页图片标记用。只返回状态为 active 的本人图片记录（person 为已通过本人人脸核验，virtual 为已通过虚拟人像审核），只读本地记录，不调用供应商；Cache-Control no-store。
+      responses:
+        '200': {description: 已入库的图片 key, content: {application/json: {schema: {type: object, properties: {data: {type: array, items: {$ref: '#/components/schemas/VideoPortraitVerified'}}}}}}}
   /v1/ip-studio/asset-library/check:
     post:
       tags: [ipstudio]

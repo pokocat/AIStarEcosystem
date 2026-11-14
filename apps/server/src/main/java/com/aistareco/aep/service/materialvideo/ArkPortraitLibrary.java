@@ -69,6 +69,24 @@ public class ArkPortraitLibrary {
         var persons=db.queryForList("SELECT * FROM video_asset_person WHERE owner_user_id=? ORDER BY created_at DESC LIMIT 100",owner).stream().map(this::person).toList();
         return new Overview(all,items,persons,Map.of("version",VERSION,"text",AGREEMENT,"virtualDeclaration",VIRTUAL_DECLARATION));
     }
+    /** 资产页给图片打「已进素材库」标记用：本人已通过审核的人像图片。只读本地记录，不查供应商。 */
+    public record Verified(String key,String placement) {}
+    public List<Verified> verified(String owner) {
+        var seen=new LinkedHashMap<String,String>();
+        for(var r:db.queryForList("SELECT source_key,placement FROM video_asset_portrait WHERE owner_user_id=? AND status='active' AND media_type='image' ORDER BY updated_at DESC LIMIT 2000",owner)){
+            String key=(String)r.get("source_key"),placement=(String)r.get("placement");
+            // 同一张图在两个库里都通过时，本人核验比虚拟审核说得更具体。
+            if(key!=null&&(!seen.containsKey(key)||"person".equals(placement)))seen.put(key,"person".equals(placement)?"person":"virtual");
+        }
+        return seen.entrySet().stream().map(e->new Verified(e.getKey(),e.getValue())).toList();
+    }
+    /** 真人复刻登记授权用：本人名下本人核验已通过（有官方真人组）的人物。不查供应商，只认服务端已确认的结果。 */
+    public Person requireVerifiedPerson(String owner,String id) {
+        var rows=id==null||id.isBlank()?List.<Map<String,Object>>of():db.queryForList("SELECT * FROM video_asset_person WHERE id=? AND owner_user_id=?",id,owner);
+        if(rows.isEmpty()||!"active".equals(rows.get(0).get("status"))||rows.get(0).get("group_id")==null)
+            throw new BusinessException(HttpStatus.CONFLICT,"DAP_PERSON_NOT_VERIFIED","请先完成本人核验。");
+        return person(rows.get(0));
+    }
     public boolean isOfficialLibrary(String id){return libraries.findById(id).map(r->"ark".equals(r.getAdapter())).orElse(false);}
     public void requireOwnedKeys(String owner,Collection<String> keys){for(String key:keys)projects.requireOwnedAssetKey(owner,key);}
     public List<Item> itemsFor(String owner,String lib,Collection<String> keys) {

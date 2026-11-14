@@ -5,13 +5,14 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Button, Checkbox, Dropdown, Input, Modal } from 'antd';
-import { ChevronDown, Image as ImageIcon, Plus, Search, ShieldCheck, SquareCheck, UserRound, Video } from 'lucide-react';
+import { ChevronDown, Image as ImageIcon, Plus, Search, UserRound, Video } from 'lucide-react';
 import type { IpSavedAsset, LibraryFolder, LibraryObject } from '@ai-star-eco/types';
 import { addLibraryVersion, createLibraryObject, deleteLibraryObject, libraryObjects, mainLibraryVersion } from '@/canvas-bridge/asset-library';
 import { studioHref, useHubData } from '@/components/hub/data';
 import { AssetApi, AvatarApi, LicenseApi } from '@/proto/api';
 import type { Avatar, License, StarGrant } from '@/proto/data';
 import { AssetThumb } from './asset-thumb';
+import { PortraitVerifiedMark } from './portrait-verified-mark';
 import { confirmAssetDelete } from './assets-delete';
 import { AI_LIBRARY, objectOriginLabel } from './assets-hub-shared';
 import { LibraryAssetEditor } from './library-asset-editor';
@@ -134,8 +135,8 @@ export function AssetsPeople({ library, folders, from = '', onFromChange }: { li
       {selecting
         ? <><span className="assets-count">已选 {selected.length} 个角色</span>
           <Button danger disabled={!selected.length} onClick={remove}>删除</Button>
-          <Button onClick={stopSelecting}>完成</Button></>
-        : <Button icon={<SquareCheck size={15}/>} disabled={!roles.length} onClick={() => setSelecting(true)}>批量选择</Button>}
+          <Button onClick={stopSelecting}>取消选择</Button></>
+        : !!roles.length && <Button onClick={() => setSelecting(true)}>选择</Button>}
     </div>
     {actionError && <p className="assets-notice"><StudioErrorNotice error={actionError}/></p>}
     {errors.map((e, i) => <p key={i} className="assets-notice"><StudioErrorNotice error={e}/><Button size="small" onClick={() => setRevision(n => n + 1)}>重试</Button></p>)}
@@ -162,7 +163,7 @@ export function AssetsPeople({ library, folders, from = '', onFromChange }: { li
 function PersonCard({ person: p, selecting = false, selected = false, onOpen }: { person: Person; selecting?: boolean; selected?: boolean; onOpen: () => void }) {
   const cover = <span className="assets-person-cover">
     {p.image?.src || p.image?.storageKey ? <AssetThumb kind="image" src={p.image.src || undefined} storageKey={p.image.storageKey}/> : <span className="assets-person-blank"><UserRound size={40} strokeWidth={1.1}/></span>}
-    {p.verified && <span className="assets-person-shield" role="img" aria-label="本人已刷脸确认" title="本人已刷脸确认"><ShieldCheck size={14}/></span>}
+    <PortraitVerifiedMark storageKey={p.image?.storageKey} faceVerified={p.verified}/>
   </span>;
   const body = <>{cover}<span className="assets-person-text"><strong>{p.name}</strong><small>{p.description || '暂无设定'}</small></span>
     <span className="assets-person-meta"><span>{p.meta}</span>{p.tag && <span className={`assets-tag${p.tag.tone ? ` is-${p.tag.tone}` : ''}`}>{p.tag.label}</span>}</span></>;

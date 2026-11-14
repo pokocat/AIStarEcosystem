@@ -2,10 +2,11 @@
 // 资产页的「场景」「道具」：导演台有图后自动进来，也可以在这里新建。
 import { useEffect, useRef, useState } from 'react';
 import { Button, Checkbox, Input, Modal, Spin } from 'antd';
-import { Box, ChevronDown, MapPin, Plus, Search, SquareCheck } from 'lucide-react';
+import { Box, ChevronDown, MapPin, Plus, Search } from 'lucide-react';
 import type { LibraryFolder, LibraryObject } from '@ai-star-eco/types';
 import { createLibraryObject, deleteLibraryObject, libraryObjects, mainLibraryVersion } from '@/canvas-bridge/asset-library';
 import { AssetThumb } from './asset-thumb';
+import { PortraitVerifiedMark } from './portrait-verified-mark';
 import { confirmAssetDelete } from './assets-delete';
 import { AI_LIBRARY, objectOriginLabel } from './assets-hub-shared';
 import { LibraryAssetEditor } from './library-asset-editor';
@@ -79,8 +80,8 @@ export function AssetsObjects({ kind, library, folders, from, onFromChange, onSh
       {selecting
         ? <><span className="assets-count">已选 {selected.length} 个</span>
           <Button danger disabled={!selected.length} onClick={remove}>删除</Button>
-          <Button onClick={stopSelecting}>完成</Button></>
-        : <Button icon={<SquareCheck size={15}/>} disabled={!items.length} onClick={() => setSelecting(true)}>批量选择</Button>}
+          <Button onClick={stopSelecting}>取消选择</Button></>
+        : !!items.length && <Button onClick={() => setSelecting(true)}>选择</Button>}
     </div>
     {actionError && <p className="assets-notice"><StudioErrorNotice error={actionError}/></p>}
     {error && <p className="assets-notice"><StudioErrorNotice error={error}/><Button size="small" onClick={() => setRevision(n => n + 1)}>重试</Button></p>}
@@ -92,7 +93,7 @@ export function AssetsObjects({ kind, library, folders, from, onFromChange, onSh
           const picked = selected.includes(o.id);
           return <li key={o.id}>{selecting && <Checkbox className="assets-tile-check" aria-label={`选择 ${o.name}`} checked={picked} onChange={() => toggle(o.id)}/>}
             <button type="button" className={`assets-person${picked ? ' is-selected' : ''}`} aria-label={`${selecting ? '选择' : '查看'} ${o.name}`} aria-pressed={selecting ? picked : undefined} onClick={() => selecting ? toggle(o.id) : setEditing([o])}>
-            <span className="assets-person-cover">{main ? <AssetThumb kind="image" src={main.url} storageKey={main.storageKey}/> : <span className="assets-person-blank"><Icon size={36} strokeWidth={1.1}/></span>}</span>
+            <span className="assets-person-cover">{main ? <AssetThumb kind="image" src={main.url} storageKey={main.storageKey}/> : <span className="assets-person-blank"><Icon size={36} strokeWidth={1.1}/></span>}<PortraitVerifiedMark storageKey={main?.storageKey}/></span>
             <span className="assets-person-text"><strong>{o.name}</strong><small>{o.description || '暂无描述'}</small></span>
             <span className="assets-person-meta"><span title={o.sources[0]?.title}>{[o.sources[0]?.title, o.versions.length ? `${o.versions.length} 张图` : '暂无图片'].filter(Boolean).join(' · ')}</span>{origin && <span className="assets-tag">{origin}</span>}</span>
           </button></li>;

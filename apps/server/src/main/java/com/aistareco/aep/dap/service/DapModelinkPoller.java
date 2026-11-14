@@ -54,8 +54,13 @@ public class DapModelinkPoller {
         this.props = props;
     }
 
+    @org.springframework.beans.factory.annotation.Value("${aep.dap.modelink.poll-enabled:false}")
+    private boolean pollEnabled;
+
     @Scheduled(fixedDelayString = "${aep.dap.modelink.poll-interval-seconds:10}000")
     public void poll() {
+        // 2026-11-14 七牛不再接入（账户已停用），默认不再轮询；显式开 aep.dap.modelink.poll-enabled 才跑。
+        if (!pollEnabled) return;
         List<DapMaterialGroup> groups = groupRepo.findByStatusIn(DapRealAuthService.PENDING_STATUSES);
         List<DapMaterial> mats = materialRepo.findByStatusIn(DapMaterialService.PENDING_STATUSES);
         if (groups.isEmpty() && mats.isEmpty()) return; // 常态：零上游请求
@@ -91,6 +96,7 @@ public class DapModelinkPoller {
     @Scheduled(fixedDelayString = "${aep.dap.modelink.group-reclaim-interval-seconds:3600}000",
             initialDelayString = "${aep.dap.modelink.group-reclaim-interval-seconds:3600}000")
     public void reclaimTerminalGroups() {
+        if (!pollEnabled) return;
         Instant cutoff = Instant.now().minus(Duration.ofHours(
                 Math.max(1, props.getModelink().getGroupRetentionHours())));
         List<DapMaterialGroup> stale = groupRepo

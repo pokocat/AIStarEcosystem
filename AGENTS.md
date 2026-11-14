@@ -584,7 +584,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 |---|---|---|
 | JWT / AES 密钥 | 启动 fail-fast | dev 默认密钥仅 dev profile |
 | dap 数字人生成 | 503 DAP_ENGINE_NOT_CONFIGURED（不扣费） | `aep.dap.allow-placeholder`（dev true / mysql false） |
-| dap 真人刷脸认证 / 素材送审（七牛 modelink，v0.105） | 503 DAP_MODELINK_NOT_CONFIGURED（不建会话、不产假数据；授权与审核免费，无扣费面）；上游分组配额打满 → 503 DAP_MODELINK_QUOTA_EXCEEDED（账号级仅 3 组，不降级、不产假数据） | `aep.dap.modelink.allow-mock`（dev true / mysql false，生产误开打 ERROR 横幅；mock 产物一律落 `mock=true`） |
+| dap 真人刷脸认证 / 素材送审（七牛 modelink，v0.105；**2026-11-14 已停用**：新会话、重建、送审一律 410 `DAP_REAL_AUTH_RETIRED`，轮询默认关；本人确认改用火山引擎本人核验，`captures/{id}/verify` 带 `personId`） | 503 DAP_MODELINK_NOT_CONFIGURED（不建会话、不产假数据；授权与审核免费，无扣费面）；上游分组配额打满 → 503 DAP_MODELINK_QUOTA_EXCEEDED（账号级仅 3 组，不降级、不产假数据） | `aep.dap.modelink.allow-mock`（dev true / mysql false，生产误开打 ERROR 横幅；mock 产物一律落 `mock=true`） |
 | 文本三件 / 短剧脚本 / 形象锻造 | 503 AI_NOT_CONFIGURED · 502 AI_CALL_FAILED | dev-fake-llm（默认 false，显式开） |
 | 素材视频生成 | 503 VIDEO_NOT_CONFIGURED | 同上 |
 | 音乐生成（v0.138） | 503 MUSIC_NOT_CONFIGURED（端点/AK-SK 未配）· 400 MUSIC_DURATION_UNSUPPORTED（时长越界）· 502 MUSIC_CALL_FAILED —— 全部在 hold 之前判定，**不建任务、不冻结、不产假音频**；`upload-to-cdn=false` 时任务直接判失败并退款（不交付会过期的上游地址） | 无降级开关。未配置时 `GET /me/music/models` 返回空数组，前端显式提示「尚未开通」并禁用创作按钮 |

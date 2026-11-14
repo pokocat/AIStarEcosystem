@@ -21,6 +21,7 @@ vi.mock('./studio-errors', async () => {
   };
 });
 vi.mock('antd', () => ({
+  Tooltip: ({ children }: any) => children,
   Button: ({ icon, loading, type, size, danger, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
   Checkbox: ({ checked, onChange, className, ...p }: any) => <input type="checkbox" checked={checked} onChange={onChange} {...p}/>,
   Input: Object.assign(({ prefix, allowClear, autoFocus, ...p }: any) => <input {...p}/>, { TextArea: (p: any) => <textarea {...p}/> }),
@@ -66,7 +67,7 @@ test('scenes can be selected and deleted together, then the list reloads', async
   api.remove.mockResolvedValue(undefined);
   api.confirm.mockImplementation((o: any) => void o.onOk());
   render(<AssetsObjects kind="scene" library="all" folders={[]} from="" onFromChange={vi.fn()}/>);
-  fireEvent.click(await screen.findByRole('button', { name: '批量选择' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择' }));
   expect(screen.queryByRole('button', { name: /新建场景/ })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '选择 祖宅' }));
   fireEvent.click(screen.getByRole('checkbox', { name: '选择 茶馆' }));
@@ -74,5 +75,5 @@ test('scenes can be selected and deleted together, then the list reloads', async
   expect(api.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: '删除选中的 2 个场景？' }));
   await waitFor(() => expect(api.remove.mock.calls.map(c => c[0])).toEqual(['o1', 'o3']));
   await waitFor(() => expect(api.objects).toHaveBeenCalledTimes(2));
-  expect(screen.getByRole('button', { name: '批量选择' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '选择' })).toBeTruthy();
 });

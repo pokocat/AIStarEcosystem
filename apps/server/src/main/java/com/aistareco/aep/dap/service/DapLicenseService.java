@@ -25,7 +25,7 @@ import java.util.UUID;
 @Service
 public class DapLicenseService {
 
-    private static final int CERTIFICATE_VERSION = 2;
+    private static final int CERTIFICATE_VERSION = 3;
 
     private final DapLicenseRepository licenseRepo;
     private final FileStorageService storage;
@@ -92,9 +92,35 @@ public class DapLicenseService {
         if (consent == null || group == null || !"active".equals(group.getStatus())) {
             throw BusinessException.badRequest("DAP_AUTH_EVIDENCE_REQUIRED", "真人授权证据不完整，请重新完成本人确认");
         }
+        return register(userId, avatarId, subjectName, photoCount, consent, group.getId(),
+                "qiniu_modelink", group.getQgroupid(), verifiedAt);
+    }
+
+    /** 2026-11-14 起七牛不再接入：本人人脸核验改由火山引擎方舟完成，证据是平台的核验人物记录。 */
+    public static final String PROVIDER_ARK = "volcengine_ark";
+
+    @Transactional
+    public DapLicense autoCreateForPerson(String userId, String avatarId, String subjectName, int photoCount,
+                                          DapConsent consent, String personId, Instant verifiedAt) {
+        if (consent == null || personId == null || personId.isBlank()) {
+            throw BusinessException.badRequest("DAP_AUTH_EVIDENCE_REQUIRED", "真人授权证据不完整，请重新完成本人确认");
+        }
+        return register(userId, avatarId, subjectName, photoCount, consent, personId, PROVIDER_ARK, personId, verifiedAt);
+    }
+
+    /** 当前生效、由火山本人核验登记的授权（真人生成不再要求七牛素材审核）。 */
+    public boolean verifiedByArk(String userId, String avatarId) {
+        return licenseRepo.findFirstByAvatarIdAndOwnerUserId(avatarId, userId)
+                .filter(l -> PROVIDER_ARK.equals(l.getVerificationProvider()))
+                .map(l -> "active".equals(statusOf(userId, l.getId())))
+                .orElse(false);
+    }
+
+    private DapLicense register(String userId, String avatarId, String subjectName, int photoCount, DapConsent consent,
+                                String evidenceId, String provider, String reference, Instant verifiedAt) {
         Instant verified = verifiedAt == null ? Instant.now() : verifiedAt;
         DapLicense l = licenseRepo.findFirstByAvatarIdAndOwnerUserId(avatarId, userId).orElse(null);
-        if (l != null && consent.getId().equals(l.getConsentId()) && group.getId().equals(l.getLivenessGroupId())
+        if (l != null && consent.getId().equals(l.getConsentId()) && evidenceId.equals(l.getLivenessGroupId())
                 && hasCompleteLivenessEvidence(l)) {
             if (photoCount > l.getPhotoCount()) {
                 l.setPhotoCount(photoCount);
@@ -120,13 +146,13 @@ public class DapLicenseService {
         l.setStatus("active");
         l.setSignedAt(consent.getAcceptedAt());
         l.setVerifyMethod("liveness");
-        l.setLivenessGroupId(group.getId());
+        l.setLivenessGroupId(evidenceId);
         l.setConsentId(consent.getId());
         l.setAgreementVersion(consent.getAgreementVersion());
         l.setAgreementHash(consent.getAgreementHash());
         l.setConsentedAt(consent.getAcceptedAt());
-        l.setVerificationProvider("qiniu_modelink");
-        l.setVerificationReference(group.getQgroupid());
+        l.setVerificationProvider(provider);
+        l.setVerificationReference(reference);
         l.setVerifiedAt(verified);
         // 证据升级后旧凭证不得继续复用；下次下载按当前模板重新生成。
         l.setCertKey(null);
@@ -225,11 +251,12 @@ public class DapLicenseService {
         String period = (l.getPeriodStart() != null && l.getPeriodEnd() != null)
                 ? fmt.format(l.getPeriodStart()) + " 至 " + fmt.format(l.getPeriodEnd()) : "—";
         boolean liveness = "liveness".equals(l.getVerifyMethod());
+        boolean ark = PROVIDER_ARK.equals(l.getVerificationProvider());
         String evidence = liveness && l.getConsentId() != null
-                ? "平台授权确认 + 七牛云 Modelink 本人刷脸核验"
+                ? (ark ? "平台授权确认 + 火山引擎本人人脸核验" : "平台授权确认 + 七牛云 Modelink 本人刷脸核验")
                 : "平台声明式登记";
         String evidenceRef = liveness
-                ? "平台记录 " + esc(l.getConsentId()) + " · 七牛记录 " + esc(l.getVerificationReference())
+                ? "平台记录 " + esc(l.getConsentId()) + (ark ? " · 核验记录 " : " · 七牛记录 ") + esc(l.getVerificationReference())
                 : "未接入第三方刷脸核验";
         return """
                 <!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">

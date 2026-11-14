@@ -110,7 +110,19 @@ public class DapMaterialService {
         return requireApprovedGenerationAsset(userId, avatarId, null);
     }
 
+    /** 只在需要时注入，单测里可不给。 */
+    private DapLicenseService licenses;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setLicenses(@org.springframework.context.annotation.Lazy DapLicenseService licenses) { this.licenses = licenses; }
+
+    /**
+     * 真人生成的素材门槛。返回七牛审核通过的素材引用；2026-11-14 起七牛不再接入，
+     * 授权由火山引擎本人核验登记且生效时直接放行（返回 null：生成链本来就不读这个引用，它只是门槛）。
+     */
     public String requireApprovedGenerationAsset(String userId, String avatarId, String materialId) {
+        if ((materialId == null || materialId.isBlank()) && licenses != null && licenses.verifiedByArk(userId, avatarId)) {
+            return null;
+        }
         List<DapMaterial> approved = new ArrayList<>();
         for (DapCapture capture : captureRepo.findByAvatarIdAndOwnerUserIdOrderByCreatedAtDesc(avatarId, userId)) {
             materialRepo.findByRefTypeAndRefIdAndOwnerUserIdOrderByCreatedAtDesc("capture", capture.getId(), userId)

@@ -6,6 +6,8 @@ import { DATA, AvatarApi, CaptureApi, JobApi, RealAuthApi, awaitJob, USE_MOCK } 
 import { Portrait } from "./portrait";
 import { MShell } from "./shell";
 import { toast } from "./toast";
+import { ConfigProvider } from "antd";
+import { PORTRAIT_THEME, PortraitPersonModal, portraitVerificationLive, usePortraitOverview } from "@/ip/portrait-review-ui";
 
 // ============================================================
 // 移动端 · 真人复刻 全流程（全屏切屏）
@@ -326,21 +328,26 @@ function RealLastStep({ defaultName, blobUrl, isImage, beauty, onToggleBeauty, o
       hMR('button', { onClick: onRetry, disabled: busy, style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700, color: 'var(--ink-2)' } }, '重新录制')));
 }
 
-// —— 真人授权确认：先确认平台协议，再进入七牛本人刷脸页 ——
-//   七牛 active 仅是活体 / 同人一致性的技术证据；业务授权以平台协议快照为准。
+// —— 真人授权确认：确认平台协议 + 选一位本人核验已通过的人物 ——
+//   2026-11-14 起七牛不再接入，本人人脸核验改用火山引擎（资产页「人像核验」同一套，PortraitPersonModal）。
+//   核验结果由服务端向火山确认；这里只把人物编号和协议确认交给 captures/{id}/verify 登记授权。
+// 旧页面的组件按 hMR 的宽松方式写的，JSX 里用同样宽松的别名。
+const Btn: any = UI.Button, Ico: any = Icons, Nav: any = CenterNav, Review: any = VideoReview;
+const MOCK_PERSON = (name: string) => ({ id: 'VAP-mock', libraryId: 'mock', name: name || '本人', status: 'active', expiresAt: '', createdAt: '' });
+
 function RealAuth({ captureId, subjectName, blobUrl, isImage, beauty, onPassed, onClose }) {
   const [agreement, setAgreement] = useStateMR(null as any);
   const [agreementLoading, setAgreementLoading] = useStateMR(true);
   const [accepted, setAccepted] = useStateMR(false);
-  const [begun, setBegun] = useStateMR(false);
-  const [session, setSession] = useStateMR(null as any);
+  const [personId, setPersonId] = useStateMR('');
+  const [modal, setModal] = useStateMR(null as null | { person?: any });
   const [err, setErr] = useStateMR('');
   const [registering, setRegistering] = useStateMR(false);
-  const [startSeq, setStartSeq] = useStateMR(0);
-  const [verifySeq, setVerifySeq] = useStateMR(0);
-  const [refreshing, setRefreshing] = useStateMR(false);
-  const sessionRef = useRefMR(null as any);
-  const passedRef = useRefMR(false);
+  const portraits = usePortraitOverview(!USE_MOCK, false);
+  const overview = portraits.overview;
+  const persons = USE_MOCK ? [MOCK_PERSON(subjectName)] : (overview?.persons || []).filter((p: any) => p.status === 'active' || portraitVerificationLive(p));
+  const verified = persons.filter((p: any) => p.status === 'active');
+  const libraryId = overview?.libraries?.[0]?.id;
 
   useEffectMR(() => {
     let live = true;
@@ -350,161 +357,87 @@ function RealAuth({ captureId, subjectName, blobUrl, isImage, beauty, onPassed, 
       .finally(() => { if (live) setAgreementLoading(false); });
     return () => { live = false; };
   }, []);
-
-  // 用户明确确认协议后才创建会话；2 秒轮询服务端最终状态。
+  // 只有一位已核验的人时默认选中；选中的人不再可用时清掉。
   useEffectMR(() => {
-    if (!begun || !agreement) return;
-    let live = true;
-    let timer: any = null;
-    setSession(null); setErr('');
-    passedRef.current = false;
-    (async () => {
-      try {
-        const s = await RealAuthApi.start(captureId, agreement.version);
-        if (!live) return;
-        sessionRef.current = s;
-        setSession(s);
-      } catch (e: any) {
-        if (live) setErr(e?.message || '认证通道建立失败，请重试');
-        return;
-      }
-      const poll = async () => {
-        if (!live || !sessionRef.current) return;
-        try {
-          const s = await RealAuthApi.get(sessionRef.current.id);
-          if (!live) return;
-          sessionRef.current = s;
-          setSession(s);
-        } catch { /* 单次轮询失败不打断，下一轮继续 */ }
-        if (live) timer = setTimeout(poll, 2000);
-      };
-      timer = setTimeout(poll, 2000);
-    })();
-    return () => { live = false; if (timer) clearTimeout(timer); };
-  }, [captureId, begun, agreement && agreement.version, startSeq]);
+    if (personId && !verified.some((p: any) => p.id === personId)) setPersonId('');
+    else if (!personId && verified.length === 1) setPersonId(verified[0].id);
+  }, [verified.map((p: any) => p.id).join(',')]);
 
-  // 从系统浏览器 / 第三方页切回时立即刷新，不必等下一轮定时器。
-  useEffectMR(() => {
-    const onVisible = async () => {
-      if (document.visibilityState !== 'visible' || !sessionRef.current) return;
-      try { const s = await RealAuthApi.get(sessionRef.current.id); sessionRef.current = s; setSession(s); } catch {}
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, []);
-
-  // 认证通过 → 核验并登记肖像授权；服务端说「刷脸尚未完成」时回到等待，不当作失败
-  useEffectMR(() => {
-    if (!session || session.status !== 'active' || passedRef.current) return;
-    let live = true;
-    let retry: any = null;
-    setRegistering(true);
-    CaptureApi.verify(captureId)
-      .then((r: any) => { if (!live) return; passedRef.current = true; onPassed(r); })
-      .catch((e: any) => {
-        if (!live) return;
-        if (e?.code === 'DAP_AUTH_NOT_COMPLETED') retry = setTimeout(() => setVerifySeq((n) => n + 1), 2000);
-        else setErr(e?.message || '核验没有通过，请重新认证');
-      })
-      .finally(() => { if (live) setRegistering(false); });
-    return () => { live = false; if (retry) clearTimeout(retry); };
-  }, [session && session.status, verifySeq]);
-
-  const restart = async () => {
-    setErr('');
-    if (!sessionRef.current) { setStartSeq((n) => n + 1); return; }
-    setRefreshing(true);
-    try {
-      const s = await RealAuthApi.restart(sessionRef.current.id);
-      sessionRef.current = s; setSession(s);
-      toast('已重新建立本人确认通道', { tone: 'ok' });
-    } catch (e: any) { setErr(e?.message || '重新发起失败，请稍后再试'); }
-    finally { setRefreshing(false); }
+  const blocker = agreementLoading ? '正在读取授权说明' : !agreement ? '授权说明加载失败' : !personId ? '请选择已核验的人物' : !accepted ? '请勾选同意授权说明' : '';
+  const confirm = async () => {
+    if (blocker || registering) return;
+    setRegistering(true); setErr('');
+    try { onPassed(await CaptureApi.verify(captureId, { personId, agreementVersion: agreement.version, agreementAccepted: true })); }
+    catch (e: any) { setErr(e?.message || '授权登记没有完成，请重试'); void portraits.reload().catch(() => undefined); }
+    finally { setRegistering(false); }
+  };
+  const closeModal = async () => {
+    setModal(null);
+    const latest = await portraits.reload().catch(() => null);
+    const fresh = latest?.persons?.filter((p: any) => p.status === 'active') || [];
+    if (!personId && fresh.length) setPersonId(fresh[0].id);
   };
 
-  const openAuthPage = () => {
-    if (!session?.h5Url) return;
-    // 移动端使用当前页面打开，七牛完成后会自动回跳 #/real-auth/{sessionId}。
-    if (session.mock) { toast('模拟环境：本人刷脸确认将自动完成', { tone: 'ok' }); return; }
-    history.replaceState({ realAuth: session.id }, '', '#/real-auth/' + session.id);
-    window.location.assign(session.h5Url);
-  };
+  const row = { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 13px', borderRadius: 'var(--r-md)', textAlign: 'left' as const, width: '100%', font: 'inherit', cursor: 'pointer' };
+  return <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <Nav onClose={onClose}/>
+    <div className="m-body" style={{ padding: '2px 20px 20px' }}>
+      <div className="m-fade">
+        <h1 style={{ fontFamily: 'var(--font-disp)', fontSize: 24, lineHeight: 1.22, margin: '0 0 8px' }}>{agreement?.title || '真人数字形象授权确认'}</h1>
+        {subjectName && <div className="m-clip1" style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 8px' }}>{'正在为「' + subjectName + '」确认真人授权'}</div>}
+        <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.6, margin: '0 0 16px' }}>{agreement?.summary || (agreementLoading ? '正在读取授权说明…' : '')}</p>
 
-  if (!begun) {
-    return hMR('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
-      hMR(CenterNav, { onClose }),
-      hMR('div', { className: 'm-body', style: { padding: '2px 20px 20px' } },
-        hMR('div', { className: 'm-fade' },
-          hMR('div', { className: 'mono', style: { fontSize: 10.5, letterSpacing: '.12em', color: 'var(--primary)', marginBottom: 8 } }, 'REAL PERSON · CONSENT'),
-          hMR('h1', { style: { fontFamily: 'var(--font-disp)', fontSize: 24, lineHeight: 1.22, margin: '0 0 8px' } }, agreement?.title || '真人数字形象授权确认'),
-          hMR('p', { style: { fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.6, margin: '0 0 16px' } },
-            agreement?.summary || (agreementLoading ? '正在读取当前授权说明…' : err)),
-          agreement && hMR(React.Fragment, null,
-            hMR('div', { style: { padding: '13px 14px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface)', marginBottom: 12 } },
-              hMR('div', { style: { display: 'grid', gridTemplateColumns: '72px 1fr', gap: '8px 10px', fontSize: 12.5, lineHeight: 1.5 } },
-                hMR('span', { style: { color: 'var(--ink-3)' } }, '授权范围'), hMR('strong', null, agreement.scope),
-                hMR('span', { style: { color: 'var(--ink-3)' } }, '有效期限'), hMR('strong', null, agreement.periodMonths + ' 个月'),
-                hMR('span', { style: { color: 'var(--ink-3)' } }, '处理方'), hMR('strong', null, agreement.processors.join(' · ')))),
-            hMR('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 } },
-              agreement.sections.map((item, i) => hMR('div', { key: i, style: { display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 } },
-                hMR('span', { className: 'mono', style: { flex: '0 0 auto', color: 'var(--primary)', fontSize: 10.5, paddingTop: 2 } }, String(i + 1).padStart(2, '0')),
-                hMR('span', null, item)))),
-            hMR('label', { className: 'm-tap', style: { display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 13px', border: '1px solid ' + (accepted ? 'var(--primary)' : 'var(--line)'), borderRadius: 'var(--r-md)', background: accepted ? 'var(--primary-tint)' : 'var(--surface-2)', cursor: 'pointer' } },
-              hMR('input', { type: 'checkbox', checked: accepted, onChange: (e) => setAccepted(e.target.checked), style: { width: 18, height: 18, margin: 0, accentColor: 'var(--primary)', flex: '0 0 auto' } }),
-              hMR('span', { style: { fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink)' } }, '我已阅读并同意以上说明，确认素材中的人物是本人，并同意进入七牛云页面完成本人刷脸核验。'))))),
-      hMR('div', { style: { flex: '0 0 auto', padding: '10px 20px calc(14px + var(--home-ind))' } },
-        hMR(UI.Button, { variant: 'dark', size: 'lg', full: true, disabled: agreementLoading || !agreement || !accepted, onClick: () => { setErr(''); setBegun(true); } }, agreementLoading ? '读取授权说明…' : '同意并继续本人确认')));
-  }
+        <h2 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 8px' }}>本人核验</h2>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.55, margin: '0 0 10px' }}>选择素材里的人物。没有核验过的，需要本人用手机扫码完成火山引擎人脸核验。</p>
+        <div role="radiogroup" aria-label="已核验的人物" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+          {portraits.error && !USE_MOCK && <div style={{ fontSize: 12.5, color: 'var(--err)' }}>{portraits.error}</div>}
+          {!USE_MOCK && !overview && !portraits.error && <div style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>正在读取核验记录…</div>}
+          {persons.map((p: any) => {
+            const active = p.status === 'active', picked = personId === p.id;
+            return <button key={p.id} type="button" role="radio" aria-checked={picked} className="m-tap"
+              onClick={() => active ? setPersonId(p.id) : setModal({ person: p })}
+              style={{ ...row, border: '1px solid ' + (picked ? 'var(--primary)' : 'var(--line)'), background: picked ? 'var(--primary-tint)' : 'var(--surface)' }}>
+              <span style={{ width: 28, height: 28, borderRadius: 99, display: 'grid', placeItems: 'center', flex: '0 0 auto', background: active ? 'var(--ok-s)' : 'var(--surface-3)', color: active ? 'var(--ok)' : 'var(--ink-3)' }}>
+                {active ? <Ico.shield size={15}/> : <Ico.scan size={15}/>}
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <strong className="m-clip1" style={{ display: 'block', fontSize: 13.5 }}>{p.name}</strong>
+                <small style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{active ? '本人核验已通过' : '核验中，点击继续'}</small>
+              </span>
+              {active && <span aria-hidden="true" style={{ width: 18, height: 18, borderRadius: 99, flex: '0 0 auto', border: picked ? '5px solid var(--primary)' : '1.5px solid var(--line-2, #c9ccd1)' }}/>}
+            </button>;
+          })}
+        </div>
+        {!USE_MOCK && <Btn variant="line" full icon={Icons.plus} disabled={!libraryId} onClick={() => setModal({})}>核验新人物</Btn>}
+        {!USE_MOCK && overview && !libraryId && <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 6 }}>本人核验暂不可用，请联系平台处理。</div>}
 
-  const status = err ? 'error' : (session?.status || 'preparing');
-  const TONE: any = {
-    error:         { c: 'var(--err)', s: 'var(--err-s)' },
-    failed:        { c: 'var(--err)', s: 'var(--err-s)' },
-    active:        { c: 'var(--ok)', s: 'var(--ok-s)' },
-    awaiting_auth: { c: 'var(--primary)', s: 'var(--primary-soft)' },
-    validating:    { c: 'var(--primary)', s: 'var(--primary-soft)' },
-    preparing:     { c: 'var(--ink-2)', s: 'var(--surface-3)' },
-  };
-  const HEAD: any = {
-    error:         { title: '认证没有完成', desc: err },
-    failed:        { title: '认证未通过', desc: session?.failReason || '本次刷脸没有通过，请在光线充足的环境下重新认证。' },
-    active:        { title: '本人确认通过', desc: registering ? '正在绑定授权证据并生成登记…' : '活体与同人一致性核验通过，正在继续。' },
-    awaiting_auth: { title: '前往本人刷脸确认', desc: '将在当前页面进入七牛云确认页；完成后会自动返回并继续处理。' },
-    validating:    { title: '正在核验结果', desc: '七牛云正在确认活体与同人一致性，请稍候。' },
-    preparing:     { title: '正在准备确认通道', desc: '正在为本次授权建立短时安全链接…' },
-  };
-  const tone = TONE[status] || TONE.preparing;
-  const head = HEAD[status] || HEAD.preparing;
-  const spinning = status === 'preparing' || status === 'validating' || (status === 'active' && registering);
-
-  return hMR('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
-    hMR(CenterNav, { onClose }),
-    hMR('div', { className: 'm-body', style: { padding: '2px 22px 0', textAlign: 'center' } },
-      hMR('div', { className: 'm-fade' },
-        // 状态图标
-        hMR('div', { style: { width: 56, height: 56, borderRadius: 18, margin: '2px auto 14px', display: 'grid', placeItems: 'center', background: tone.s, color: tone.c } },
-          spinning
-            ? hMR(UI.Spinner, { size: 22, c: tone.c })
-            : hMR(status === 'active' ? Icons.check : status === 'awaiting_auth' ? Icons.scan : Icons.warn, { size: 26, stroke: 2.2 })),
-        hMR('h1', { style: { fontSize: 22, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, head.title),
-        subjectName && hMR('div', { className: 'm-clip1', style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 auto 8px', maxWidth: 280 } }, '正在为「' + subjectName + '」完成真人授权确认'),
-        hMR('p', { style: { fontSize: 13, color: status === 'error' || status === 'failed' ? 'var(--err)' : 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 18px', maxWidth: 290, wordBreak: 'break-word' } }, head.desc),
-
-        // 操作区
-        status === 'awaiting_auth' && hMR('div', { style: { margin: '0 auto 16px', maxWidth: 300 } },
-          hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.scan, onClick: openAuthPage }, '进入七牛云本人确认'),
-          hMR('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10 } },
-            hMR('span', { style: { fontSize: 11.5, color: 'var(--ink-3)', lineHeight: 1.45, textAlign: 'left', flex: 1, minWidth: 0 } },
-              '链接约 2 分钟有效；如已过期，需要重新建立通道。'),
-            hMR('button', { onClick: restart, disabled: refreshing, className: 'm-tap', style: { flex: '0 0 auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--primary)' } }, refreshing ? '建立中…' : '重新建立'))),
-
-        (status === 'failed' || status === 'error') && hMR('div', { style: { marginBottom: 16 } },
-          hMR(UI.Button, { variant: 'primary', icon: Icons.retry, disabled: refreshing, onClick: restart }, refreshing ? '重新建立中…' : '重新发起本人确认')),
-
-        hMR(VideoReview, { badge: '肖像已保护', blobUrl, isImage, beauty }),
-        hMR('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 18, padding: '12px 14px', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', textAlign: 'left' } },
-          hMR(Icons.shield, { size: 16, style: { color: 'var(--ok)', flex: '0 0 auto', marginTop: 1 } }),
-          hMR('span', { style: { fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5 } }, '平台保存你的授权确认快照；七牛云仅提供活体与同人一致性核验。两项证据齐全后才会登记授权凭证。')))));
+        {agreement && <>
+          <div style={{ padding: '13px 14px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface)', margin: '18px 0 12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', gap: '8px 10px', fontSize: 12.5, lineHeight: 1.5 }}>
+              <span style={{ color: 'var(--ink-3)' }}>授权范围</span><strong>{agreement.scope}</strong>
+              <span style={{ color: 'var(--ink-3)' }}>有效期限</span><strong>{agreement.periodMonths + ' 个月'}</strong>
+              <span style={{ color: 'var(--ink-3)' }}>处理方</span><strong>{agreement.processors.join(' · ')}</strong>
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+            {agreement.sections.map((item: string, i: number) => <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
+              <span className="mono" style={{ flex: '0 0 auto', color: 'var(--primary)', fontSize: 10.5, paddingTop: 2 }}>{String(i + 1).padStart(2, '0')}</span><span>{item}</span>
+            </div>)}
+          </div>
+          <label className="m-tap" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 13px', border: '1px solid ' + (accepted ? 'var(--primary)' : 'var(--line)'), borderRadius: 'var(--r-md)', background: accepted ? 'var(--primary-tint)' : 'var(--surface-2)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} style={{ width: 18, height: 18, margin: 0, accentColor: 'var(--primary)', flex: '0 0 auto' }}/>
+            <span style={{ fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink)' }}>我已阅读并同意以上说明，确认素材中的人物是本人。</span>
+          </label>
+        </>}
+        <div style={{ marginTop: 16 }}><Review badge="肖像已保护" blobUrl={blobUrl} isImage={isImage} beauty={beauty}/></div>
+      </div>
+    </div>
+    <div style={{ flex: '0 0 auto', padding: '10px 20px calc(14px + var(--home-ind))' }}>
+      {(err || blocker) && <div role={err ? 'alert' : undefined} style={{ fontSize: 12, color: err ? 'var(--err)' : 'var(--ink-3)', textAlign: 'center', marginBottom: 8, wordBreak: 'break-word' }}>{err || blocker}</div>}
+      <Btn variant="dark" size="lg" full disabled={!!blocker || registering} onClick={confirm}>{registering ? '正在登记授权…' : '完成确认'}</Btn>
+    </div>
+    {modal && <ConfigProvider theme={PORTRAIT_THEME} button={{ autoInsertSpace: false }}><PortraitPersonModal libraryId={libraryId} overview={overview} initialPerson={modal.person} onClose={() => { void closeModal(); }} onChanged={async () => { await portraits.reload(); }}/></ConfigProvider>}
+  </div>;
 }
 
 // —— 身份核验 + 生成（真实管线进度）——
@@ -539,7 +472,7 @@ function RealReady({ avatar, onContinue, onClose, authOnly, materialOnly }) {
           hMR('div', { style: { position: 'relative', width: 44, height: 44, borderRadius: 14, background: 'var(--primary)', display: 'grid', placeItems: 'center', color: '#fff' } }, hMR(Icons.check, { size: 24, stroke: 2.6 }))),
         hMR('h1', { style: { fontSize: 25, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, materialOnly ? '真人素材已入库' : authOnly ? '真人授权已完成' : '你的数字人已就绪'),
         hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 20px', maxWidth: 260 } },
-          materialOnly ? '授权证据已经登记，七牛云正在逐条审核素材；审核通过后才能在视频生成时选择使用。' : authOnly ? '肖像授权已登记，这个形象现在可以正常用于合成出片。' : '下一步可精调脸型、肤质与滤镜，满意后再保存到名录。'),
+          materialOnly ? '授权证据已登记。' : authOnly ? '肖像授权已登记，这个形象现在可以正常用于合成出片。' : '下一步可精调脸型、肤质与滤镜，满意后再保存到名录。'),
         avatar && avatar.imageUrl && hMR('div', { style: { width: 170, margin: '0 auto 20px', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)' } },
           hMR(Portrait, { char: avatar, variant: 'key', ratio: '4 / 5', expr: 'calm' })),
         (authOnly || materialOnly)
@@ -550,90 +483,21 @@ function RealReady({ avatar, onContinue, onClose, authOnly, materialOnly }) {
 }
 
 /**
- * 七牛回跳后的可恢复页面。它只依赖 sessionId，可在刷新、微信 WebView 回流或重新登录后继续。
+ * 七牛刷脸回跳页（#/real-auth/{sessionId}）。2026-11-14 起七牛不再接入，旧链接打开后说明改用火山引擎核验，
+ * 不再向七牛查询，也不再用旧会话登记授权。
  */
 function MRealAuthResume({ sessionId, ctx }) {
-  const [session, setSession] = useStateMR(null as any);
-  const [phase, setPhase] = useStateMR('loading'); // loading | waiting | sealing | ready | failed
-  const [message, setMessage] = useStateMR('正在读取本人确认结果…');
-  const [avatar, setAvatar] = useStateMR(null as any);
-  const [busy, setBusy] = useStateMR(false);
-  const processedRef = useRefMR(false);
-
-  useEffectMR(() => {
-    let live = true;
-    let timer: any;
-    const poll = async () => {
-      try {
-        const s = await RealAuthApi.get(sessionId);
-        if (!live) return;
-        setSession(s);
-        if (s.status === 'failed') {
-          setPhase('failed'); setMessage(s.failReason || '本次本人确认没有通过。'); return;
-        }
-        if (s.status === 'active') {
-          if (processedRef.current) return;
-          processedRef.current = true;
-          setPhase('sealing'); setMessage('核验通过，正在绑定授权证据…');
-          try {
-            await CaptureApi.verify(s.captureId);
-            const a = s.avatarId ? await AvatarApi.get(s.avatarId) : null;
-            if (!live) return;
-            setAvatar(a); setPhase('ready'); setMessage('授权证据已登记，素材正在逐条审核。');
-            ctx.reload && ctx.reload();
-          } catch (e: any) {
-            if (!live) return;
-            processedRef.current = false;
-            setPhase('failed'); setMessage(e?.message || '授权登记没有完成，请重试。');
-          }
-          return;
-        }
-        setPhase('waiting');
-        setMessage(s.status === 'validating' ? '七牛云正在确认活体与同人一致性…' : '本人确认尚未完成。');
-        timer = setTimeout(poll, 1800);
-      } catch (e: any) {
-        if (!live) return;
-        setPhase('failed'); setMessage(e?.message || '确认会话不存在或已经失效。');
-      }
-    };
-    poll();
-    return () => { live = false; if (timer) clearTimeout(timer); };
-  }, [sessionId]);
-
-  const reopen = () => {
-    if (!session?.h5Url) return;
-    if (session.mock) { toast('模拟环境会自动完成本人确认', { tone: 'ok' }); return; }
-    window.location.assign(session.h5Url);
-  };
-  const restart = async () => {
-    if (!session || busy) return;
-    setBusy(true);
-    try {
-      const s = await RealAuthApi.restart(session.id);
-      setSession(s); setPhase('waiting'); setMessage('新通道已建立，请继续本人确认。');
-      if (!s.mock) { window.location.replace('#/real-auth/' + s.id); window.location.reload(); }
-    } catch (e: any) { setMessage(e?.message || '重新发起失败，请稍后再试。'); }
-    finally { setBusy(false); }
-  };
-  const success = phase === 'ready';
-  const failed = phase === 'failed';
-  return hMR('div', { className: 'm-overlay', 'data-screen-label': '本人确认结果', style: { display: 'flex', flexDirection: 'column' } },
-    hMR(CenterNav, { onClose: () => ctx.tab('library') }),
-    hMR('div', { className: 'm-body', style: { padding: '10px 22px 28px', textAlign: 'center' } },
-      hMR('div', { className: 'm-fade' },
-        hMR('div', { style: { width: 62, height: 62, borderRadius: 20, margin: '8px auto 17px', display: 'grid', placeItems: 'center', background: success ? 'var(--ok-s)' : failed ? 'var(--err-s)' : 'var(--primary-soft)', color: success ? 'var(--ok)' : failed ? 'var(--err)' : 'var(--primary)' } },
-          phase === 'loading' || phase === 'waiting' || phase === 'sealing'
-            ? hMR(UI.Spinner, { size: 23 })
-            : hMR(success ? Icons.check : Icons.warn, { size: 28, stroke: 2.2 })),
-        hMR('div', { className: 'mono', style: { fontSize: 10.5, letterSpacing: '.12em', color: 'var(--ink-3)', marginBottom: 7 } }, sessionId),
-        hMR('h1', { style: { fontFamily: 'var(--font-disp)', fontSize: 24, margin: '0 0 9px' } },
-          success ? '真人素材已入库' : failed ? '本人确认未完成' : '正在确认最终结果'),
-        hMR('p', { style: { fontSize: 13.5, color: failed ? 'var(--err)' : 'var(--ink-2)', lineHeight: 1.6, margin: '0 auto 22px', maxWidth: 300 } }, message),
-        success && hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', onClick: () => ctx.go('realmaterials') }, '查看真人素材库'),
-        phase === 'waiting' && session?.h5Url && hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.scan, onClick: reopen }, '继续本人刷脸确认'),
-        failed && session && hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.retry, disabled: busy, onClick: restart }, busy ? '重新建立中…' : '重新发起本人确认'),
-        hMR('div', { style: { marginTop: 18, padding: '12px 14px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface-2)', textAlign: 'left', fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.55 } },
-          '最终状态由服务端向七牛云查询确认，浏览器回跳本身不会直接让授权生效。'))));
+  return <div className="m-overlay" data-screen-label="本人确认结果" style={{ display: 'flex', flexDirection: 'column' }}>
+    <Nav onClose={() => ctx.tab('library')}/>
+    <div className="m-body" style={{ padding: '10px 22px 28px', textAlign: 'center' }}>
+      <div className="m-fade">
+        <div style={{ width: 62, height: 62, borderRadius: 20, margin: '8px auto 17px', display: 'grid', placeItems: 'center', background: 'var(--primary-soft)', color: 'var(--primary)' }}><Ico.shield size={28} stroke={2.2}/></div>
+        <h1 style={{ fontFamily: 'var(--font-disp)', fontSize: 24, margin: '0 0 9px' }}>本人确认方式已更新</h1>
+        <p style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.6, margin: '0 auto 22px', maxWidth: 300 }}>本人人脸核验已改用火山引擎。请在真人素材库中重新确认这位人物。</p>
+        <Btn variant="dark" full size="lg" onClick={() => ctx.go('realmaterials')}>前往真人素材库</Btn>
+      </div>
+    </div>
+  </div>;
 }
 
 // —— 外壳：编排 capture → footage → 刷脸认证 → verify → generate ——

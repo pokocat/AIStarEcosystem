@@ -21,6 +21,7 @@ public class VideoPortraitController {
     @GetMapping("/reviews/{id}") public ApiResponse<VideoPortraitReviewService.Review> review(Principal p,@PathVariable String id){return ApiResponse.of(reviews.get(p.getName(),id));}
     @PostMapping("/reviews/{id}/resume") public ApiResponse<VideoPortraitReviewService.Review> resume(Principal p,@PathVariable String id){return ApiResponse.of(reviews.resume(p.getName(),id));}
     @GetMapping public ResponseEntity<ApiResponse<ArkPortraitLibrary.Overview>> list(Principal p){return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.of(portraits.overview(p.getName())));}
+    @GetMapping("/verified") public ResponseEntity<ApiResponse<List<ArkPortraitLibrary.Verified>>> verified(Principal p){return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.of(portraits.verified(p.getName())));}
     @PostMapping("/items") public ApiResponse<ArkPortraitLibrary.Item> register(Principal p,@RequestBody Register b){return ApiResponse.of(portraits.register(p.getName(),b.libraryId(),b.key(),b.mediaType(),b.label()));}
     @PostMapping("/items/{id}/declaration") public ApiResponse<ArkPortraitLibrary.Item> declare(Principal p,@PathVariable String id,@RequestBody Declaration b){return ApiResponse.of(portraits.declare(p.getName(),id,b.kind(),b.personId(),b.accepted(),b.agreementVersion()));}
     @PostMapping("/items/declarations")

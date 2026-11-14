@@ -52,6 +52,16 @@ class DapModelinkPollerTest {
                 mock(DapCaptureRepository.class), realAuth, aigc, modelink,
                 mock(FileStorageService.class), new DapSupport());
         poller = new DapModelinkPoller(groupRepo, materialRepo, realAuth, materials, props);
+        // 2026-11-14 起默认不轮询七牛；这里测的是打开时的行为。
+        org.springframework.test.util.ReflectionTestUtils.setField(poller, "pollEnabled", true);
+    }
+
+    @Test
+    void doesNothingWhenPollingIsOff() {
+        org.springframework.test.util.ReflectionTestUtils.setField(poller, "pollEnabled", false);
+        poller.poll();
+        poller.reclaimTerminalGroups();
+        verifyNoInteractions(groupRepo, materialRepo, modelink);
     }
 
     private DapMaterialGroup group(String status) {

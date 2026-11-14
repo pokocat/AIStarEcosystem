@@ -45,20 +45,41 @@ html[data-layout="desktop"] .assets-lib-new { margin-top: 6px; }
 .assets-lib-head h2 { margin: 0; font-size: 15px; font-weight: 500; line-height: 1.4; }
 .assets-lib-head p { margin: 0; font-size: 12.5px; color: var(--ip-muted, #5b6572); }
 
-/* ── 工具条 ── */
-.assets-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; }
-.assets-search.ant-input-affix-wrapper { width: 100%; max-width: 260px; height: 34px; border-color: var(--sn-field, #e3e6ea); border-radius: 10px; font-size: 12.5px; box-shadow: none; }
-.assets-search .ant-input-prefix { color: var(--ip-muted, #5b6572); }
-.assets-select { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px 0 12px; border: 1px solid var(--sn-field, #e3e6ea); border-radius: 10px; background: #fff; font: inherit; font-size: 12.5px; color: var(--ip-ink, #17202a); cursor: pointer; }
+/* ── 工具条（2026-11-14 对齐「项目」页）：搜索占满一行，筛选是无边框的文字加箭头，「选择」是白底细边小按钮，数量放在下一行。
+   四个分类（全部 / 人物 / 场景道具 / 官方形象）都用这一套类名，在这里统一，不改各自的结构。 ── */
+.assets-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.assets-search.ant-input-affix-wrapper { flex: 1 1 220px; width: auto; min-width: 0; height: 34px; padding: 0 12px; border: 1px solid var(--sn-field, #e3e6ea); border-radius: 10px; background: #fff; font-size: 12.5px; box-shadow: none; }
+.assets-search.ant-input-affix-wrapper:hover { border-color: var(--sn-field, #e3e6ea); }
+.assets-search.ant-input-affix-wrapper-focused, .assets-search.ant-input-affix-wrapper:focus-within { border-color: #c5cad1; box-shadow: 0 0 0 3px rgba(23, 32, 42, .06); }
+.assets-search .ant-input { font-size: 12.5px; }
+.assets-search .ant-input-prefix { margin-inline-end: 8px; color: var(--ip-muted, #5b6572); }
+.assets-search .ant-input-prefix svg { width: 15px; height: 15px; stroke-width: 1.5; }
+/* 下拉筛选：和项目页的「全部类型 / 全部状态」一样，平时只是文字加箭头，悬停或展开时有浅灰底。 */
+.assets-select { display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; height: 34px; padding: 0 10px 0 12px; border: 0; border-radius: 10px; background: transparent; font: inherit; font-size: 12.5px; color: var(--sn-text-2, #3d4651); cursor: pointer; }
+.assets-select:hover, .assets-select[aria-expanded="true"], .assets-select.ant-dropdown-open { background: var(--ip-soft, #f3f4f6); color: var(--ip-ink, #17202a); }
 .assets-select svg { color: #8a929c; }
+.assets-select:focus-visible { outline: 2px solid var(--ip-ink, #17202a); outline-offset: 1px; }
+.assets-source-select.ant-select { flex-shrink: 0; max-width: 220px; font-size: 12.5px; }
+.assets-source-select.ant-select .ant-select-selector, .assets-source-select.ant-select { height: 34px; border: 0; border-radius: 10px; background: transparent; box-shadow: none; color: var(--sn-text-2, #3d4651); }
+.assets-source-select.ant-select:hover, .assets-source-select.ant-select-open, .assets-source-select.ant-select:hover .ant-select-selector { background: var(--ip-soft, #f3f4f6); }
+.assets-source-select.ant-select-focused { box-shadow: none; }
 .assets-seg, .lmp-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--ip-soft, #f3f4f6); }
 .assets-seg button, .lmp-seg button { height: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 12px; color: var(--ip-muted, #5b6572); white-space: nowrap; cursor: pointer; }
 .assets-seg button[aria-pressed="true"], .lmp-seg button[aria-selected="true"] { background: #fff; box-shadow: 0 1px 2px rgba(23, 32, 42, .08); color: var(--ip-ink, #17202a); font-weight: 500; }
-.assets-toolbar-gap { flex: 1; }
-.assets-count { font-size: 12px; color: var(--ip-muted, #5b6572); white-space: nowrap; }
-.assets-toolbar .ant-btn { height: 34px; border-radius: 10px; font-size: 12.5px; }
+.assets-toolbar-gap { display: none; }
+/* 总数（带 aria-live 的那个）挪到工具条下一行左边，和项目页「103 张画布」同一个位置；批量选择时的「已选 N 个」留在按钮旁边。 */
+.assets-count { font-size: 12px; color: var(--ip-muted, #5b6572); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.assets-toolbar>.assets-count[aria-live] { order: 20; flex-basis: 100%; margin-top: 2px; }
+.assets-toolbar .ant-btn { flex-shrink: 0; height: 32px; padding: 0 12px; border: 1px solid var(--ip-line, #eceef1); border-radius: 9px; background: #fff; box-shadow: none; font-size: 12px; font-weight: 500; color: var(--ip-ink, #17202a); }
+.assets-toolbar .ant-btn:not(:disabled):hover { border-color: var(--ip-line, #eceef1); background: var(--ip-soft, #f3f4f6); color: var(--ip-ink, #17202a); }
+.assets-toolbar .ant-btn.ant-btn-dangerous { color: var(--ip-error, #ad3449); }
+.assets-toolbar .ant-btn.ant-btn-dangerous:not(:disabled):hover { background: var(--ip-error-soft, #fcedef); color: var(--ip-error, #ad3449); }
+.assets-toolbar .ant-btn:disabled { opacity: .5; background: #fff; }
+.assets-toolbar .ant-btn .anticon, .assets-toolbar .ant-btn svg { width: 14px; height: 14px; }
 .assets-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 12.5px; }
 .assets-form-error { margin: 10px 0 0; font-size: 12.5px; }
+/* 标题右边的「人像核验」：和项目页标题右边的按钮同一个位置，用白底细边的次要按钮。 */
+.studio-page.studio-next-page.assets-hub-page .studio-page-actions .ip-brand-secondary { gap: 6px; }
 
 /* ── 瀑布流 ── */
 .assets-wall { display: flex; gap: 14px; align-items: flex-start; }
@@ -152,7 +173,8 @@ html[data-layout="desktop"] .assets-people-grid { grid-template-columns: repeat(
 .assets-person-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .assets-person:hover .assets-person-cover { box-shadow: 0 0 0 1px var(--sn-field, #e3e6ea); }
 .assets-person-blank { display: grid; width: 100%; height: 100%; place-items: center; color: #b8bec6; }
-.assets-person-shield { position: absolute; left: 8px; bottom: 8px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #fff; color: #2f8a5b; box-shadow: 0 1px 3px rgba(23, 32, 42, .18); }
+/* 认证盾牌（portrait-verified-mark.tsx）：右下角，和左下角的类型标签错开。 */
+.portrait-verified-mark { position: absolute; right: 8px; bottom: 8px; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #fff; color: #2f8a5b; box-shadow: 0 1px 3px rgba(23, 32, 42, .18); }
 .assets-person-text { display: flex; flex-direction: column; min-width: 0; padding: 0 2px; }
 .assets-person-text strong { font-size: 13.5px; font-weight: 500; }
 .assets-person-text small { overflow: hidden; font-size: 12px; color: var(--ip-muted, #5b6572); white-space: nowrap; text-overflow: ellipsis; }

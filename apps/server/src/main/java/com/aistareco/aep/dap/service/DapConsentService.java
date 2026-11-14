@@ -19,17 +19,17 @@ import java.util.UUID;
 @Service
 public class DapConsentService {
 
-    public static final String VERSION = "real-avatar-v1.0-2026-08-03";
+    public static final String VERSION = "real-avatar-v2.0-2026-11-14";
     public static final String TITLE = "真人数字形象授权及个人信息处理告知";
     public static final String SCOPE = "本人真人形象素材用于数字分身创建、存储，以及本人主动发起的内容生成";
     public static final int PERIOD_MONTHS = 24;
     public static final List<String> PLATFORMS = List.of("数字资产平台", "经本人主动授权接入的应用");
-    public static final List<String> PROCESSORS = List.of("七牛云 Modelink", "七牛云认证供应商");
+    public static final List<String> PROCESSORS = List.of("火山引擎方舟");
     private static final String SUMMARY = "确认本人刷脸核验、真人素材处理与数字分身使用范围；刷脸核验不等同于证件实名或公证。";
     private static final List<String> SECTIONS = List.of(
             "使用目的：创建并管理本人的真人数字形象，仅用于本人主动发起的创作与接入。",
             "处理信息：录制视频、关键帧与刷脸结果将用于活体核验、同人一致性比对和素材审核。",
-            "第三方处理：核验素材会提交至七牛云 Modelink 及其认证供应商，平台仅以七牛真人组 active 状态作为技术核验证据。",
+            "第三方处理：本人人脸核验由火山引擎方舟完成，平台仅以其核验通过的结果作为技术核验证据。",
             "授权范围：不自动授权任意第三方或任意用途；接入其他应用须由本人再次主动操作。",
             "授权期限：自确认之日起 24 个月；到期、撤回或删除后停止新增使用，已依法完成的处理另按协议约定执行。",
             "撤回方式：可在授权登记中查看凭证；如需撤回授权或删除素材，请联系平台客服处理。"

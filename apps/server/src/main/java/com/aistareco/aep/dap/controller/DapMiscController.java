@@ -81,9 +81,20 @@ public class DapMiscController {
         return ApiResponse.of(captureService.uploadFootage(uid(principal), id, file));
     }
 
+    /** personId：资产页「人像核验」里本人核验已通过的人物；同时确认真人数字形象授权说明。 */
+    public record VerifyCaptureRequest(String personId, String agreementVersion, Boolean agreementAccepted) {}
+
     @PostMapping("/captures/{id}/verify")
-    public ApiResponse<Map<String, Object>> verify(Principal principal, @PathVariable String id) {
-        return ApiResponse.of(captureService.verify(uid(principal), id));
+    public ApiResponse<Map<String, Object>> verify(Principal principal, @PathVariable String id,
+                                                   @RequestBody(required = false) VerifyCaptureRequest req,
+                                                   jakarta.servlet.http.HttpServletRequest http) {
+        if (req == null || req.personId() == null || req.personId().isBlank()) {
+            throw DapRealAuthController.retired();
+        }
+        String forwarded = http.getHeader("X-Forwarded-For");
+        String ip = forwarded != null && !forwarded.isBlank() ? forwarded.split(",")[0].trim() : http.getRemoteAddr();
+        return ApiResponse.of(captureService.verify(uid(principal), id, req.personId(), req.agreementVersion(),
+                req.agreementAccepted(), ip, http.getHeader("User-Agent")));
     }
 
     // ── 授权 ──────────────────────────────────────────────────

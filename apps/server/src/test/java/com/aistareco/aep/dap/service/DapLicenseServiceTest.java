@@ -67,7 +67,7 @@ class DapLicenseServiceTest {
         assertTrue(html.contains("平台授权确认 + 七牛云 Modelink 本人刷脸核验"));
         assertTrue(html.contains("平台记录 CONS-1 · 七牛记录 qgroup-1"));
         assertTrue(html.contains("不等同于居民身份证实名认证"));
-        assertEquals(2, license.getCertificateVersion());
+        assertEquals(3, license.getCertificateVersion());
         assertEquals("https://cdn.example/cert/key.html", result.get("certificateUrl"));
     }
 }

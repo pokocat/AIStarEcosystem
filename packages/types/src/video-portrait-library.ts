@@ -19,3 +19,6 @@ export type VideoPortraitReview = { jobId: string; items: VideoPortraitItem[]; a
 export type VideoPortraitReviewLink = { jobId: string; reviewId?: string };
 
 export type VideoPortraitPreparation = { libraryId?: string; items: VideoPortraitItem[]; candidateKeys: string[] };
+
+/** 已通过审核、进入官方素材库的人像图片。person = 已通过本人人脸核验；virtual = 已通过虚拟人像审核。 */
+export type VideoPortraitVerified = { key: string; placement: 'person' | 'virtual' };

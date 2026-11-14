@@ -128,10 +128,9 @@ export function MaterialSection({ refType, refId, mode = "submit", title = "平�
   };
 
   const failedOnly = items.length > 0 && items.every((m) => m.status === "failed");
-  const canSubmit = mode === "submit" && (items.length === 0 || failedOnly);
-
-  // 只读模式下没有任何记录 → 整块不渲染（不做常驻空状态）
-  if (mode === "readonly" && (!loaded || items.length === 0)) return null;
+  // 2026-11-14 七牛送审已停用：只展示历史记录，不再提交；没有记录就整块不渲染。
+  const canSubmit = false && mode === "submit" && (items.length === 0 || failedOnly);
+  if (!loaded || items.length === 0) return null;
 
   return hM("div", { className: "m-card", style: { padding: "14px 16px", ...(style || {}) } },
     hM("div", { style: { display: "flex", alignItems: "center", gap: 7, marginBottom: items.length ? 4 : 8 } },

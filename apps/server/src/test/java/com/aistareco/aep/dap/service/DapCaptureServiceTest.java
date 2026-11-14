@@ -81,6 +81,9 @@ class DapCaptureServiceTest {
             return l;
         });
         when(licenseRepo.existsById(anyString())).thenAnswer(inv -> licenses.containsKey(inv.getArgument(0, String.class)));
+        when(licenseRepo.findByIdAndOwnerUserId(anyString(), anyString())).thenAnswer(inv ->
+                Optional.ofNullable(licenses.get(inv.getArgument(0, String.class)))
+                        .filter(l -> inv.getArgument(1, String.class).equals(l.getOwnerUserId())));
         when(licenseRepo.findFirstByAvatarIdAndOwnerUserId(anyString(), anyString())).thenAnswer(inv ->
                 licenses.values().stream()
                         .filter(l -> inv.getArgument(0, String.class).equals(l.getAvatarId())
@@ -135,6 +138,56 @@ class DapCaptureServiceTest {
         return DapMaterialGroup.builder().id("MG-1").ownerUserId(USER).kind("liveness_face")
                 .qgroupid("qg-1").status("active").consentId("CONS-1")
                 .callbackToken("tok").createdAt(Instant.now()).build();
+    }
+
+    private com.aistareco.aep.service.materialvideo.ArkPortraitLibrary portraitsWithVerifiedPerson() {
+        var portraits = mock(com.aistareco.aep.service.materialvideo.ArkPortraitLibrary.class);
+        when(portraits.requireVerifiedPerson(USER, "VAP-1")).thenReturn(new com.aistareco.aep.service.materialvideo.ArkPortraitLibrary.Person(
+                "VAP-1", "ark-bingbing", "周野", "active", null, Instant.now().toString(), Instant.now().toString(), null));
+        when(portraits.requireVerifiedPerson(eq(USER), argThat(id -> !"VAP-1".equals(id)))).thenThrow(
+                new BusinessException(HttpStatus.CONFLICT, "DAP_PERSON_NOT_VERIFIED", "请先完成本人核验。"));
+        DapConsent consent = consentService.required(USER, "CONS-1");
+        when(consentService.accept(eq(USER), any(), eq(DapConsentService.VERSION), eq(true), any(), any())).thenReturn(consent);
+        return portraits;
+    }
+
+    @Test
+    void arkVerifiedPersonRegistersLicenseWithoutQiniu() {
+        svc.setPortraits(portraitsWithVerifiedPerson());
+
+        Map<String, Object> out = svc.verify(USER, "CAP-1", "VAP-1", DapConsentService.VERSION, true, null, null);
+
+        assertEquals("VAP-1", out.get("personId"));
+        assertEquals("verified", captures.get("CAP-1").getStatus());
+        DapLicense lic = licenses.get(out.get("licenseId"));
+        assertEquals(DapLicenseService.PROVIDER_ARK, lic.getVerificationProvider());
+        assertEquals("VAP-1", lic.getVerificationReference());
+        assertEquals("active", licenseService.statusOf(USER, lic.getId()));
+        verify(realAuth, never()).requireActiveSession(anyString(), any());
+        verifyNoInteractions(modelink);
+        // 授权由火山登记后，真人生成不再要求七牛素材审核。
+        materialService.setLicenses(licenseService);
+        assertNull(materialService.requireApprovedGenerationAsset(USER, "DH-1", null));
+    }
+
+    @Test
+    void unverifiedPersonIsRejectedAndNothingIsRegistered() {
+        svc.setPortraits(portraitsWithVerifiedPerson());
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> svc.verify(USER, "CAP-1", "VAP-9", DapConsentService.VERSION, true, null, null));
+
+        assertEquals("DAP_PERSON_NOT_VERIFIED", ex.getCode());
+        assertEquals("footage_uploaded", captures.get("CAP-1").getStatus());
+        assertTrue(licenses.isEmpty());
+    }
+
+    @Test
+    void qiniuOnlyAvatarStillNeedsApprovedMaterial() {
+        materialService.setLicenses(licenseService);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> materialService.requireApprovedGenerationAsset(USER, "DH-1", null));
+        assertEquals("DAP_MATERIAL_APPROVAL_REQUIRED", ex.getCode());
     }
 
     @Test

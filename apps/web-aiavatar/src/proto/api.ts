@@ -1275,7 +1275,8 @@ function mockAuthSnapshot(s: any): Mock.RealAuthSession {
 }
 
 /** mock：核验通过后登记一条「已刷脸核验」的肖像授权，并绑定到人物资产上。 */
-function mockRegisterLicense(avatarId: string | null | undefined): string | undefined {
+const REAL_AGREEMENT_VERSION = "real-avatar-v2.0-2026-11-14";
+function mockRegisterLicense(avatarId: string | null | undefined, personId: string): string | undefined {
   if (!avatarId) return undefined;
   const c: any = mockChars.find((x: any) => x.id === avatarId);
   const existing = c?.license && mockLicenses.find((l) => l.id === c.license);
@@ -1286,13 +1287,13 @@ function mockRegisterLicense(avatarId: string | null | undefined): string | unde
     existing.evidenceStatus = "verified";
     existing.scope = "本人真人形象素材用于数字分身创建、存储，以及本人主动发起的内容生成";
     existing.platforms = ["数字资产平台", "经本人主动授权接入的应用"];
-    existing.agreementVersion = "real-avatar-v1.0-2026-08-03";
+    existing.agreementVersion = REAL_AGREEMENT_VERSION;
     existing.agreementHash = "mock-agreement-hash";
     existing.consentedAt = now;
-    existing.verificationProvider = "qiniu_modelink";
-    existing.verificationReference = `mock-qgroup-${avatarId}`;
+    existing.verificationProvider = "volcengine_ark";
+    existing.verificationReference = personId;
     existing.verifiedAt = now;
-    existing.certificateVersion = 2;
+    existing.certificateVersion = 3;
     return existing.id;
   }
   const id = `LIC-${9000 + mockSeq++}`;
@@ -1310,13 +1311,13 @@ function mockRegisterLicense(avatarId: string | null | undefined): string | unde
     photos: 5,
     verifyMethod: "liveness",
     evidenceStatus: "verified",
-    agreementVersion: "real-avatar-v1.0-2026-08-03",
+    agreementVersion: REAL_AGREEMENT_VERSION,
     agreementHash: "mock-agreement-hash",
     consentedAt: today.toISOString(),
-    verificationProvider: "qiniu_modelink",
-    verificationReference: `mock-qgroup-${avatarId}`,
+    verificationProvider: "volcengine_ark",
+    verificationReference: personId,
     verifiedAt: today.toISOString(),
-    certificateVersion: 2,
+    certificateVersion: 3,
   });
   if (c) { c.license = id; c.updated = nowStamp(); }
   return id;
@@ -1336,21 +1337,17 @@ export const CaptureApi = {
     return apiUpload(`/captures/${id}/footage`, files);
   },
   /**
-   * 核验并登记授权。刷脸认证尚未完成时 server 返回 409 DAP_AUTH_NOT_COMPLETED，
-   * 调用方应回到等待轮询而不是当作失败。
+   * 核验并登记授权（2026-11-14 起用火山引擎本人核验，七牛不再接入）。
+   * personId 是资产页「人像核验」里本人核验已通过的人物；同一请求确认真人数字形象授权说明。
+   * 人物还没通过核验时 server 返回 409 DAP_PERSON_NOT_VERIFIED。
    */
-  verify: (id: string): Promise<{ passed: boolean; captureId: string; licenseId?: string }> => {
+  verify: (id: string, body: { personId: string; agreementVersion: string; agreementAccepted: boolean }): Promise<{ passed: boolean; captureId: string; personId: string; licenseId?: string }> => {
     if (USE_MOCK) {
-      const sid = mockAuthByCapture.get(id);
-      const s = sid ? mockAuthSessions.get(sid) : null;
-      const status = s ? mockAuthStatusOf(s) : null;
-      if (status !== "active") {
-        return Promise.reject(new ApiError("刷脸认证尚未完成", "DAP_AUTH_NOT_COMPLETED", 409));
-      }
-      const licenseId = mockRegisterLicense(s.avatarId || mockCaptures.get(id)?.avatarId);
-      return mock({ passed: true, captureId: id, licenseId });
+      if (!body.personId) return Promise.reject(new ApiError("请先完成本人核验。", "DAP_PERSON_NOT_VERIFIED", 409));
+      const licenseId = mockRegisterLicense(mockCaptures.get(id)?.avatarId, body.personId);
+      return mock({ passed: true, captureId: id, personId: body.personId, licenseId });
     }
-    return apiFetch(`/captures/${id}/verify`, { method: "POST" });
+    return apiFetch(`/captures/${id}/verify`, { method: "POST", body: JSON.stringify(body) });
   },
 };
 
@@ -1362,13 +1359,13 @@ export const CaptureApi = {
 export const RealAuthApi = {
   agreement: (): Promise<Mock.RealAuthAgreement> => {
     if (USE_MOCK) return mock({
-      version: "real-avatar-v1.0-2026-08-03",
+      version: REAL_AGREEMENT_VERSION,
       title: "真人数字形象授权及个人信息处理告知",
       summary: "确认本人刷脸核验、真人素材处理与数字分身使用范围；刷脸核验不等同于证件实名或公证。",
       sections: [
         "使用目的：创建并管理本人的真人数字形象，仅用于本人主动发起的创作与接入。",
         "处理信息：录制视频、关键帧与刷脸结果将用于活体核验、同人一致性比对和素材审核。",
-        "第三方处理：核验素材会提交至七牛云 Modelink 及其认证供应商，平台仅以七牛真人组 active 状态作为技术核验证据。",
+        "第三方处理：本人人脸核验由火山引擎方舟完成，平台仅以其核验通过的结果作为技术核验证据。",
         "授权范围：不自动授权任意第三方或任意用途；接入其他应用须由本人再次主动操作。",
         "授权期限：自确认之日起 24 个月；到期、撤回或删除后停止新增使用，已依法完成的处理另按协议约定执行。",
         "撤回方式：可在授权登记中查看凭证；如需撤回授权或删除素材，请联系平台客服处理。",
@@ -1376,7 +1373,7 @@ export const RealAuthApi = {
       scope: "本人真人形象素材用于数字分身创建、存储，以及本人主动发起的内容生成",
       periodMonths: 24,
       platforms: ["数字资产平台", "经本人主动授权接入的应用"],
-      processors: ["七牛云 Modelink", "七牛云认证供应商"],
+      processors: ["火山引擎方舟"],
       hash: "mock-agreement-hash",
     });
     return apiFetch(`/real-auth/agreement`);

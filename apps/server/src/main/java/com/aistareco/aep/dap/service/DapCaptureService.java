@@ -119,6 +119,51 @@ public class DapCaptureService {
      * <p>核验通过后：标 verified → 登记 / 回填电子授权（verifyMethod=liveness）→
      * best-effort 把捕获素材送审（失败只 WARN，不阻断核验与授权）。
      */
+    /** 只在需要时注入，单测里可不给。 */
+    private com.aistareco.aep.service.materialvideo.ArkPortraitLibrary portraits;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setPortraits(@org.springframework.context.annotation.Lazy com.aistareco.aep.service.materialvideo.ArkPortraitLibrary portraits) {
+        this.portraits = portraits;
+    }
+
+    /**
+     * 2026-11-14 起的本人确认：七牛不再接入，改认火山引擎本人核验已通过的人物（资产页「人像核验」同一套）。
+     * 同一请求里确认真人数字形象授权说明（DapConsent），两项证据齐全才登记授权。不向七牛送审。
+     */
+    @Transactional
+    public Map<String, Object> verify(String userId, String captureId, String personId, String agreementVersion,
+                                      Boolean accepted, String clientIp, String userAgent) {
+        if (personId == null || personId.isBlank()) return verify(userId, captureId);
+        DapCapture c = required(userId, captureId);
+        if (c.getFootageKey() == null) {
+            throw BusinessException.badRequest("DAP_NO_FOOTAGE", "请先录制或上传素材");
+        }
+        if (portraits == null) {
+            throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "DAP_PERSON_VERIFY_UNAVAILABLE", "本人核验暂不可用，请稍后重试。");
+        }
+        var person = portraits.requireVerifiedPerson(userId, personId);
+        var consent = consentService.accept(userId, c, agreementVersion, accepted, clientIp, userAgent);
+        Instant verifiedAt = "verified".equals(c.getStatus()) && c.getVerifiedAt() != null ? c.getVerifiedAt() : Instant.now();
+        c.setStatus("verified");
+        c.setVerifiedAt(verifiedAt);
+        captureRepo.save(c);
+        String licenseId = null;
+        if (c.getAvatarId() != null) {
+            DapAvatar a = avatarService.required(userId, c.getAvatarId());
+            var lic = licenseService.autoCreateForPerson(userId, a.getId(), a.getName(), 1, consent, person.id(), verifiedAt);
+            a.setLicenseId(lic.getId());
+            avatarService.save(a);
+            licenseId = lic.getId();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("passed", true);
+        out.put("captureId", c.getId());
+        out.put("personId", person.id());
+        if (licenseId != null) out.put("licenseId", licenseId);
+        return out;
+    }
+
+    /** 七牛刷脸会话的核验（旧链路，2026-11-14 起入口已停用，只为已建好的会话保留）。 */
     @Transactional
     public Map<String, Object> verify(String userId, String captureId) {
         DapCapture c = required(userId, captureId);

@@ -11,7 +11,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { App, Button, Checkbox, ConfigProvider, Dropdown, Input, Modal, Spin } from 'antd';
 import type { MenuProps } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import { AudioLines, ChevronDown, FileText, Film, Folder, LayoutGrid, Mic, MoreHorizontal, Plus, Search, SquareCheck } from 'lucide-react';
+import { AudioLines, ChevronDown, FileText, Film, Folder, LayoutGrid, Mic, MoreHorizontal, Plus, Search, ShieldCheck } from 'lucide-react';
 import type { LibraryFolder, LibraryMaterial } from '@ai-star-eco/types';
 import { createLibraryFolder, deleteLibraryFolder, editLibraryMaterial, libraryFolders, libraryMaterials, renameLibraryFolder, uploadLibraryMedia } from '@/canvas-bridge/asset-library';
 import { deleteSavedAsset, saveAsset } from '@/canvas-bridge/saved-assets';
@@ -25,6 +25,7 @@ import { VoiceApi } from '@/proto/api';
 import type { VoiceAsset } from '@/proto/data';
 import { masonry, mediaRatio, useMasonryColumns } from './asset-masonry';
 import { AssetThumb } from './asset-thumb';
+import { PortraitVerifiedMark } from './portrait-verified-mark';
 import { uploadAssetBatch } from './asset-upload-batch';
 import { confirmAssetDelete } from './assets-delete';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
@@ -90,7 +91,7 @@ export function AssetsHub() {
   const current = builtIn || folders.some(f => f.id === library) || (foldersRead && !!folderError) ? library : 'all';
   // 地址里是自己建的库：等库列表读回来再读内容，免得先按一个不存在的库读一遍。
   const ready = builtIn || foldersRead;
-  return <StudioPage title="资产" description={ASSETS_DESCRIPTION} className="assets-hub-page" actions={<Link href="/assets/verification">人像核验</Link>}>
+  return <StudioPage title="资产" description={ASSETS_DESCRIPTION} className="assets-hub-page" actions={<Link className="ip-brand-secondary" href="/assets/verification"><ShieldCheck aria-hidden/>人像核验</Link>}>
     <ConfigProvider locale={zhCN} button={{ autoInsertSpace: false }} getPopupContainer={studioOverlayContainer} theme={{ token: { colorPrimary: '#17202a', borderRadius: 10, fontFamily: 'var(--ip-ui)' } }}>
       <App className="assets-hub" data-studio-overlay-root>
         <div className="assets-hub-tabs" role="tablist" aria-label="资产分类">
@@ -316,8 +317,8 @@ function MediaWall({ tab, library, folders, from, onFromChange, onFoldersChanged
         ? <><span className="assets-count">已选 {selected.length} 个</span>
           <Dropdown trigger={['click']} disabled={!selected.length} getPopupContainer={studioOverlayContainer} menu={moveMenu(selected)}><Button disabled={!selected.length}>移到<ChevronDown size={14}/></Button></Dropdown>
           <Button danger disabled={!selected.length} onClick={() => remove(selected)}>删除</Button>
-          <Button onClick={() => { setSelecting(false); setSelected([]); }}>完成</Button></>
-        : <Button icon={<SquareCheck size={15}/>} disabled={!items.length} onClick={() => setSelecting(true)}>批量选择</Button>}
+          <Button onClick={() => { setSelecting(false); setSelected([]); }}>取消选择</Button></>
+        : !!items.length && <Button onClick={() => setSelecting(true)}>选择</Button>}
     </div>
     {actionError && <p className="assets-notice"><StudioErrorNotice error={actionError}/></p>}
     {error ? <div className="assets-empty"><p><StudioErrorNotice error={error}/></p><Button onClick={() => setRevision(n => n + 1)}>重试</Button></div>
@@ -397,6 +398,7 @@ function MaterialTile({ item, subline, selecting, selected, onToggle, onOpen, me
     <button type="button" className="assets-tile-media" style={{ aspectRatio: `1 / ${ratio}` }} aria-label={`${selecting ? '选择' : '打开'} ${item.title}`} aria-pressed={selecting ? selected : undefined} onClick={selecting ? onToggle : onOpen}>
       {media}
       {badge && <span className="assets-tile-badge">{badge}</span>}
+      {!unavailable && item.kind === 'image' && <PortraitVerifiedMark storageKey={item.data.storageKey}/>}
     </button>
     {selecting
       ? <Checkbox className="assets-tile-check" aria-label={`选择 ${item.title}`} checked={selected} onChange={onToggle}/>

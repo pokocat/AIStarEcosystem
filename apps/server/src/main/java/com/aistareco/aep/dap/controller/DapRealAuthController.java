@@ -64,9 +64,8 @@ public class DapRealAuthController {
     public ApiResponse<RealAuthSessionDto> startSession(Principal principal,
                                                         @RequestBody CreateRealAuthSessionRequest req,
                                                         HttpServletRequest httpRequest) {
-        if (req == null || req.captureId() == null || req.captureId().isBlank()) {
-            throw BusinessException.badRequest("DAP_CAPTURE_REQUIRED", "缺少拍摄记录，请重新录制或上传");
-        }
+        // 2026-11-14 七牛不再接入：不再新建刷脸会话，改走火山引擎本人核验（captures/{id}/verify 带 personId）。
+        if (true) throw retired();
         return ApiResponse.of(realAuth.start(uid(principal), req.captureId(), req.agreementVersion(),
                 req.agreementAccepted(), clientIp(httpRequest), httpRequest.getHeader("User-Agent")));
     }
@@ -78,6 +77,7 @@ public class DapRealAuthController {
 
     @PostMapping("/real-auth/sessions/{id}/restart")
     public ApiResponse<RealAuthSessionDto> restartSession(Principal principal, @PathVariable String id) {
+        if (true) throw retired();
         return ApiResponse.of(realAuth.restart(uid(principal), id));
     }
 
@@ -93,6 +93,12 @@ public class DapRealAuthController {
         return ResponseEntity.ok()
                 .contentType(MediaType.valueOf(MediaType.TEXT_HTML_VALUE + ";charset=UTF-8"))
                 .body(realAuth.handleCallback(state, resultCode, bytedToken));
+    }
+
+    /** 七牛刷脸与素材送审的停用报错（代码保留，入口关闭）。 */
+    public static BusinessException retired() {
+        return new BusinessException(org.springframework.http.HttpStatus.GONE, "DAP_REAL_AUTH_RETIRED",
+                "本人确认已改为火山引擎人脸核验，请刷新页面后重新确认。");
     }
 
     private static String clientIp(HttpServletRequest request) {
@@ -123,6 +129,8 @@ public class DapRealAuthController {
     @PostMapping("/materials")
     public ApiResponse<List<MaterialDto>> submitMaterial(Principal principal,
                                                          @RequestBody SubmitMaterialRequest req) {
+        // 七牛素材送审已停用（2026-11-14）。代码保留，入口不再调用七牛。
+        if (true) throw retired();
         String userId = uid(principal);
         String refType = req == null ? null : req.refType();
         String refId = req == null ? null : req.refId();

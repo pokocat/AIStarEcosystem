@@ -36,6 +36,7 @@ vi.mock('@/canvas-bridge/signed-audio', () => ({ SignedAudio: () => <audio/> }))
 vi.mock('@/components/hub/data', () => ({ studioHref: (h: string) => `/studio${h}`, useHubData: (_: unknown, initial: unknown) => ({ data: initial, loading: false, error: null }) }));
 vi.mock('@/proto/api', () => ({ VoiceApi: { mine: api.voices } }));
 vi.mock('antd', () => ({
+  Tooltip: ({ children }: any) => children,
   App: Object.assign(({ children }: any) => <div>{children}</div>, { useApp: () => ({}) }),
   ConfigProvider: ({ children }: any) => children,
   Button: ({ icon, loading, type, size, danger, ...p }: any) => <button {...p}>{icon}{p.children}</button>,
@@ -164,26 +165,26 @@ test('a single file is deleted from its card menu after confirming, then the lis
 test('several files can be selected and deleted together', async () => {
   api.materials.mockResolvedValue(page([image('m1', '图一'), image('m2', '图二'), image('m3', '图三')]));
   render(<AssetsHub/>);
-  fireEvent.click(await screen.findByRole('button', { name: '批量选择' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择' }));
   fireEvent.click(screen.getByRole('button', { name: '选择 图一' }));
   fireEvent.click(screen.getByRole('button', { name: '选择 图三' }));
   fireEvent.click(screen.getByRole('button', { name: '删除' }));
   expect(dialog.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: '删除选中的 2 个素材？' }));
   await waitFor(() => expect(api.remove.mock.calls.map(c => c[0])).toEqual(['m1', 'm3']));
-  await waitFor(() => expect(screen.getByRole('button', { name: '批量选择' })).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole('button', { name: '选择' })).toBeTruthy());
 });
 
 test('a failed delete stops there, reports the error and keeps the selection mode open', async () => {
   api.materials.mockResolvedValue(page([image('m1', '图一'), image('m2', '图二')]));
   api.remove.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('网络异常'));
   render(<AssetsHub/>);
-  fireEvent.click(await screen.findByRole('button', { name: '批量选择' }));
+  fireEvent.click(await screen.findByRole('button', { name: '选择' }));
   fireEvent.click(screen.getByRole('button', { name: '选择 图一' }));
   fireEvent.click(screen.getByRole('button', { name: '选择 图二' }));
   fireEvent.click(screen.getByRole('button', { name: '删除' }));
   expect(await screen.findByText('网络异常')).toBeTruthy();
   expect(api.remove).toHaveBeenCalledTimes(2);
-  expect(screen.getByRole('button', { name: '完成' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '取消选择' })).toBeTruthy();
 });
 
 test('the assets page continues uploading the rest of the selection and refreshes successful files', async () => {

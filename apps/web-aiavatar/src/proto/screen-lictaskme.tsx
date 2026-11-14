@@ -157,7 +157,7 @@ function MLicenses({ ctx, realOnly = false }) {
               hMS('div', { className: 'asset-name', style: { fontSize: 16.5 } }, l.subject)),
             hMS('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
               [['授权范围', l.scope], ['授权期限', l.period], ['使用平台', (l.platforms || []).join(' · ')],
-                ['授权证据', l.evidenceStatus === 'verified' ? '平台确认 + 七牛本人刷脸' : l.evidenceStatus === 'legacy_unconfirmed' ? '待补当前协议确认' : '平台登记'],
+                ['授权证据', l.evidenceStatus === 'verified' ? (l.verificationProvider === 'volcengine_ark' ? '平台确认 + 火山引擎人脸核验' : '平台确认 + 七牛本人刷脸') : l.evidenceStatus === 'legacy_unconfirmed' ? '待补当前协议确认' : '平台登记'],
                 ['协议版本', l.agreementVersion || '历史版本'], ['绑定素材', l.photos + ' 份（加密存档）']].concat(l.char ? [['关联资产', l.char]] : []).map(([k, v]) =>
                 hMS('div', { key: k, style: { display: 'grid', gridTemplateColumns: '60px 1fr', gap: 10, alignItems: 'baseline' } },
                   hMS('span', { style: { fontSize: 11.5, color: 'var(--ink-3)' } }, k),

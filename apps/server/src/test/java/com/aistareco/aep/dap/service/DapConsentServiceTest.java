@@ -44,7 +44,7 @@ class DapConsentServiceTest {
         assertEquals(agreement.platforms(), consent.getPlatforms());
         assertEquals(agreement.processors(), consent.getProcessors());
         assertTrue(consent.getAgreementText().contains(agreement.title()));
-        assertTrue(consent.getAgreementText().contains("七牛云 Modelink"));
+        assertTrue(consent.getAgreementText().contains("火山引擎方舟"));
         assertNotNull(consent.getAcceptedAt());
         assertEquals("203.0.113.8", consent.getClientIp());
         verify(repo).save(any(DapConsent.class));
