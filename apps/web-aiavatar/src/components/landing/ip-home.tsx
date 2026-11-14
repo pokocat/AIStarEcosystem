@@ -137,7 +137,7 @@ export function IpHome({ header = true }: { header?: boolean }) {
         <div className="home-feed-tabs" role="group" aria-label="灵感分类">{feedTabs.map(t => <button key={t.value} type="button" aria-pressed={tab === t.value} onClick={() => setTab(t.value)}>{t.label}</button>)}</div>
         {templates === undefined ? <div className="ip-brand-state" role="status">正在加载灵感…</div>
           : feedError ? <div className="ip-brand-error" role="alert">灵感加载失败，请稍后刷新重试。</div>
-          : feed.length ? <InspirationWall items={feed} resetKey={tab} onOpen={setUsing} minColumn={220}/>
+          : feed.length ? <InspirationWall items={feed} resetKey={tab} onOpen={setUsing} home/>
           : <div className="ip-brand-state">此分类暂无内容。</div>}
       </section>}
     </main>

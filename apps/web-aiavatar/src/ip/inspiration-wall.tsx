@@ -15,16 +15,18 @@ export const inspirationLabel = (t: IpTemplate) => [KIND_LABEL[templateKind(t)],
  * 灵感墙（首页和灵感页共用）：按作品的真实比例摆，放进当前最矮的一列，不裁图。一次摆一页，滚到底接着摆。
  * 接口一次给全部，分页只是为了不一次加载几十张大图。
  */
-export function InspirationWall({ items, resetKey, onOpen, manage, pageSize = 18, minColumn = 236 }: {
+export function InspirationWall({ items, resetKey, onOpen, manage, pageSize = 18, home = false }: {
   items: IpTemplate[]; onOpen: (template: IpTemplate) => void;
   /** 换分类、换搜索词时回到第一页。 */
   resetKey?: string;
   /** 卡片上给管理者的操作。 */
   manage?: (template: IpTemplate) => ReactNode;
-  pageSize?: number; minColumn?: number;
+  pageSize?: number;
+  /** 首页按内容区宽度在五列和三列之间切换。 */
+  home?: boolean;
 }) {
   const wall = useRef<HTMLDivElement>(null);
-  const [columns, setColumns] = useState(4);
+  const [columns, setColumns] = useState(home ? 3 : 4);
   // 一换分类就回到第一页：在渲染时判断，不会先把上一个分类翻到的张数摆出来再收回去。
   const [page, setPage] = useState({ key: resetKey, shown: pageSize });
   const shown = page.key === resetKey ? page.shown : pageSize;
@@ -34,15 +36,19 @@ export function InspirationWall({ items, resetKey, onOpen, manage, pageSize = 18
     const el = wall.current;
     if (!el) return;
     const fit = () => {
+      if (home) {
+        setColumns(el.clientWidth >= 960 ? 5 : 3);
+        return;
+      }
       const gap = parseFloat(getComputedStyle(el).columnGap) || 16;
-      setColumns(Math.max(2, Math.min(6, Math.floor((el.clientWidth + gap) / (minColumn + gap)))));
+      setColumns(Math.max(2, Math.min(6, Math.floor((el.clientWidth + gap) / (236 + gap)))));
     };
     fit();
     if (typeof ResizeObserver === 'undefined') return;
     const watch = new ResizeObserver(fit);
     watch.observe(el);
     return () => watch.disconnect();
-  }, [minColumn]);
+  }, [home]);
   const more = shown < items.length;
   const end = useLoadMoreOnScroll(more, shown, nextPage, resetKey);
   const placed = useMemo(() => inspirationPlacement<IpTemplate & RatioKnown>(items.slice(0, shown), columns), [items, shown, columns]);

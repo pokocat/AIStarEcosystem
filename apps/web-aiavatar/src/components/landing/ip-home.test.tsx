@@ -80,18 +80,23 @@ test('tools and goals: 导演台 is a page, 人物配音 opens a canvas with its
   expect([...art].map(img => img.getAttribute('src'))).toEqual(['https://cdn/ops-cover.webp', '/studio/scene-covers/ecom-seeding.webp']);
 });
 
-test('灵感 on Home puts the latest publications at the top, including within the same day', async () => {
+test.each([[390, 3], [960, 5]])('Home shows the latest recommendations first in a %ipx wall with %i columns', async (width, count) => {
   api.authed = true;
   const doc = { nodes: [{ id: 'n', type: 'image', title: 't', position: { x: 0, y: 0 }, width: 10, height: 10, metadata: { storageKey: 'k', content: 'u' } }], connections: [], viewport: { x: 0, y: 0, k: 1 } };
   const card = (id: string, createdAt?: string) => ({ id, name: id, summary: '', lookCount: 0, estimatedCredits: 0, coverUrl: 'c', doc, createdAt });
   api.examples.mockResolvedValue([card('旧案例', '2026-11-06T00:02:00Z'), card('新案例', '2026-11-06T00:22:00Z')]);
   api.templates.mockResolvedValue([card('内置模板'), { ...card('只有步骤', '2026-11-06T00:10:00Z'), coverUrl: undefined, doc: { ...doc, nodes: [] } }]);
-  await act(async () => { render(<IpHome header={false}/>); });
-  // jsdom renders two columns. The two most recent cards occupy their first positions.
-  const columns = [...document.querySelectorAll('.inspiration-wall-column')].map(c => [...c.querySelectorAll('[aria-label^="预览模板"]')].map(b => b.getAttribute('aria-label')!.replace('预览模板 ', '')));
-  expect(columns.map(c => c[0])).toEqual(['新案例', '只有步骤']);
-  expect(columns.flat()).toHaveLength(4);
-  expect(columns.map(c => c[1])).toEqual(['旧案例', '内置模板']);
+  const measure = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width);
+  try {
+    await act(async () => { render(<IpHome header={false}/>); });
+    const columns = [...document.querySelectorAll('.inspiration-wall-column')].map(c => [...c.querySelectorAll('[aria-label^="预览模板"]')].map(b => b.getAttribute('aria-label')!.replace('预览模板 ', '')));
+    expect(columns).toHaveLength(count);
+    expect(columns.slice(0, 3).map(c => c[0])).toEqual(['新案例', '只有步骤', '旧案例']);
+    expect(columns.flat()).toHaveLength(4);
+    expect(columns.flat()).toContain('内置模板');
+  } finally {
+    measure.mockRestore();
+  }
 });
 
 // 灵感 moved onto Home: official templates and examples, filtered by what they contain; opening one previews it.
