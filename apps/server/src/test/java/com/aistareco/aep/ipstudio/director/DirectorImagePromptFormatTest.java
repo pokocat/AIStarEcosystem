@@ -98,7 +98,7 @@ class DirectorImagePromptFormatTest {
         String board = clip().path("boardPrompt").asText();
         assertTrue(board.contains("默认按影视人像布光") && board.contains("让肤色自然、有气色"), board);
         assertTrue(board.contains("人物的肤色和整体色调保持一致"), "宫格之间人物的肤色和色调要一致");
-        assertTrue(board.contains("图2 提供场景「旧书店」的空间布局与光源方向"), "场景图交代空间和光源方向，不交代它自己的曝光和偏色");
+        assertTrue(board.contains("场景「旧书店」：空间布局与光源方向照「旧书店」的参考图"), "场景图交代空间和光源方向，不交代它自己的曝光和偏色");
         assertTrue(board.contains("参考图本身偏暗或偏色的地方不照搬"), board);
     }
 

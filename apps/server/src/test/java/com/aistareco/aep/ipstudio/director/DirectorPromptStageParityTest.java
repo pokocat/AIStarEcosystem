@@ -105,13 +105,27 @@ class DirectorPromptStageParityTest {
             for (int n = 0; n <= 5; n++) {
                 String clip = "{\"shots\":[" + String.join(",", java.util.Collections.nCopies(n, shot)) + "]}";
                 for (var refs : refSets) {
+                    if (!refs.isEmpty()) continue; // 分镜图 v3（2026-11-14）参考图改按名字称呼（{@link #boardRefersToReferencesByName}）
                     assertThat(DirectorPrompts.boardPrompt(A, settings, json(clip), refs, null)).as(st + " shots=" + n + " refs=" + refs.size())
                             .isEqualTo(LegacyDirectorPrompts.boardPrompt(settings, json(clip), refs, java.util.Map.of()));
                     checked++;
                 }
             }
         }
-        assertThat(checked).isEqualTo(4 * 2 + 4 * 6 * 3);
+        assertThat(checked).isEqualTo(4 * 2 + 4 * 6);
+    }
+
+    /**
+     * 分镜图 v3（2026-11-14 用户要求）：正文按名字称呼参考图、不写图号，人物要求严格照参考图的长相；
+     * 图号只出现在提交时加在最前面的对照里（{@link DirectorPrompts#referenceIndex}），顺序与交给模型的参考图一致。
+     */
+    @Test
+    void boardRefersToReferencesByName() {
+        var refs = List.of(new DirectorPrompts.Ref("图1", "character", "陈默"), new DirectorPrompts.Ref("图2", "scene", "旧书店"), new DirectorPrompts.Ref("图3", "prop", "铁皮盒"));
+        String board = DirectorPrompts.boardPrompt(A, json("{\"style\":\"真人写实\"}"), json("{\"shots\":[{\"size\":\"近景\",\"camera\":\"平视\",\"still\":\"陈默低头看信\"}]}"), refs, null);
+        assertThat(board).contains("角色「陈默」", "场景「旧书店」", "道具「铁皮盒」").doesNotContainPattern("图\\d");
+        assertThat(DirectorPrompts.referenceIndex(List.of("陈默", "旧书店"))).startsWith("参考图依次是：图1「陈默」，图2「旧书店」。");
+        assertThat(DirectorPrompts.referenceIndex(List.of())).isEmpty();
     }
 
     /**

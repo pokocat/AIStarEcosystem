@@ -263,7 +263,8 @@ class DirectorCommerceTest {
         runTask("board", "k1", "{}");
         IpRunService.IpGenerateRequest req = submittedImage();
         assertEquals(List.of("u/zhou.png", "u/desk.png", "p/front.png"), req.refKeys());
-        assertTrue(req.prompt().contains("图3 提供商品「恒温保温杯」的外形、颜色、包装和标签"), req.prompt());
+        assertTrue(req.prompt().contains("图3「恒温保温杯」"), "编号对照里商品排在角色、场景之后：" + req.prompt());
+        assertTrue(req.prompt().contains("商品「恒温保温杯」：外形、颜色、包装和标签照「恒温保温杯」的参考图"), req.prompt());
         assertTrue(req.prompt().contains("商品和参考图保持一致"), req.prompt());
     }
 

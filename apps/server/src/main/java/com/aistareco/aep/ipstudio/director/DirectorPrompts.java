@@ -603,22 +603,37 @@ public final class DirectorPrompts {
         vars.put("refs", rs);
         vars.put("hasRefs", !refs.isEmpty());
         vars.put("hasProduct", refs.stream().anyMatch(r -> "product".equals(r.kind())));
+        // 分镜图模板 v3 起按名字称呼参考图；核对 v1、v2 生成的旧图时视角提示仍写图号，旧图不会因此被标成「需更新」。
+        int effective = version != null ? version : templateVersion(prompts, StudioPromptCallPoints.DIRECTOR_BOARD);
+        boolean byName = effective == 0 || effective > 2;
         List<java.util.Map<String, Object>> cells = new ArrayList<>();
         for (int i = 0; i < shots.size() && i < MAX_SHOTS; i++) {
             JsonNode sh = shots.get(i);
-            cells.add(java.util.Map.of("position", CELL_NAMES[i], "size", sh.path("size").asText(), "camera", sh.path("camera").asText(), "still", sh.path("still").asText() + viewHint(sh, refs)));
+            cells.add(java.util.Map.of("position", CELL_NAMES[i], "size", sh.path("size").asText(), "camera", sh.path("camera").asText(), "still", sh.path("still").asText() + viewHint(sh, refs, byName)));
         }
         vars.put("cells", cells);
         vars.put("blanks", !single && shots.size() < 4);
         return media(prompts, StudioPromptCallPoints.DIRECTOR_BOARD, vars, version);
     }
 
-    /** 这一镜要用场景的哪张视角图：只交代素材编号，没用视角的镜头一个字都不多（旧片段的提示词不变、不会被标「需更新」）。 */
-    private static String viewHint(JsonNode shot, List<Ref> refs) {
+    /** 这一镜要用场景的哪张视角图：只交代用哪张素材，没用视角的镜头一个字都不多（旧片段的提示词不变、不会被标「需更新」）。 */
+    private static String viewHint(JsonNode shot, List<Ref> refs, boolean byName) {
         String label = DirectorSceneViews.LABELS.get(shot.path("sceneView").asText(""));
         if (label == null) return "";
-        for (Ref r : refs) if ("scene".equals(r.kind()) && r.name().endsWith("·" + label)) return "（背景照" + r.label() + "）";
+        for (Ref r : refs) if ("scene".equals(r.kind()) && r.name().endsWith("·" + label))
+            return byName ? "（背景照「" + r.name() + "」的参考图）" : "（背景照" + r.label() + "）";
         return "";
+    }
+
+    /**
+     * 分镜图提交时加在最前面的参考图对照（模板 v3 起正文只写名字）：按真正交给模型的顺序列出「图N」对应的名字。
+     * 用户手改提示词时写的编号可能是照视频那边抄的（视频的图1 是分镜图），所以写明对不上时以名字为准。
+     */
+    public static String referenceIndex(List<String> names) {
+        if (names.isEmpty()) return "";
+        StringBuilder b = new StringBuilder("参考图依次是：");
+        for (int i = 0; i < names.size(); i++) b.append(i == 0 ? "" : "，").append("图").append(i + 1).append("「").append(names.get(i)).append("」");
+        return b.append("。提示词里的编号和这里对不上时，以名字为准。").toString();
     }
 
     /** 场景其他视角的 2×2 整图（stage-director-scene-views）；version 同 {@link #assetPrompt}。库里没有返回 null。 */

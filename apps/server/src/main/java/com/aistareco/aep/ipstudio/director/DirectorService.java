@@ -1243,6 +1243,12 @@ public class DirectorService {
                 String baseOn = o.path("baseOnCurrent").asBoolean(false) ? baseOnCurrent(clip, "board", "片段 " + clip.path("order").asInt() + " 的分镜图", refs) : null;
                 String notes = DirectorPrompts.imageNotes(prompts(), null, baseOn != null ? refs.get(refs.size() - 1).label() : null);
                 if (!notes.isEmpty()) prompt = prompt + "\n" + notes;
+                // 正文按名字称呼参考图（模板里形态也叫角色本名），编号对照加在最前面，顺序与真正提交的 refs 一致。
+                List<String> names = new ArrayList<>();
+                for (JsonNode a : visualAssets(c, clip)) names.add(a.path("name").asText());
+                for (int i = names.size(); i < refs.size(); i++) names.add(refs.get(i).name());
+                String index = DirectorPrompts.referenceIndex(names);
+                if (!index.isEmpty()) prompt = index + "\n" + prompt;
                 return image(userId, w, c, "board:" + targetId, "board", requestId, prompt, refs, sizeFor(c, "board"),
                         boardCurrent(c, clip).fingerprint(), pipeline, billing, maxCost, baseOn);
             }
@@ -4452,8 +4458,14 @@ public class DirectorService {
         }
     }
 
-    /** 默认分镜缺少作品画幅时，只在同一 GPT 系列的已开放接入点中选规格；资产和用户显式选择不变。 */
+    /** 分镜图的接入点：先按作品画幅选（{@link #boardBaseSelection}），再在 {@link #HD_IMAGE_FAMILIES} 里升到同价的 4K（2026-11-14 用户要求分镜也用 2.5 的 4K）。 */
     com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection boardImageSelection(ObjectNode c) {
+        var selected = boardBaseSelection(c);
+        return selected == null ? null : hdSelection(selected, c.path("settings").path("aspectRatio").asText("9:16"));
+    }
+
+    /** 默认分镜缺少作品画幅时，只在同一 GPT 系列的已开放接入点中选规格；资产和用户显式选择不变。 */
+    private com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection boardBaseSelection(ObjectNode c) {
         var selected = imageSelection(c);
         if (selected == null || c.path("settings").hasNonNull("imageModel")) return selected;
         String ratio = c.path("settings").path("aspectRatio").asText("9:16");
@@ -4470,10 +4482,10 @@ public class DirectorService {
     }
 
     /**
-     * 人物设定图可以升到 4K 的系列。2026-11-14 用线上同一张参考图实测：GPT Image 2.5 的 4K 正常、约 1 分钟一张；
-     * GPT Image 2 的 4K 接入点被厂商关了（两次都回 400 four_k_disabled），这个系列的人物图仍出 2K。厂商恢复并实测后再加进来。
+     * 人物设定图、分镜图可以升到 4K 的系列。2026-11-14 用线上同一张参考图实测：GPT Image 2.5 的 4K 正常、约 1 分钟一张；
+     * GPT Image 2 的 4K 接入点被厂商关了（两次都回 400 four_k_disabled），这个系列仍出 2K。厂商恢复并实测后再加进来。
      */
-    static final Set<String> CHARACTER_HD_FAMILIES = Set.of("gpt-image-2.5-flare");
+    static final Set<String> HD_IMAGE_FAMILIES = Set.of("gpt-image-2.5-flare");
 
     /** 出图用哪个接入点：分镜按作品画幅、人物按高清，其余用作品选的图片模型。尺寸（sizeFor）和提交共用这一处，两边不会对不上。 */
     com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection imageSelectionFor(ObjectNode c, String kind) {
@@ -4484,27 +4496,32 @@ public class DirectorService {
         };
     }
 
-    /**
-     * 人物设定图用同系列里横图像素最大的接入点（2026-11-14 用户要求人物高清出图；GPT Image 2 / 2.5 的 4K 与 2K 同价）。
-     * 只在不比现在贵时才换，换了会加价就仍用作品选的接入点，不悄悄涨价；只在 {@link #CHARACTER_HD_FAMILIES} 列出的系列里升档。
-     */
+    /** 人物设定图（横版 16:9）用 {@link #hdSelection}（2026-11-14 用户要求人物高清出图）。 */
     com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection characterImageSelection(ObjectNode c) {
         var selected = imageSelection(c);
-        if (selected == null) return null;
+        return selected == null ? null : hdSelection(selected, "16:9");
+    }
+
+    /**
+     * 同系列里这个比例像素最大的接入点。只在不比现在贵时才换（GPT Image 2.5 的 4K 与 2K 同价），换了会加价就仍用原来的接入点，
+     * 不悄悄涨价；只在 {@link #HD_IMAGE_FAMILIES} 列出的系列里升档。
+     */
+    private com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection hdSelection(
+            com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection selected, String ratio) {
         var spec = com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson());
         var family = com.aistareco.aep.ipstudio.service.StudioImageModelRouting.familyForProviderModel(selected.resolved().endpoint().getModel());
-        if (spec == null || family == null || !CHARACTER_HD_FAMILIES.contains(family.id())) return selected;
-        String nowSize = largestImageSize(spec, "16:9").orElse(null);
+        if (spec == null || family == null || !HD_IMAGE_FAMILIES.contains(family.id())) return selected;
+        String nowSize = largestImageSize(spec, ratio).orElse(null);
         if (nowSize == null) return selected;
-        long nowPixels = pixels(nowSize), nowPrice = selected.creditCostForSize(nowSize);
+        long nowPrice = selected.creditCostForSize(nowSize);
         com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection best = selected;
-        long bestPixels = nowPixels;
+        long bestPixels = pixels(nowSize);
         for (var s : scenePolicies.available("studio", "image", textRuns.directorPrices(null)[1])) {
             if (!family.equals(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.familyForProviderModel(s.resolved().endpoint().getModel()))) continue;
             com.aistareco.aep.model.AiImageRequestSpec other;
             try { other = com.aistareco.aep.model.AiImageRequestSpec.read(s.resolved().endpoint().getImageRequestSpecJson()); }
             catch (BusinessException unreadable) { continue; }
-            String size = other == null ? null : largestImageSize(other, "16:9").orElse(null);
+            String size = other == null ? null : largestImageSize(other, ratio).orElse(null);
             if (size == null || pixels(size) <= bestPixels || s.creditCostForSize(size) > nowPrice) continue;
             best = s;
             bestPixels = pixels(size);

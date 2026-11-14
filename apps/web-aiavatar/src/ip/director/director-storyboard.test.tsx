@@ -70,12 +70,13 @@ test("storyboard reference images show the server order, exact form and scene vi
   render(<Page initial={workWithReferences()}/>);
   const stack = screen.getByRole("button", { name: /关联资产/ });
   expect(within(stack).getAllByRole("img").map(img => img.getAttribute("alt"))).toEqual([
-    "图2 静儿·工作装", "图3 静儿打工的餐馆", "图4 静儿打工的餐馆·反打",
+    "静儿·工作装", "静儿打工的餐馆", "静儿打工的餐馆·反打",
   ]);
   fireEvent.click(screen.getByRole("button", { name: /^分镜图/ }));
+  // 分镜图提示词按名字称呼参考图（2026-11-14），列表只显示名字、不显示图号
   const refs = screen.getByRole("region", { name: "分镜图参考图片" });
   expect(within(refs).getAllByRole("img").map(img => img.getAttribute("alt"))).toEqual([
-    "图1 静儿·工作装", "图2 静儿打工的餐馆", "图3 静儿打工的餐馆·反打",
+    "静儿·工作装", "静儿打工的餐馆", "静儿打工的餐馆·反打",
   ]);
   expect(within(refs).getAllByRole("img")[0].getAttribute("src")).toBe("https://cdn.test/jing-form.png");
 });
@@ -109,7 +110,7 @@ test("a first-frame model sends only the board, and the card still shows the lin
   render(<Page initial={w}/>);
   const stack = screen.getByRole("button", { name: /关联资产/ });
   expect(within(stack).getAllByRole("img").map(img => img.getAttribute("alt"))).toEqual([
-    "图1 静儿·工作装", "图2 静儿打工的餐馆", "图3 静儿打工的餐馆·反打",
+    "静儿·工作装", "静儿打工的餐馆", "静儿打工的餐馆·反打",
   ]);
 });
 
@@ -123,14 +124,14 @@ test("voice-only assets have no image reference, and the card still shows their 
   expect(stack.querySelector(".director-avatar-stack")!.children.length).toBe(2);
 });
 
-test("a missing image keeps its numbered place instead of renumbering later references", () => {
+test("a missing image keeps its place in the list", () => {
   const w = workWithReferences();
   w.clips[0].boardRefs![0] = { assetId: "jing", name: "静儿", label: "图1", key: null };
   render(<Page initial={w}/>);
   fireEvent.click(screen.getByRole("button", { name: /^分镜图/ }));
   const refs = screen.getByRole("region", { name: "分镜图参考图片" });
-  expect(within(refs).getAllByRole("listitem")[0].textContent).toBe("缺少图片图1静儿");
-  expect(within(refs).getAllByRole("img")[0].getAttribute("alt")).toBe("图2 静儿打工的餐馆");
+  expect(within(refs).getAllByRole("listitem")[0].textContent).toBe("缺少图片静儿");
+  expect(within(refs).getAllByRole("img")[0].getAttribute("alt")).toBe("静儿打工的餐馆");
 });
 
 test("clicking another video version on the card adopts it at once and opens it, with no separate adopt button", async () => {

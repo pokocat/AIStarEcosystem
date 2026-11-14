@@ -147,8 +147,10 @@ class DirectorFormsAndViewsTest {
         JsonNode refs = wire.path("boardRefs");
         assertEquals(List.of("图1", "图2", "图3"), values(refs, "label"));
         assertEquals(List.of("白素贞", "金山寺", "金山寺·反打"), values(refs, "name"));
-        assertTrue(wire.path("boardPrompt").asText().contains("图1 提供角色「白素贞」"));
-        assertTrue(wire.path("boardPrompt").asText().contains("图2 提供场景「金山寺」"));
+        // 分镜图模板 v3 起正文按名字称呼参考图，不写图号（编号对照在提交时加在最前面）
+        assertTrue(wire.path("boardPrompt").asText().contains("角色「白素贞」："), wire.path("boardPrompt").asText());
+        assertTrue(wire.path("boardPrompt").asText().contains("场景「金山寺」："));
+        assertFalse(wire.path("boardPrompt").asText().matches("(?s).*图\\d.*"), "正文里没有图号");
         service.task(USER, work.getId(), new DirectorService.TaskRequest("board", "k1", "refs-order", null, null, 16L));
         assertEquals(submitted().refKeys(), values(refs, "key"));
         assertFalse(content().path("clips").get(0).has("boardRefs"), "wire 投影不写回作品");
@@ -346,10 +348,11 @@ class DirectorFormsAndViewsTest {
         assertFalse(after.path("clips").get(0).path("warnings").toString().contains("反打"));
         String prompt = after.path("clips").get(0).path("boardPrompt").asText();
         assertTrue(prompt.contains("金山寺·反打"), prompt);
-        assertTrue(prompt.contains("身后是寺门（背景照图3）"), prompt);
+        assertTrue(prompt.contains("身后是寺门（背景照「金山寺·反打」的参考图）"), prompt);
         assertEquals("needs-update", after.path("clips").get(0).path("board").path("adoptedCheck").asText("needs-update"));
         service.task(USER, work.getId(), new DirectorService.TaskRequest("board", "k1", "b4", null, null, 16L));
         assertEquals(List.of("u/bai.png", "u/si.png", "u/si-reverse.png"), submitted().refKeys());
+        assertTrue(submitted().prompt().startsWith("参考图依次是：图1「白素贞」，图2「金山寺」，图3「金山寺·反打」。"), "编号对照与提交顺序一致：" + submitted().prompt());
     }
 
     @Test void aClipWithoutFormsOrViewsKeepsItsPromptByteForByte() throws Exception {

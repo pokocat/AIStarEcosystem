@@ -345,6 +345,7 @@ html[data-layout="desktop"] .director-foot-link { padding-bottom: 88px; }
 .director-reference-image img { width: 100%; height: 90px; object-fit: contain; }
 .director-reference-images li>span+span { display: flex; align-items: baseline; gap: 6px; margin-top: 6px; font-size: 12px; overflow-wrap: anywhere; }
 .director-reference-images b { flex-shrink: 0; }
+.director-reference-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .director-reference-missing { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ip-muted); font-size: 12px; }
 .director-clip-editor { display: flex; flex-direction: column; gap: 12px; }
 .director-asset-picks { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
@@ -462,9 +463,10 @@ html[data-layout="desktop"] .director-episode-side { position: sticky; top: calc
 .director-episode-side h4 small { color: var(--ip-muted); font-weight: 500; }
 .director-episode-side ol { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 html:not([data-layout="desktop"]) .director-episode-side ol { flex-direction: row; overflow-x: auto; }
-.director-episode-item { display: grid; grid-template-columns: minmax(0, 1fr) 32px; align-items: center; gap: 2px; padding: 3px; border: 1px solid transparent; border-radius: 8px; }
-.director-episode-item:hover { background: var(--ip-soft); }
-.director-episode-item:has([aria-current="true"]) { border-color: var(--ip-ink); background: var(--ip-soft); }
+/* 只给分镜页左侧的分集导航：剧本页的分集列表也叫 director-episode-item，不加限定会把剧本正文挤进 32px 那一栏（2026-11-14 走查发现）。 */
+.director-episode-side .director-episode-item { display: grid; grid-template-columns: minmax(0, 1fr) 32px; align-items: center; gap: 2px; padding: 3px; border: 1px solid transparent; border-radius: 8px; }
+.director-episode-side .director-episode-item:hover { background: var(--ip-soft); }
+.director-episode-side .director-episode-item:has([aria-current="true"]) { border-color: var(--ip-ink); background: var(--ip-soft); }
 .director-episode-pick { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 6px; width: 100%; min-width: 0; padding: 4px; border: 0; border-radius: 5px; background: transparent; text-align: left; font-size: 13px; color: var(--ip-ink); }
 .director-episode-pick b { font-weight: 700; white-space: nowrap; }
 .director-episode-pick span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
@@ -473,7 +475,7 @@ html:not([data-layout="desktop"]) .director-episode-side ol { flex-direction: ro
 .director-episode-side .director-episode-script { display: grid; place-items: center; width: 32px; height: 36px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--director-guide); }
 .director-episode-script:hover, .director-episode-script[aria-expanded="true"] { background: var(--director-guide-soft); }
 html[data-layout="desktop"] .director-episode-side ol { min-height: 0; overflow-y: auto; }
-html:not([data-layout="desktop"]) .director-episode-item { flex: 0 0 188px; grid-template-columns: minmax(0, 1fr) 40px; }
+html:not([data-layout="desktop"]) .director-episode-side .director-episode-item { flex: 0 0 188px; grid-template-columns: minmax(0, 1fr) 40px; }
 html:not([data-layout="desktop"]) .director-episode-script { width: 40px; height: 44px; }
 
 .director-clip-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px 14px; border: 1px solid var(--ip-line); border-radius: 12px; background: var(--ip-paper); }

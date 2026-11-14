@@ -421,6 +421,16 @@ class DirectorImageModelTest {
         assertEquals("2048x2048", lastSubmitted().size());
     }
 
+    /** 2026-11-14 用户要求分镜也用 2.5 的 4K：按作品画幅选好接入点后，同系列 4K 同价就升上去。 */
+    @Test void boardsUseTheSameFamilyFourKWhenItCostsNoMore() throws Exception {
+        tieredPolicy("gpt-image-2.5-flare-1k", "gpt-image-2.5-flare-4k"); boardClip();
+        var view = patch(om.createObjectNode().put("aspectRatio", "16:9"));
+        assertEquals(30, view.path("pricing").path("boardImage").asLong());
+        generate("board", "k1", 30);
+        assertEquals("img-high", lastSubmitted().model());
+        assertEquals("3840x2160", lastSubmitted().size());
+    }
+
     /** GPT Image 2 的 4K 被厂商关了（2026-11-14 实测 four_k_disabled）：同价也不升，人物图仍出 2K。 */
     @Test void gptTwoCharactersStayAtTwoKBecauseItsFourKIsDisabled() throws Exception {
         tieredPolicy("gpt-image-2-1k-pic", "gpt-image-2-4k-pic");

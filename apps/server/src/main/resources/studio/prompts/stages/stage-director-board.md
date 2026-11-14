@@ -1,13 +1,13 @@
 ---
 key: stage-director-board
 name: 导演台分镜图
-version: 2
+version: 3
 status: active
 layer: stage
 target: image-model
 callPoints:
 - "导演台分镜出图 task=board（DirectorService）"
-summary: "一个片段的单张分镜画面或 2×2 分镜板（§8 #20）。直接交给画图模型，不拼底座；已生成的图按生成时的版本核对是否需更新。"
+summary: "一个片段的单张分镜画面或 2×2 分镜板（§8 #20）。v3（2026-11-14）：参考图按名字称呼、不写图号（编号对照由代码在提交时加在最前面），人物严格照参考图的长相。直接交给画图模型，不拼底座；已生成的图按生成时的版本核对是否需更新。"
 ---
 {{#single}}
 {{style}}风格的剧情分镜画面，画幅 {{aspect}}。
@@ -16,10 +16,10 @@ summary: "一个片段的单张分镜画面或 2×2 分镜板（§8 #20）。直
 {{style}}风格，生成 2×2 分镜板：四个等大无间隙的格子，整板 {{aspect}}，每格 {{aspect}}，按左上、右上、左下、右下的顺序阅读。
 {{/single}}
 {{#refs}}
-{{label}} 提供{{#isScene}}场景{{/isScene}}{{#isProp}}道具{{/isProp}}{{#isProduct}}商品{{/isProduct}}{{#isCharacter}}角色{{/isCharacter}}「{{name}}」的{{#isScene}}空间布局与光源方向{{/isScene}}{{#isProp}}外观{{/isProp}}{{#isProduct}}外形、颜色、包装和标签{{/isProduct}}{{#isCharacter}}身份与造型{{/isCharacter}}。
+{{#isCharacter}}角色「{{name}}」：脸型、五官、发型、肤色、年龄感和体型严格照「{{name}}」的参考图，每一格都要一眼认出是参考图里的同一个人，不美化、不换脸；服装和配饰也照这张参考图。{{/isCharacter}}{{#isScene}}场景「{{name}}」：空间布局与光源方向照「{{name}}」的参考图。{{/isScene}}{{#isProp}}道具「{{name}}」：外观照「{{name}}」的参考图。{{/isProp}}{{#isProduct}}商品「{{name}}」：外形、颜色、包装和标签照「{{name}}」的参考图。{{/isProduct}}
 {{/refs}}
 {{#hasRefs}}
-参考图里的多视角或资料排版代表同一个资产，不要复制资料排版、背景，也不要把同一个角色画成多个人。参考图只确定人物身份、造型、道具外观和空间，画面里按镜头重新给人物布光，参考图本身偏暗或偏色的地方不照搬。
+人物参考图是设定图，里面的多个角度都是同一个人：只取长相和造型，不要复制设定图的排版、背景，也不要把同一个角色画成多个人。参考图只确定人物长相、造型、道具外观和空间，画面里按镜头重新给人物布光，参考图本身偏暗或偏色的地方不照搬。
 {{/hasRefs}}
 {{#hasProduct}}
 商品和参考图保持一致：外形、比例、颜色和包装都不改，不换牌子，包装上原有的图案和文字照参考图保留，主要部分不被手或其他东西遮住。

@@ -397,7 +397,7 @@ function ClipCard({ goTab, openSettings, work, clip, quote, apply, setError, onP
         <div className="director-clip-links" role="group" aria-label="生成视频用到的参考">
           <button type="button" onClick={() => onPreview("assets")} className={missing.length ? "is-error" : undefined} title="关联的角色、场景、道具资产图，用于保持长相和环境一致">
             <span className="director-avatar-stack">{imageRefs?.length
-              ? imageRefs.slice(0, 3).map(r => r.url ? <img key={r.label} src={r.url} alt={`${r.label} ${r.name}`}/> : <i key={r.label}>{r.name.slice(0, 1)}</i>)
+              ? imageRefs.slice(0, 3).map(r => r.url ? <img key={r.label} src={r.url} alt={r.name}/> : <i key={r.label}>{r.name.slice(0, 1)}</i>)
               : linked.slice(0, 3).map(a => {
                 const img = adopted(chosenImage(a, clip));
                 return img?.url ? <img key={a.id} src={img.url} alt={a.name}/> : <i key={a.id}>{a.name.slice(0, 1)}</i>;
@@ -555,7 +555,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo,
       <header><span className="director-clip-no">{clip.order}</span><h3 title={clip.title}>{preview.kind === "assets" ? "关联资产" : "视频"} · {clip.title || `片段 ${clip.order}`}</h3></header>
       {preview.kind === "assets" ? <>
         <p className="director-dialog-note">资产图仅用于保持人物长相、服装和环境一致，镜头构图以分镜图为准。</p>
-        <ReferenceImages refs={clip.videoRefs} title="视频参考图片"/>
+        <ReferenceImages refs={clip.videoRefs} title="视频参考图片" numbered/>
         {targetGone && <div className="director-notice director-unlinked-note" role="status"><span>「{target!.name}」已不在此片段的关联资产中。{
           work.clips.some(c => c.assetIds.includes(target!.id)) ? `其他片段仍在使用此资产，可在${targetPage.name}查看。` : `已没有片段使用此资产，可在${targetPage.name}删除。`}</span>
           <button type="button" onClick={() => { onClose(); goTab(targetPage.tab); }}>返回{targetPage.name}</button></div>}

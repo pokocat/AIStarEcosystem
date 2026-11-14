@@ -12,13 +12,17 @@ export function orderedLinkedAssets(work: DirectorWork, clip: DirectorClip) {
   return linked.sort((a, b) => rank.size ? (rank.get(a.id) ?? rank.size) - (rank.get(b.id) ?? rank.size) : kinds[a.kind] - kinds[b.kind]);
 }
 
-export function ReferenceImages({ refs, title }: { refs?: DirectorImageReference[]; title: string }) {
+/**
+ * 参考图列表。分镜图提示词按名字称呼参考图（2026-11-14 起），这里只显示名字；
+ * 视频提示词仍写「参考图N」（视频提示词优化按编号对应素材），视频的列表传 numbered 才带编号。
+ */
+export function ReferenceImages({ refs, title, numbered = false }: { refs?: DirectorImageReference[]; title: string; numbered?: boolean }) {
   if (!refs?.length) return null;
   return <section className="director-reference-images" aria-label={title}>
     <h4>{title}</h4>
     <ol>{refs.map((r, i) => <li key={`${r.label}:${i}`}>
-      <span className="director-reference-image">{r.url ? <ZoomableImage src={r.url} alt={`${r.label} ${r.name}`}/> : <span className="director-reference-missing"><ImageIcon size={18}/>{r.key ? "图片暂不可用" : "缺少图片"}</span>}</span>
-      <span><b>{r.label}</b><span>{r.name}</span></span>
+      <span className="director-reference-image">{r.url ? <ZoomableImage src={r.url} alt={numbered ? `${r.label} ${r.name}` : r.name}/> : <span className="director-reference-missing"><ImageIcon size={18}/>{r.key ? "图片暂不可用" : "缺少图片"}</span>}</span>
+      <span>{numbered && <b>{r.label}</b>}<span className="director-reference-name" title={r.name}>{r.name}</span></span>
     </li>)}</ol>
   </section>;
 }
