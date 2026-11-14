@@ -66,7 +66,7 @@ html[data-layout="mobile"] .studio-library-categories { padding-inline:12px; }
 .studio-character-card:hover,.studio-character-card:focus-visible { border-color:var(--accent); }
 .studio-character-cover { height:210px; position:relative; background:var(--surface-2); }
 .studio-character-cover img { width:100%; height:100%; object-fit:contain; }
-.studio-character-cover>span { position:absolute; top:9px; left:9px; padding:3px 7px; font-size:10px; background:var(--surface); border:1px solid var(--line); border-radius:5px; }
+.studio-character-cover>span:not(.portrait-verified-mark) { position:absolute; top:9px; left:9px; padding:3px 7px; font-size:10px; background:var(--surface); border:1px solid var(--line); border-radius:5px; }
 .studio-character-card-body { padding:13px; display:grid; gap:7px; }
 .studio-character-card-body strong { font-size:14px; overflow-wrap:anywhere; }
 .studio-character-card-body small { font-size:11px; color:var(--ink-2); }
