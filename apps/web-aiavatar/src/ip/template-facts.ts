@@ -70,6 +70,17 @@ export function newestFirst<T extends Pick<IpTemplate, 'createdAt'>>(templates: 
   return templates.map((t, i) => ({ t, i, d: day(t) })).sort((a, b) => (b.d === a.d ? a.i - b.i : b.d - a.d)).map(x => x.t);
 }
 
+/** 首页按完整的发布时间倒序。没有发布时间的内置模板排最后。 */
+export function homeRecommendations<T extends Pick<IpTemplate, 'createdAt'>>(templates: readonly T[]): T[] {
+  return templates
+    .map(item => {
+      const time = Date.parse(item.createdAt ?? '');
+      return { item, time: Number.isNaN(time) ? -Infinity : time };
+    })
+    .sort((a, b) => a.time === b.time ? 0 : b.time - a.time)
+    .map(({ item }) => item);
+}
+
 /**
  * 作品的真实比例（宽 / 高），灵感墙按它摆，不裁图。先看成品上量到的尺寸，再看像素尺寸和设置的画幅；都没有就不猜。
  * 太长太扁的收一下（1:2 到 2:1），不让一张卡占掉一整屏。

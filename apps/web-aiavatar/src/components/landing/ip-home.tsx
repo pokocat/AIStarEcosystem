@@ -13,7 +13,7 @@ import { StudioConversationStart } from "@/ip/studio-conversation-start";
 import { useStartNewCanvas } from "@/ip/use-start-new-canvas";
 import { useStudioFailure } from "@/ip/studio-errors";
 import { StudioTemplateUse } from "@/ip/studio-template-use";
-import { inspirationOrder, templateKind } from "@/ip/template-facts";
+import { homeRecommendations, templateKind } from "@/ip/template-facts";
 import { InspirationWall } from "@/ip/inspiration-wall";
 import { sceneHref, useSceneHomeCards } from "@/ip/scenes/scene-catalog";
 import { SceneThumb } from "@/ip/scenes/scene-layout";
@@ -100,8 +100,7 @@ export function IpHome({ header = true }: { header?: boolean }) {
     try { const project = await createStudioEntry(target.entry); router.push(studioEntryHref(project.id, target.entry)); }
     catch (e) { showFailure({ action: "新建画布", error: e, next: "请重试。多次失败时，可复制「错误详情」反馈给我们。" }); setCreating(undefined); createLock.current = false; }
   };
-  // 新发布的在前，有成图的排在只有步骤的模板前面（用户 2026-11-06 要求；2026-10-30 线上走查：前几屏大半是没有图的卡）。
-  const feed = useMemo(() => inspirationOrder((templates ?? []).filter(t => tab === "all" || (tab === "canvas" ? true : templateKind(t) === tab))), [templates, tab]);
+  const feed = useMemo(() => homeRecommendations((templates ?? []).filter(t => tab === "all" || (tab === "canvas" ? true : templateKind(t) === tab))), [templates, tab]);
 
   return <div className="ip-brand-surface ip-home studio-scene-home studio-next-page">
     {/* 登录后电脑上的导航由外壳给（左侧一列，见 shell/app-chrome.tsx），这里只给没登录的访客画公开顶栏。 */}

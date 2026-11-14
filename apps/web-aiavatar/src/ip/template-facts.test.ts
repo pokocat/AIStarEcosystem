@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { inspirationOrder, inspirationPlacement, newestFirst, templateKind, templateNeeds, templateNodeNote, templatePrompt, templateRatio, templateSearchText, templateSpec } from './template-facts';
+import { homeRecommendations, inspirationOrder, inspirationPlacement, newestFirst, templateKind, templateNeeds, templateNodeNote, templatePrompt, templateRatio, templateSearchText, templateSpec } from './template-facts';
 
 const node = (id: string, type: string, title: string, metadata: any) => ({ id, type, title, position: { x: 0, y: 0 }, width: 100, height: 100, metadata });
 const doc = { nodes: [
@@ -100,6 +100,15 @@ describe('the inspiration wall', () => {
     const old = { id: 'old', createdAt: '2026-11-03T00:00:00Z', coverUrl: 'c', doc: docOf() };
     const fresh = { id: 'fresh', createdAt: '2026-11-05T00:00:00Z', doc: docOf(nodeWith({ storageKey: 'k' })) };
     expect(inspirationOrder([old, steps, fresh]).map(t => t.id)).toEqual(['fresh', 'old', 'steps']);
+  });
+
+  test('home recommendations compare exact publication times across content types', () => {
+    const builtIn = { id: 'built-in', createdAt: undefined };
+    const olderVideo = { id: 'video', createdAt: '2026-11-13T11:01:20.123Z', previewVideoUrl: 'video' };
+    const newerCanvas = { id: 'canvas', createdAt: '2026-11-13T19:01:20.456+08:00' };
+    const rows = [builtIn, olderVideo, newerCanvas];
+    expect(homeRecommendations(rows).map(t => t.id)).toEqual(['canvas', 'video', 'built-in']);
+    expect(rows.map(t => t.id)).toEqual(['built-in', 'video', 'canvas']);
   });
 });
 

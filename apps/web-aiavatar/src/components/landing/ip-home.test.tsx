@@ -80,18 +80,18 @@ test('tools and goals: 导演台 is a page, 人物配音 opens a canvas with its
   expect([...art].map(img => img.getAttribute('src'))).toEqual(['https://cdn/ops-cover.webp', '/studio/scene-covers/ecom-seeding.webp']);
 });
 
-test('灵感 on Home shows the newest first, with what has a picture ahead of steps-only templates', async () => {
+test('灵感 on Home puts the latest publications at the top, including within the same day', async () => {
   api.authed = true;
   const doc = { nodes: [{ id: 'n', type: 'image', title: 't', position: { x: 0, y: 0 }, width: 10, height: 10, metadata: { storageKey: 'k', content: 'u' } }], connections: [], viewport: { x: 0, y: 0, k: 1 } };
   const card = (id: string, createdAt?: string) => ({ id, name: id, summary: '', lookCount: 0, estimatedCredits: 0, coverUrl: 'c', doc, createdAt });
-  api.examples.mockResolvedValue([card('旧案例', '2026-11-03T02:00:00Z'), card('新案例', '2026-11-06T00:22:00Z')]);
-  api.templates.mockResolvedValue([card('内置模板'), { ...card('只有步骤', '2026-11-07T00:00:00Z'), coverUrl: undefined, doc: { ...doc, nodes: [] } }]);
+  api.examples.mockResolvedValue([card('旧案例', '2026-11-06T00:02:00Z'), card('新案例', '2026-11-06T00:22:00Z')]);
+  api.templates.mockResolvedValue([card('内置模板'), { ...card('只有步骤', '2026-11-06T00:10:00Z'), coverUrl: undefined, doc: { ...doc, nodes: [] } }]);
   await act(async () => { render(<IpHome header={false}/>); });
-  // Each card goes into the shortest column, and jsdom has no width, so two columns here: read them top to bottom, left to right.
+  // jsdom renders two columns. The two most recent cards occupy their first positions.
   const columns = [...document.querySelectorAll('.inspiration-wall-column')].map(c => [...c.querySelectorAll('[aria-label^="预览模板"]')].map(b => b.getAttribute('aria-label')!.replace('预览模板 ', '')));
-  expect(columns.map(c => c[0])).toEqual(['新案例', '旧案例']);
+  expect(columns.map(c => c[0])).toEqual(['新案例', '只有步骤']);
   expect(columns.flat()).toHaveLength(4);
-  expect(columns.flat().indexOf('只有步骤')).toBeGreaterThan(columns.flat().indexOf('内置模板'));
+  expect(columns.map(c => c[1])).toEqual(['旧案例', '内置模板']);
 });
 
 // 灵感 moved onto Home: official templates and examples, filtered by what they contain; opening one previews it.
