@@ -10,6 +10,7 @@ import com.aistareco.aep.service.storage.FileStorageService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.aistareco.common.BusinessException;
+import java.time.Instant;
 import java.util.*;
 
 /** Asset records prove ownership; client canvas metadata never grants access. */
@@ -48,10 +49,16 @@ public class StudioIpAssetService {
         result.addAll(officialAssets());
         return result;
     }
+    private record OfficialAsset(IpAsset asset, Instant updatedAt) {
+        OfficialAsset(IpAsset asset, Instant updatedAt, Instant createdAt) {
+            this(asset, updatedAt != null ? updatedAt : createdAt != null ? createdAt : Instant.EPOCH);
+        }
+    }
+
     /** Only published platform snapshots can enter Official IP. Never expose an author's source keys or avatar ids. */
     public List<IpAsset> officialAssets() {
-        var result=new ArrayList<IpAsset>(officialAvatars());
-        if(officialDemos==null)return result;
+        var result=new ArrayList<>(officialAvatars());
+        if(officialDemos==null)return result.stream().map(OfficialAsset::asset).toList();
         for(var demo:officialDemos.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc()) {
             if(!"official".equals(demo.getVisibility()))continue;
             try {
@@ -71,30 +78,34 @@ public class StudioIpAssetService {
                     String characterName=studio.path("libraryCharacterName").asText(name);
                     String id="official:"+demo.getId()+":"+UUID.nameUUIDFromBytes(group.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     String assetRole=LOOK_ROLES.contains(role)?role:"main";
-                    result.add(new IpAsset(null,id,1,key,name,storage.signedUrl(key),"main".equals(assetRole),null,
-                            characterName,"ai",assetRole,metadata.path("prompt").asText(demo.getSummary()),Map.of(),"official","free",null));
+                    var asset = new IpAsset(null,id,1,key,name,storage.signedUrl(key),"main".equals(assetRole),null,
+                            characterName,"ai",assetRole,metadata.path("prompt").asText(demo.getSummary()),Map.of(),"official","free",null);
+                    result.add(new OfficialAsset(asset, demo.getUpdatedAt(), demo.getCreatedAt()));
                 }
             } catch(java.io.IOException ignored) { /* Malformed legacy snapshots do not break My IP. */ }
         }
-        return result;
+        return result.stream().sorted(Comparator.comparing(OfficialAsset::updatedAt).reversed())
+                .map(OfficialAsset::asset).toList();
     }
     /**
      * 官方形象（dap_public_avatar）：正面一张当主形象，已有侧脸归到「视角」。
      * 需授权的也列出来（选择框里显示但不能选），用不用得了以 {@link #officialUsable} 为准。
      */
-    List<IpAsset> officialAvatars() {
+    private List<OfficialAsset> officialAvatars() {
         if(publicAvatars==null)return List.of();
-        var result=new ArrayList<IpAsset>();
-        for(var a:publicAvatars.findAllByOrderBySortOrderAscCreatedAtDesc()) {
+        var result=new ArrayList<OfficialAsset>();
+        for(var a:publicAvatars.findAllNewestFirst()) {
             if(a.isRetired()||a.getFrontKey()==null)continue;
             String id="official:"+a.getId();String access=a.accessOrDefault();
             Map<String,String> attributes=new LinkedHashMap<>();
             if(a.getDef()!=null)a.getDef().forEach((k,v)->{if(attributes.size()<24 && k!=null && k.length()<=32 && v instanceof String text && !text.isBlank())attributes.put(k,text.substring(0,Math.min(text.length(),300)));});
             String description=a.getTagline();
-            result.add(new IpAsset(null,id,1,a.getFrontKey(),a.getName(),storage.signedUrl(a.getFrontKey()),true,null,a.getName(),"ai","main",description,attributes,"official",access,a.getCat()));
-            if(a.getThreeViewKey()!=null)result.add(new IpAsset(null,id,1,a.getThreeViewKey(),"形象设定图",storage.signedUrl(a.getThreeViewKey()),false,"three-view",a.getName(),"ai","three-view",description,attributes,"official",access,a.getCat()));
-            if(a.getRightKey()!=null)result.add(new IpAsset(null,id,1,a.getRightKey(),"右侧脸",storage.signedUrl(a.getRightKey()),false,"right",a.getName(),"ai","side",description,attributes,"official",access,a.getCat()));
-            if(a.getLeftKey()!=null)result.add(new IpAsset(null,id,1,a.getLeftKey(),"左侧脸",storage.signedUrl(a.getLeftKey()),false,"left",a.getName(),"ai","side",description,attributes,"official",access,a.getCat()));
+            var images = new ArrayList<IpAsset>();
+            images.add(new IpAsset(null,id,1,a.getFrontKey(),a.getName(),storage.signedUrl(a.getFrontKey()),true,null,a.getName(),"ai","main",description,attributes,"official",access,a.getCat()));
+            if(a.getThreeViewKey()!=null)images.add(new IpAsset(null,id,1,a.getThreeViewKey(),"形象设定图",storage.signedUrl(a.getThreeViewKey()),false,"three-view",a.getName(),"ai","three-view",description,attributes,"official",access,a.getCat()));
+            if(a.getRightKey()!=null)images.add(new IpAsset(null,id,1,a.getRightKey(),"右侧脸",storage.signedUrl(a.getRightKey()),false,"right",a.getName(),"ai","side",description,attributes,"official",access,a.getCat()));
+            if(a.getLeftKey()!=null)images.add(new IpAsset(null,id,1,a.getLeftKey(),"左侧脸",storage.signedUrl(a.getLeftKey()),false,"left",a.getName(),"ai","side",description,attributes,"official",access,a.getCat()));
+            for (var image : images) result.add(new OfficialAsset(image, a.getUpdatedAt(), a.getCreatedAt()));
         }
         return result;
     }

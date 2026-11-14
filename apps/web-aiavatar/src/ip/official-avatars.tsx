@@ -9,8 +9,11 @@ import type { StudioIpAsset } from '@ai-star-eco/types/ip-studio-workflow';
 import type { StudioLibraryCharacter } from '@/canvas-bridge/studio-ip-library';
 import { studioOverlayContainer } from './studio-overlay';
 
-const CATEGORY_LABELS: Record<string, string> = { pro: '商务专业', life: '生活方式', ugc: '内容创作', community: '潮流娱乐' };
-const CATEGORY_ORDER = ['pro', 'life', 'ugc', 'community'];
+const CATEGORY_LABELS: Record<string, string> = {
+  pro: '商务专业', life: '生活方式', ugc: '内容创作', community: '潮流娱乐',
+  teacher: '教师', 'civil-service': '公务员', urban: '都市精英', medical: '医护', shopkeeper: '小店经营', family: '家庭长辈',
+};
+const CATEGORY_ORDER = Object.keys(CATEGORY_LABELS);
 
 export const isOfficialAsset = (a: Pick<StudioIpAsset, 'librarySource'>) => a.librarySource === 'official';
 /** 能不能拿去生成：我的 IP 一律能；官方形象只有需授权的不能。 */

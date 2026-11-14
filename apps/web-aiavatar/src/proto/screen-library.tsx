@@ -30,7 +30,11 @@ function useIsOperator() {
   return USE_MOCK || isOperatorRole(identity?.operatorRole);
 }
 
-const PLAZA_CATS: [string, string][] = [['pro', '专业'], ['life', '生活方式'], ['ugc', 'UGC'], ['community', '社区']];
+const PLAZA_CATS: [string, string][] = [
+  ['pro', '专业'], ['life', '生活方式'], ['ugc', 'UGC'], ['community', '社区'],
+  ['teacher', '教师'], ['civil-service', '公务员'], ['urban', '都市精英'],
+  ['medical', '医护'], ['shopkeeper', '小店经营'], ['family', '家庭长辈'],
+];
 
 /** 单张形象图上传槽位（点选 → 上传 → 预览）。 */
 function PlazaImgSlot({ label, required, value, busy, onPick }) {
@@ -193,8 +197,8 @@ function MLibrary({ ctx, plazaOnly = false }: any) {
   if (q) list = list.filter(c => (c.name + (c.archetype || '') + c.id).toLowerCase().includes(q.toLowerCase()));
 
   const cats = [
-    { key: 'all', label: '全部' }, { key: 'pro', label: '专业' }, { key: 'life', label: '生活方式' },
-    { key: 'ugc', label: 'UGC' }, { key: 'community', label: '社区' }, { key: 'fav', label: '收藏' },
+    { key: 'all', label: '全部' }, ...PLAZA_CATS.map(([key, label]) => ({ key, label })),
+    { key: 'fav', label: '收藏' },
   ];
 
   return hML('div', { className: 'm-body has-tabbar', 'data-screen-label': plazaOnly ? '资产广场' : '数字人库' },

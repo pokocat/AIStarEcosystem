@@ -34,7 +34,7 @@ public class DapPublicAvatarService {
 
     /** 全部运营公开数字人的 wire（与 DapCatalogService.publicAvatars() 同形，附 managed=true）。 */
     public List<Map<String, Object>> listPublicWire() {
-        return repo.findAllByOrderBySortOrderAscCreatedAtDesc().stream().filter(a -> !a.isRetired()).map(this::toWire).toList();
+        return repo.findAllNewestFirst().stream().filter(a -> !a.isRetired()).map(this::toWire).toList();
     }
 
     /** 单个（详情永久链接冷还原 / 另存为来源查找）。 */

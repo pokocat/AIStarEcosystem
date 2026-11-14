@@ -44,8 +44,10 @@ public class DapBuiltinPublicAvatarSeeder implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(DapBuiltinPublicAvatarSeeder.class);
     public static final String MARKER = "dap.builtin-public-avatars.seeded";
     public static final String EXPANSION_MARKER = "dap.builtin-public-avatars.expansion-20261113.seeded";
+    public static final String DRAMA_ROLES_MARKER = "dap.builtin-public-avatars.drama-roles-20261114.seeded";
     private static final Set<String> ORIGINAL_IDS = Set.of(
             "PA-01", "PA-02", "PA-03", "PA-04", "PA-05", "PA-06", "PA-10");
+    private static final Set<String> DRAMA_ROLE_CATEGORIES = Set.of("teacher", "civil-service", "urban", "medical", "shopkeeper", "family");
 
     private final DapCatalogService catalog;
     private final DapPublicAvatarRepository repo;
@@ -81,11 +83,14 @@ public class DapBuiltinPublicAvatarSeeder implements CommandLineRunner {
             for (String id : ORIGINAL_IDS) {
                 var row = repo.findById(id).orElse(null);
                 if (row != null && row.getThreeViewKey() == null) {
-                    repo.setBuiltinThreeViewIfMissing(id, store("/plaza/" + id + "-three-view.jpg"));
+                    repo.setBuiltinThreeViewIfMissing(id, store("/plaza/" + id + "-three-view.jpg"), Instant.now());
                 }
             }
         }
-        seedBatch(EXPANSION_MARKER, builtins.stream().filter(p -> !ORIGINAL_IDS.contains(p.get("id"))).toList(), -90, created);
+        seedBatch(EXPANSION_MARKER, builtins.stream()
+                .filter(p -> !ORIGINAL_IDS.contains(p.get("id")) && !DRAMA_ROLE_CATEGORIES.contains(p.get("cat")))
+                .toList(), -90, created);
+        seedBatch(DRAMA_ROLES_MARKER, builtins.stream().filter(p -> DRAMA_ROLE_CATEGORIES.contains(p.get("cat"))).toList(), -50, created);
         if (!created.isEmpty()) log.info("[official-avatars] 内置官方形象入库 {} 个：{}", created.size(), created);
         return created;
     }
