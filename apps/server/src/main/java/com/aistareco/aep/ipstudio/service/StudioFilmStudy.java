@@ -193,11 +193,11 @@ public final class StudioFilmStudy {
         Path clip=directory.resolve("segment-"+segment.path("no").asInt()+".mp4"),cover=directory.resolve("cover-"+segment.path("no").asInt()+".jpg");
         // Target 29.9 s for a 30 s provider limit, leaving room for fractional frames and AAC packets.
         double target=Math.min(length,maxSeconds-.1);
-        encodeClip(input,clip,start,target,Double.isFinite(maxSeconds)?"disabled":"make_zero");
+        encodeClip(input,clip,start,target,Double.isFinite(maxSeconds)?"disabled":"make_zero",false);
         JsonNode probe=StudioLipSyncMedia.probe(clip);double actual=probe.path("format").path("duration").asDouble();
         if(actual>maxSeconds) {
-            // FFmpeg may finish on the next frame or audio packet. Re-encode with a short margin and probe the MP4 again.
-            encodeClip(input,clip,start,target-(actual-maxSeconds)-.05,"disabled");
+            // Sparse or variable timestamps can push the last frame past -t. A fixed 25 fps bounds each frame to 40 ms.
+            encodeClip(input,clip,start,target,"disabled",true);
             probe=StudioLipSyncMedia.probe(clip);actual=probe.path("format").path("duration").asDouble();
         }
         if(!Double.isFinite(actual)||actual<=0||actual>maxSeconds||Math.abs(actual-length)>.3)
@@ -208,10 +208,12 @@ public final class StudioFilmStudy {
         segment.put("storageKey",file.key()).put("durationSec",actual).put("width",video.path("width").asInt()).put("height",video.path("height").asInt());
         var image=storage.store(Files.readAllBytes(cover),IpProjectService.CATEGORY_GEN,owner,"jpg","image/jpeg");segment.put("coverStorageKey",image.key());
     }
-    private static void encodeClip(Path input,Path clip,double start,double length,String timestampPolicy) throws Exception {
+    private static void encodeClip(Path input,Path clip,double start,double length,String timestampPolicy,boolean normalizeFrameRate) throws Exception {
+        String filters="scale=1280:1280:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1";
+        if(normalizeFrameRate)filters+="\u002cfps=25";
         process(List.of("ffmpeg","-v","error","-nostdin","-y","-threads","2","-i",input.toString(),
                 "-ss",String.format(Locale.ROOT,"%.6f",start),"-t",String.format(Locale.ROOT,"%.6f",length),"-map","0:v:0","-map","0:a:0?",
-                "-vf","scale=1280:1280:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1","-c:v","libx264","-threads","2",
+                "-vf",filters,"-c:v","libx264","-threads","2",
                 "-preset","veryfast","-crf","21","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-movflags","+faststart",
                 "-avoid_negative_ts",timestampPolicy,clip.toString()));
     }

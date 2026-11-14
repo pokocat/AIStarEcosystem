@@ -49,6 +49,27 @@ class StudioFilmStudyTest {
    System.out.println("Seedance 2.5 clip "+(no+1)+": "+probe.durationSec()+"s, original audio crossings/s="+crossings);
   }
  }
+ @Test void automaticallyRecutsWhenALongFrameExtendsTheFirstEncodePastTheCap() throws Exception {
+  var ffmpeg=new com.aistareco.aep.service.mixcut.FfmpegRunner(new com.aistareco.aep.config.MixcutProperties());
+  Path input=directory.resolve("sparse.mp4");
+  ffmpeg.runFfmpeg(List.of("-v","error","-f","lavfi","-i","color=blue:s=160x90:r=7/9:d=35",
+          "-f","lavfi","-i","sine=frequency=660:sample_rate=48000:duration=35",
+          "-c:v","libx264","-threads","2","-c:a","aac",input.toString()),30_000);
+  var storage=mock(FileStorageService.class);
+  when(storage.store(any(byte[].class),anyString(),anyString(),anyString(),anyString())).thenAnswer(call->
+          new FileStorageService.StoredFile("stored."+call.getArgument(3),"","","",call.<byte[]>getArgument(0).length,call.getArgument(4)));
+  // At 7/9 fps, the last frame of a 29.9-second cut ends after the 30-second cap.
+  var segment=om.createObjectNode().put("no",2).put("startSec",0).put("endSec",30);
+  StudioFilmStudy.cut(input,directory,segment,storage,"owner",30);
+  Path clip=directory.resolve("segment-2.mp4");
+  var info=StudioLipSyncMedia.probe(clip);
+  double duration=info.path("format").path("duration").asDouble();
+  assertEquals("25/1",info.path("streams").get(0).path("avg_frame_rate").asText(),"the retry must normalize the picture automatically");
+  assertTrue(duration>=29.8&&duration<=30,"recut duration "+duration);
+  assertTrue(ffmpeg.probeMedia(clip.toFile()).hasAudio());
+  verify(storage,times(1)).store(any(byte[].class),anyString(),eq("owner"),eq("mp4"),eq("video/mp4"));
+  System.out.println("Seedance 2.5 automatic recut: "+duration+"s at 25 fps, original audio present");
+ }
  @Test void actualClipsRetainAudioAndSourceDurationAndDoNotGradeModelProse() throws Exception {
   Path input=directory.resolve("source.mp4");var ffmpeg=new ProcessBuilder("ffmpeg","-v","error","-y","-f","lavfi","-i","testsrc2=s=320x180:r=30:d=3","-f","lavfi","-i","sine=frequency=400:duration=3","-c:v","libx264","-threads","2","-c:a","aac","-shortest",input.toString()).start();assertTrue(ffmpeg.waitFor(30,TimeUnit.SECONDS));assertEquals(0,ffmpeg.exitValue());
   var storage=mock(FileStorageService.class);when(storage.openForRead("source")).thenReturn(input);var saved=new HashMap<String,byte[]>();
