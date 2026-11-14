@@ -16,6 +16,7 @@ import { SignedAudio } from '@/canvas-bridge/signed-audio';
 import { SignedImage } from '@/canvas-bridge/signed-image';
 import { SignedVideo } from '@/canvas-bridge/signed-video';
 import { AssetThumb } from './asset-thumb';
+import { PortraitVerifiedMark } from './portrait-verified-mark';
 import { selectUploadedAssets, uploadAssetBatch } from './asset-upload-batch';
 import { AudioRecorderDialog } from './audio-recorder-dialog';
 import { inOfficialCategory, isOfficialAsset, OFFICIAL_LICENSE_REASON, officialAccessLabel, OfficialCategoryFilter, officialCategoryOptions, officialReference, officialUsable } from './official-avatars';
@@ -222,7 +223,9 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
               onPointerEnter={a.kind === 'video' ? e => { if (e.pointerType === 'mouse') setHoveredVideo(a.id); } : undefined}
               onPointerLeave={a.kind === 'video' ? () => setHoveredVideo(undefined) : undefined}>
               <button type="button" className="lmp-item" aria-pressed={on} aria-label={`选择 ${a.title}`} title={unavailable && access ? `${a.title}（${OFFICIAL_LICENSE_REASON}）` : a.title} disabled={locked || unavailable || full} onClick={() => choose(a)}>
-                {a.kind === 'image' ? <span className="lmp-thumb"><AssetThumb kind="image" src={portrait?.url || a.data.dataUrl} storageKey={portrait?.storageKey || a.data.storageKey}/></span>
+                {a.kind === 'image' ? <span className="lmp-thumb"><AssetThumb kind="image" src={portrait?.url || a.data.dataUrl} storageKey={portrait?.storageKey || a.data.storageKey}/>
+                  {official && !unavailable && <PortraitVerifiedMark storageKey={a.data.storageKey} official/>}
+                </span>
                   : a.kind === 'video' ? <span className="lmp-thumb"><AssetThumb kind="video" src={a.data.url} storageKey={a.data.storageKey} playing={open && !preview && hoveredVideo === a.id}/></span>
                   : <span className="lmp-voice-icon">{on ? <Check size={15} strokeWidth={2.4}/> : <AudioLines size={16} strokeWidth={1.6}/>}</span>}
                 {on && a.kind !== 'audio' && <span className="lmp-check"><Check size={11} strokeWidth={2.6}/></span>}

@@ -5,6 +5,7 @@ import { LibraryMediaPicker } from './library-media-picker';
 
 const api = vi.hoisted(() => ({ folders: vi.fn(), canvasFolder: vi.fn(), materials: vi.fn(), objects: vi.fn(), upload: vi.fn(), ips: vi.fn() }));
 vi.mock('@/canvas-bridge/studio-api', () => ({ listStudioIpAssets: api.ips }));
+vi.mock('./api/video-portrait-library', () => ({ verifiedPortraits: async () => [{ key: 'dap_plaza/annie-three-view.jpg', placement: 'virtual' }] }));
 vi.mock('./audio-recorder-dialog', () => ({ AudioRecorderDialog: ({ open, onSave, onClose }: any) => open ? <button onClick={async () => { await onSave(new File(['wav'], '旁白.wav', { type: 'audio/wav' })); onClose(); }}>保存测试录音</button> : null }));
 vi.mock('./studio-errors', async () => {
   const { useCallback, useState } = await import('react');
@@ -28,6 +29,7 @@ vi.mock('antd', () => ({
   Input: ({ prefix, allowClear, ...p }: any) => <input {...p}/>,
   Skeleton: () => <p>正在读取</p>,
   ConfigProvider: ({ children }: any) => children,
+  Tooltip: ({ children }: any) => children,
   Modal: ({ open, title, children, onCancel }: any) => open ? <div role="dialog" aria-label={title}><button type="button" onClick={onCancel}>关闭 {title}</button>{children}</div> : null,
 }));
 
@@ -282,6 +284,9 @@ test('官方形象 shows one portrait per person and selects the combined charac
   expect(api.ips).toHaveBeenCalledTimes(1);
   const annie = await screen.findByRole('button', { name: '选择 Annie 安妮', exact: true });
   expect(annie.querySelector('img')?.getAttribute('src')).toBe('https://cdn/annie');
+  const shieldLabel = '形象设定图已通过火山虚拟人像审核。';
+  expect(await within(annie).findByRole('img', { name: shieldLabel })).toBeTruthy();
+  expect(within(screen.getByRole('button', { name: '选择 博文' })).queryByRole('img', { name: shieldLabel })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '放大预览 Annie 安妮' }));
   const preview = within(screen.getByRole('dialog', { name: 'Annie 安妮' }));
   expect(preview.getByRole('img').getAttribute('src')).toBe('https://cdn/annie-three-view');

@@ -31,6 +31,7 @@ class ArkPortraitLibraryTest {
         var dataSource = new SingleConnectionDataSource(connection, true);
         db = new JdbcTemplate(dataSource);
         db.execute("CREATE TABLE video_asset_library(id VARCHAR(64) PRIMARY KEY,adapter VARCHAR(32),updated_at TIMESTAMP)");
+        db.execute("CREATE TABLE dap_public_avatar(id VARCHAR(32), three_view_key VARCHAR(512), created_by_user_id VARCHAR(128), access VARCHAR(32))");
         db.update("INSERT INTO video_asset_library VALUES('ark-test','ark',?)", Timestamp.from(Instant.now().minusSeconds(60)));
         Context ctx=mock(Context.class);when(ctx.getConnection()).thenReturn(connection);new V78__ark_portrait_library().migrate(ctx);
         new V82__portrait_review_queue().migrate(ctx);
@@ -52,22 +53,24 @@ class ArkPortraitLibraryTest {
     @Test void onlyApprovedFreeOfficialSheetsAreSharedAcrossStudioUsers() {
         String key = "dap_plaza/platform/PA-35-three-view.jpg";
         String platform = ArkPortraitLibrary.OFFICIAL_AVATAR_OWNER;
-        db.execute("CREATE TABLE dap_public_avatar(id VARCHAR(32), three_view_key VARCHAR(512), created_by_user_id VARCHAR(128), access VARCHAR(32))");
         db.update("INSERT INTO dap_public_avatar VALUES(?,?,?,?)", "PA-35", key, "platform", "free");
         var shared = service.register(platform, "ark-test", key, "image", "官方形象");
         service.register("owner", "ark-test", key, "image", "先前待确认");
 
         assertTrue(service.itemsFor("other", "ark-test", List.of(key)).isEmpty());
+        assertTrue(service.verified("other").isEmpty());
         db.update("UPDATE video_asset_portrait SET status='active',placement='virtual',asset_id='asset-official' WHERE id=?", shared.id());
         for (String user : List.of("owner", "other")) {
             assertEquals("active", service.itemsFor(user, "ark-test", List.of(key)).get(0).status());
             assertEquals("asset://asset-official", service.reference(user, "ark-test", key));
+            assertEquals(List.of(new ArkPortraitLibrary.Verified(key, "virtual")), service.verified(user));
         }
         assertTrue(service.itemsFor("other", "another-project", List.of(key)).isEmpty());
         assertThrows(BusinessException.class, () -> service.refreshItem("other", shared.id()));
         db.update("UPDATE dap_public_avatar SET access='license'");
         assertEquals("needs_review", service.itemsFor("owner", "ark-test", List.of(key)).get(0).status());
         assertTrue(service.itemsFor("other", "ark-test", List.of(key)).isEmpty());
+        assertTrue(service.verified("other").isEmpty());
         verifyNoInteractions(api);
     }
     @Test void mapsProviderContentIndexIncludingTheLeadingTextAndIsolatesOwners() {

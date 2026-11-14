@@ -8,6 +8,7 @@ import type { StudioIpAsset } from '@ai-star-eco/types/ip-studio-workflow';
 import { listStudioIpAssets } from '@/canvas-bridge/studio-api';
 import { groupStudioIpAssets, ipAssetIdentity, ipAssetRole, ipAssetRoles, type StudioLibraryCharacter } from '@/canvas-bridge/studio-ip-library';
 import { AssetThumb } from './asset-thumb';
+import { PortraitVerifiedMark } from './portrait-verified-mark';
 import { inOfficialCategory, isOfficialAsset, OfficialCategoryFilter, OfficialLicenseButton, officialAccessLabel, officialCategoryLabel, officialCategoryOptions, officialReference, officialUsable } from './official-avatars';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { studioOverlayContainer } from './studio-overlay';
@@ -43,7 +44,9 @@ export function AssetsOfficial() {
       {loading && !shown.length ? Array.from({ length: 6 }, (_, i) => <li key={`s${i}`}><span className="assets-skeleton assets-person-cover"/></li>)
         : shown.map(p => <li key={p.id}>
           <button type="button" className="assets-person" aria-label={`查看 ${p.name}`} onClick={() => setOpen(p)}>
-            <span className="assets-person-cover"><AssetThumb kind="image" src={p.main.url} storageKey={p.main.storageKey}/></span>
+            <span className="assets-person-cover"><AssetThumb kind="image" src={p.main.url} storageKey={p.main.storageKey}/>
+              {officialUsable(p.main) && <PortraitVerifiedMark storageKey={officialReference(p).storageKey || undefined} official/>}
+            </span>
             <span className="assets-person-text"><strong>{p.name}</strong><small>{p.main.description || '暂无设定'}</small></span>
             <span className="assets-person-meta"><span>{officialCategoryLabel(p.main.category)}</span><span className={`assets-tag${officialUsable(p.main) ? ' is-ok' : ' is-star'}`}>{officialAccessLabel(p.main)}</span></span>
           </button>

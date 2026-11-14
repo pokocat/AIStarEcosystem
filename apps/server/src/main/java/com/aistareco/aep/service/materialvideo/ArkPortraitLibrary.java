@@ -33,6 +33,13 @@ public class ArkPortraitLibrary {
     public static final String VIRTUAL_DECLARATION="本人确认拥有素材的合法使用及处分权限，该素材为 AI 生成的虚拟人像，不与任何自然人肖像或形象雷同，不侵害第三方权利。";
     /** Platform-owned approvals for free official avatar reference sheets. */
     static final String OFFICIAL_AVATAR_OWNER = "system:studio-official-avatars";
+    private static final String APPROVED_OFFICIAL_SHEETS = """
+            p.owner_user_id=? AND p.status='active' AND p.placement='virtual' AND p.media_type='image'
+                AND p.person_id IS NULL AND p.asset_id LIKE 'asset-%'
+                AND p.source_key LIKE 'dap_plaza/platform/%'
+                AND EXISTS (SELECT 1 FROM dap_public_avatar a WHERE a.three_view_key=p.source_key
+                    AND a.created_by_user_id='platform' AND a.access='free' AND a.id NOT IN ('PA-07','PA-08','PA-09'))
+            """;
     private static final Logger log = LoggerFactory.getLogger(ArkPortraitLibrary.class);
     private static final String SUBMISSION_UNKNOWN = ArkAssetClient.SUBMISSION_UNKNOWN;
     private static final ObjectMapper JSON=new ObjectMapper();
@@ -71,7 +78,7 @@ public class ArkPortraitLibrary {
         var persons=db.queryForList("SELECT * FROM video_asset_person WHERE owner_user_id=? ORDER BY created_at DESC LIMIT 100",owner).stream().map(this::person).toList();
         return new Overview(all,items,persons,Map.of("version",VERSION,"text",AGREEMENT,"virtualDeclaration",VIRTUAL_DECLARATION));
     }
-    /** 资产页给图片打「已进素材库」标记用：本人已通过审核的人像图片。只读本地记录，不查供应商。 */
+    /** 资产页的标记使用本人及平台已审核的人像图片。只读本地记录，不查供应商。 */
     public record Verified(String key,String placement) {}
     public List<Verified> verified(String owner) {
         var seen=new LinkedHashMap<String,String>();
@@ -80,6 +87,8 @@ public class ArkPortraitLibrary {
             // 同一张图在两个库里都通过时，本人核验比虚拟审核说得更具体。
             if(key!=null&&(!seen.containsKey(key)||"person".equals(placement)))seen.put(key,"person".equals(placement)?"person":"virtual");
         }
+        db.queryForList("SELECT DISTINCT p.source_key FROM video_asset_portrait p WHERE " + APPROVED_OFFICIAL_SHEETS,
+                String.class, OFFICIAL_AVATAR_OWNER).forEach(key -> seen.put(key, "virtual"));
         return seen.entrySet().stream().map(e->new Verified(e.getKey(),e.getValue())).toList();
     }
     /** 真人复刻登记授权用：本人名下本人核验已通过（有官方真人组）的人物。不查供应商，只认服务端已确认的结果。 */
@@ -107,14 +116,8 @@ public class ArkPortraitLibrary {
 
     private Optional<Map<String, Object>> approvedOfficialAvatar(String libraryId, String key) {
         if (!key.startsWith("dap_plaza/platform/")) return Optional.empty();
-        return db.queryForList("""
-            SELECT p.* FROM video_asset_portrait p
-            WHERE p.id=? AND p.owner_user_id=? AND p.library_id=? AND p.source_key=?
-                AND p.status='active' AND p.placement='virtual' AND p.media_type='image'
-                AND p.person_id IS NULL AND p.asset_id LIKE 'asset-%'
-                AND EXISTS (SELECT 1 FROM dap_public_avatar a WHERE a.three_view_key=p.source_key
-                    AND a.created_by_user_id='platform' AND a.access='free' AND a.id NOT IN ('PA-07','PA-08','PA-09'))
-            """, hash(OFFICIAL_AVATAR_OWNER, libraryId, key), OFFICIAL_AVATAR_OWNER, libraryId, key)
+        return db.queryForList("SELECT p.* FROM video_asset_portrait p WHERE p.id=? AND p.library_id=? AND p.source_key=? AND "
+                        + APPROVED_OFFICIAL_SHEETS, hash(OFFICIAL_AVATAR_OWNER, libraryId, key), libraryId, key, OFFICIAL_AVATAR_OWNER)
                 .stream().findFirst();
     }
     public Item register(String owner,String libraryId,String key,String mediaType,String label) {

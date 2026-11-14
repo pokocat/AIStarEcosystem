@@ -38,10 +38,10 @@ export const PORTRAIT_VERIFIED_TEXT: Record<Placement, string> = {
 
 const FACE_VERIFIED_TEXT = '已通过人脸核验。';
 
-export function PortraitVerifiedMark({ storageKey, faceVerified = false }: { storageKey?: string; faceVerified?: boolean }) {
+export function PortraitVerifiedMark({ storageKey, faceVerified = false, official = false }: { storageKey?: string; faceVerified?: boolean; official?: boolean }) {
   const placement = useVerifiedPortrait(storageKey);
   if (!placement && !faceVerified) return null;
-  const text = placement ? PORTRAIT_VERIFIED_TEXT[placement] : FACE_VERIFIED_TEXT;
+  const text = official && placement === 'virtual' ? '形象设定图已通过火山虚拟人像审核。' : placement ? PORTRAIT_VERIFIED_TEXT[placement] : FACE_VERIFIED_TEXT;
   return <Tooltip title={text} placement="top" getPopupContainer={studioOverlayContainer}>
     <span className="portrait-verified-mark" role="img" aria-label={text}><ShieldCheck size={14}/></span>
   </Tooltip>;
