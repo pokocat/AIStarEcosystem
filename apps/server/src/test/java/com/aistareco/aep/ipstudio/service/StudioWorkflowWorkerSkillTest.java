@@ -89,7 +89,7 @@ class StudioWorkflowWorkerSkillTest {
         assertEquals(30,segments.get(0).path("endSec").asDouble());
         var clip=ffmpeg.probeMedia(directory.resolve("stored.mp4").toFile());
         assertTrue(clip.hasVideo()&&clip.hasAudio());
-        assertTrue(clip.durationSec()>=29.8&&clip.durationSec()<=30,"clipped MP4 must fit the provider's hard cap");
+        assertTrue(clip.durationSec()>=29.8&&clip.durationSec()<29.95,"the clipped MP4 must leave room under 30 seconds");
         verifyNoInteractions(h.models());
         System.out.println("Seedance 2.5 boundary: "+seconds+"s original, one "+clip.durationSec()+"s clip with audio");
     }

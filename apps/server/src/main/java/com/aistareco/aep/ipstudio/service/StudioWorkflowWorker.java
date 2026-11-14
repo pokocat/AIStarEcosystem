@@ -408,8 +408,7 @@ public class StudioWorkflowWorker {
         java.nio.file.Path directory=java.nio.file.Files.createTempDirectory("studio-trim-");
         try {
             ObjectNode segment=mapper.createObjectNode().put("no",0).put("startSec",0).put("endSec",limit);
-            StudioFilmStudy.cut(storage.openForRead(source.path("storageKey").asText()),directory,segment,storage,run.getOwnerUserId(),
-                    cutsOnly?limit:Double.POSITIVE_INFINITY);
+            StudioFilmStudy.cut(storage.openForRead(source.path("storageKey").asText()),directory,segment,storage,run.getOwnerUserId());
             log.info("[studio-workflow] source trimmed run={} from={} to={} key={}",id,duration,segment.path("durationSec").asDouble(),segment.path("storageKey").asText());
             source.put("originalStorageKey",source.path("storageKey").asText()).put("storageKey",segment.path("storageKey").asText())
                     .put("durationSec",segment.path("durationSec").asDouble(limit));

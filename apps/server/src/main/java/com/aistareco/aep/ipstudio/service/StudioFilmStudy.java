@@ -191,11 +191,13 @@ public final class StudioFilmStudy {
     static void cut(Path input,Path directory,ObjectNode segment,FileStorageService storage,String owner,double maxSeconds) throws Exception {
         double start=segment.path("startSec").asDouble(),length=segment.path("endSec").asDouble()-start;
         Path clip=directory.resolve("segment-"+segment.path("no").asInt()+".mp4"),cover=directory.resolve("cover-"+segment.path("no").asInt()+".jpg");
-        encodeClip(input,clip,start,Math.min(length,maxSeconds),Double.isFinite(maxSeconds)?"disabled":"make_zero");
+        // Target 29.9 s for a 30 s provider limit, leaving room for fractional frames and AAC packets.
+        double target=Math.min(length,maxSeconds-.1);
+        encodeClip(input,clip,start,target,Double.isFinite(maxSeconds)?"disabled":"make_zero");
         JsonNode probe=StudioLipSyncMedia.probe(clip);double actual=probe.path("format").path("duration").asDouble();
         if(actual>maxSeconds) {
             // FFmpeg may finish on the next frame or audio packet. Re-encode with a short margin and probe the MP4 again.
-            encodeClip(input,clip,start,maxSeconds-(actual-maxSeconds)-.05,"disabled");
+            encodeClip(input,clip,start,target-(actual-maxSeconds)-.05,"disabled");
             probe=StudioLipSyncMedia.probe(clip);actual=probe.path("format").path("duration").asDouble();
         }
         if(!Double.isFinite(actual)||actual<=0||actual>maxSeconds||Math.abs(actual-length)>.3)

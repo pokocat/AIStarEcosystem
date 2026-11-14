@@ -34,7 +34,7 @@ class StudioFilmStudyTest {
    Path clip=directory.resolve("segment-"+no+".mp4");
    var probe=ffmpeg.probeMedia(clip.toFile());
    assertTrue(probe.hasVideo()&&probe.hasAudio());
-   assertTrue(probe.durationSec()>=29.8&&probe.durationSec()<=30,"actual clip duration "+probe.durationSec());
+   assertTrue(probe.durationSec()>=29.8&&probe.durationSec()<29.95,"actual clip duration "+probe.durationSec());
    assertEquals(probe.durationSec(),segment.path("durationSec").asDouble());
    Path samples=directory.resolve("audio-"+no+".raw");
    ffmpeg.runFfmpeg(List.of("-v","error","-ss","28","-i",clip.toString(),"-t","1",
