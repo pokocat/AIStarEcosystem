@@ -1,0 +1,11 @@
+# 导演台分镜图按名字称呼参考图生产发布（2026-11-14）
+
+本次发布包括四项改动：分镜图提示词按名字称呼参考图（编号对照由代码加在第一行），人物要求严格照参考图的长相；分镜图按同价规则改出 GPT Image 2.5 的 4K；人物形象参考只管长相，衣服跟剧本；分镜图参考列表只显示名字。另外修复了剧本页分集列表被挤成一列的样式问题。方案和本地走查见 [AI 导演台方案](../ai-director-plan.md) 2026-11-14（续）一节。
+
+- 应用提交为 main `0200357bad375538c180bf7eaca7670ba0ded07b`，是另一会话已发布前端 `8621320f5`（视频时长）之后的唯一服务端改动，接口和数据库都没有变化。[Impersonation CI](https://github.com/pokocat/AIStarEcosystem/actions/runs/43539407218) 30 项全部通过，包括后端三分片和 PostgreSQL 18 实库门禁，Flyway 仍为 V82。提交前在 Mac mini 跑了后端 15 个测试类共 170 条、web-aiavatar 类型检查和 21 条分镜面板测试，全部通过；还做了本地端到端走查（真调 Agnes 文字模型，出图走同一套出图客户端，接到会记录请求的模拟服务）。
+- **API 与后台**：制品 `a3721995a257b425`，JAR SHA-256 `a3721995a257b425a4bd12feefbc958e258231a958f073ceb9ab7980e9994781`，镜像配置 `sha256:23eaa5503d7d26c80ce82b7faffbf2b1a59e7a7d93e24a07a38f91af3b3ec892`，A/B 镜像归档 SHA-256 `33fb1d52543764f339bdf74edb51d0f21c45d1ef810b9925ec656fe1b3b84d35` 一致。北京时间 2026-11-14 09:33 API 切为 B100/A0，两个正式 VIP 的就绪、探针账号鉴权、匿名 401、普通账号访问后台 403 均通过；A 热备保留 `6b9582d6f` / `27385795bd0e9ef2`。A 的独立后台连续三次确认排空后换成新版，就绪通过，重启 0 次。发布后两机 API 和新版后台日志中没有错误。导出进程本次不涉及，仍为 `03e056f69`。
+- **前端**：由固定构建分支 `codex/release-director-board-names-0200357ba`（只把 `deploy-production.yml` 的检出固定到 `0200357ba`，并开启企业功能）的 [生产构建](https://github.com/pokocat/AIStarEcosystem/actions/runs/43539592255) 只打包 web-aiavatar，制品按 GitHub 摘要校验通过。manifest 中提交为 `0200357ba`，登录方式为统一账号中心，开发免密登录关闭，BUILD_ID 为 `m7j3vIF_2BmjkrH3EnkyX`。先预置到备用机 A，在空闲端口完成预检，再排空 A、启动新版，09:36 切为 A100/B0。两个 VIP 共 30 项路由与 ALB 健康检查通过，包括切流前版本 `ThfxoCUWhnkb93SQnRcZI` 的静态文件。B 热备保留该版本。回执为 `~/.local/state/aistar-deploy/20261114-director-board-0200357ba.json`。
+- **提示词库**：新版启动时自动生成 `stage-director-board` v3 和 `stage-director-image-notes` v4，来源均为 seed；`stage-director-asset-image` 仍为 v2。已采用的分镜图按生成时记录的版本核对，不会因为这次改版被标成需更新。
+- **图片模型**：导演台默认图片模型此前已改为 GPT Image 2.5。画布和 AI 图片页的默认也是 2.5，但仍保留 GPT Image 2、Seedream 4.5 和「GPT Image 2 · 4K」供用户自选；按用户决定，这次没有调整可选范围。GPT Image 2 的 4K 已被厂商关闭，选择后会失败。
+- **未验证**：上线后还没在线上用真实作品生成分镜图；视频提示词仍保留「参考图N」写法，没有改动。
+- **回退**：API 切回 A 的 `27385795bd0e9ef2`；后台用 A 上的 `/opt/aistar-cluster/control/background-before-a3721995a257b425.conf` 恢复；前端切回 B 的 `ThfxoCUWhnkb93SQnRcZI`。提示词库不随代码回退：旧版代码读取当前的 v3 和 v4 时，对照行不会加上，分镜图正文里就没有图号；如需完全恢复，在 Studio 后台「提示词与技能」把这两条回滚到 v2 和 v3。
