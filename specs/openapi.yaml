@@ -5902,6 +5902,8 @@ components:
         minSourceSec: { type: integer, description: 编辑时原视频最短秒数 }
         maxSourceSec: { type: integer, description: 编辑时原视频最长秒数，元素替换每段原片的上限 }
         followSource: { type: boolean, description: true 时输出的画幅和时长跟原视频一致 }
+        allowReferenceAudio: { type: boolean, description: 是否允许叠加独立参考声音；原视频自身音轨随视频提交 }
+        maxReferenceVideos: { type: integer, minimum: 1, description: 编辑时最多使用几段参考视频 }
         requestFields: { type: object, nullable: true, additionalProperties: true, description: 编辑任务另加的静态请求字段 }
     VideoStudioContract:
       type: object
@@ -5925,6 +5927,10 @@ components:
       required: [perSecond, freeRefImages, extraRefImagePerSecond, promptOptimizationPerCall]
       properties:
         perSecond: { $ref: '#/components/schemas/VideoStudioPerSecondGrid' }
+        editTierRates:
+          type: object
+          description: 编辑原视频每个清晰度的每秒售价；未配置时沿用该模式的已有售价
+          additionalProperties: { type: integer, format: int64, minimum: 1 }
         freeRefImages: { type: integer, minimum: 0, description: 配有参考素材规则的模式中，前几张参考图不加价 }
         extraRefImagePerSecond: { type: integer, format: int64, minimum: 0, description: 第 freeRefImages+1 张起每张每秒加价（0 = 不加） }
         promptOptimizationPerCall: { type: integer, format: int64, minimum: 0, description: 智能优化每次多少积分（0 = 不收费） }
@@ -5953,6 +5959,12 @@ components:
         endpointTierRates:
           type: object
           description: 端点编号 → 清晰度 → 每秒积分，优先于共享价表；省略时保留已配置的端点售价
+          additionalProperties:
+            type: object
+            additionalProperties: { type: integer, format: int64, minimum: 1 }
+        endpointEditTierRates:
+          type: object
+          description: 端点编号 → 编辑任务清晰度 → 每秒积分；省略时保留已配置的编辑售价
           additionalProperties:
             type: object
             additionalProperties: { type: integer, format: int64, minimum: 1 }

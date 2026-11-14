@@ -86,11 +86,11 @@ public class StudioVideoService {
         var references=prepareAudioReferences(userId,v.references());
         var nativeRequest=new VideoStudioJobRequest(endpointId,v.mode(),request.prompt(),v.resolutionTier(),
                 request.aspectRatio(),request.durationSec(),v.seed(),first.key(),last.key(),references,null,null,null,null);
-        var prepared=videos.prepareCanvas(userId,nativeRequest,
-                (type,key,frame)->requireMedia(userId,type,key,frame,modeSpec),"studio");
+        VideoStudioService.CanvasAssetValidator validateMedia=(type,key,frame)->requireMedia(userId,type,key,frame,modeSpec);
+        var prepared=v.edits()?videos.prepareCanvasEdit(userId,nativeRequest,validateMedia)
+                :videos.prepareCanvas(userId,nativeRequest,validateMedia,"studio");
         var spec=prepared.spec();
         if(v.optimizePrompt()!=null)spec=spec.withOptimizePrompt(v.optimizePrompt());
-        if(v.edits())spec=spec.withEditSource();
         return new Prepared(spec==prepared.spec()?prepared:new VideoStudioService.CanvasPreparation(spec,prepared.credits(),prepared.seedMax()),adjustments);
     }
 
@@ -176,7 +176,8 @@ public class StudioVideoService {
         int images=0,clips=0,audios=0;
         if(video.references()!=null)for(var ref:video.references())
             switch(ref.mediaType()==null?"image":ref.mediaType()){case "video" -> clips++;case "audio" -> audios++;default -> images++;}
-        return price(model(requested),video.mode(),video.resolutionTier(),aspectRatio,seconds,images,clips,audios).credits();
+        return videos.priceCanvas(model(requested),video.mode(),video.resolutionTier(),aspectRatio,seconds,
+                images,clips,audios,"studio",video.edits()).credits();
     }
     public long quote(String userId,IpRunService.IpVideoRequest request) {return quotePreparation(userId,request).credits();}
     /**
@@ -230,7 +231,9 @@ public class StudioVideoService {
         var v=request.video();
         var nativeRequest=new VideoStudioJobRequest(model(request.model()),v.mode(),request.prompt(),v.resolutionTier(),
                 request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),prepareAudioReferences(userId,v.references()),null,null,null,null);
-        return videos.prepareCanvas(userId,nativeRequest,(type,key,frame)->projects.requireOwnedAssetKey(userId,key),"studio");
+        VideoStudioService.CanvasAssetValidator requireOwned=(type,key,frame)->projects.requireOwnedAssetKey(userId,key);
+        return v.edits()?videos.prepareCanvasEdit(userId,nativeRequest,requireOwned)
+                :videos.prepareCanvas(userId,nativeRequest,requireOwned,"studio");
     }
     /** Quotes and submits share derived keys, so total-duration checks see the samples actually sent. */
     List<VideoStudioReferenceInput> prepareAudioReferences(String userId,List<VideoStudioReferenceInput> inputs) {

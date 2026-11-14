@@ -147,6 +147,8 @@ public class StudioCloneVideoPlan {
                 "「"+selected.name()+"」每段参考视频最长 "+bounds.maxSec()+" 秒，"+duration+" 秒需要分 "+segments.size()+" 段，超出上限。请缩短参考视频或更换模型");
         var refs=mode.references();
         int imageLimit=Math.min(refs.image()==null?0:refs.image().maxCount(),refs.maxImagesWithVideo()>0?refs.maxImagesWithVideo():Integer.MAX_VALUE);
+        if(voice&&edit&&!mode.edit().acceptsReferenceAudio())
+            throw bad("当前模型编辑原视频时无法添加独立参考声音，请移除参考声音或更换模型");
         if(voice&&!StudioRecreationTaskPlan.acceptsVoice(mode,true))throw bad("当前模型不支持参考声音，请更换模型或移除声音");
         if(refs.maxTotal()>0)imageLimit=Math.min(imageLimit,Math.max(0,refs.maxTotal()-1-(voice?1:0)));
         boolean scene="depth".equals(kind)&&imageLimit>0;

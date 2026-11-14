@@ -261,7 +261,9 @@ public record AiVideoRequestSpec(String adapter, VideoStudioContract contract,
             var edit = mode.edit();
             if (edit != null) {
                 if (!"seedance".equals(adapter) || mode.references() == null || mode.references().video().maxCount() < 1
-                        || edit.minSourceSec() < 1 || edit.maxSourceSec() < edit.minSourceSec() || edit.maxSourceSec() > 600) throw invalid();
+                        || edit.minSourceSec() < 1 || edit.maxSourceSec() < edit.minSourceSec() || edit.maxSourceSec() > 600
+                        || edit.maxReferenceVideos() != null && (edit.maxReferenceVideos() < 1
+                        || edit.maxReferenceVideos() > mode.references().video().maxCount())) throw invalid();
                 if (edit.requestFields() != null) for (var field : edit.requestFields().entrySet()) {
                     if (!field.getKey().matches("[A-Za-z][A-Za-z0-9_.-]*") || RESERVED_FIELDS.contains(field.getKey())
                             || requestFields.containsKey(field.getKey()) || !staticJson(field.getValue(), 0)) throw invalid();

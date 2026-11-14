@@ -65,6 +65,24 @@ class MaterialVideoEditSourceTest {
     }
 
     @Test
+    void oneTokenEditSendsExplicitGeometryAndRejectsSeparateAudio() {
+        var configured = seedance(new VideoStudioEditSpec(4, 30, false, Map.of("omni_reference_task_type", "edit"), false, 1));
+        var tier = tier(configured);
+        var spec = reference(tier, true).withEditSource();
+        MaterialVideoModelClient.requireProtocolSupports("seedance", spec, "16:9", configured);
+        var body = om.valueToTree(client.buildSubmitBody("seedance", "seedance-2.5", "编辑视频：替换方块颜色，保留原声。",
+                30, "16:9", spec, urls(), configured, "req-1"));
+        assertEquals("16:9", body.path("ratio").asText());
+        assertEquals(30, body.path("duration").asInt());
+        assertEquals("edit", body.path("omni_reference_task_type").asText());
+        var mixed = new VideoGenSpec(spec.generationMode(), tier, null, null, null, List.of(
+                new VideoGenSpec.Reference("video", "owner/clip.mp4"),
+                new VideoGenSpec.Reference("audio", "owner/voice.wav"))).withEditSource();
+        assertEquals("VIDEO_STUDIO_INPUT_INVALID", assertThrows(BusinessException.class, () -> MaterialVideoModelClient
+                .requireProtocolSupports("seedance", mixed, "16:9", configured)).getCode());
+    }
+
+    @Test
     @DisplayName("同一个端点不带编辑标记：照普通参考生成发页面选的画幅和秒数，不带编辑字段")
     void plainReferenceKeepsRequestedGeometry() throws Exception {
         var configured = seedance(SEEDANCE_25);

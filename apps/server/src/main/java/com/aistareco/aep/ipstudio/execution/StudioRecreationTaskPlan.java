@@ -86,6 +86,8 @@ public final class StudioRecreationTaskPlan {
         // 素材顺序：人物在前（同一个人的图集中在一起），再商品 / 场景图，最后声音。
         List<Material> people=new ArrayList<>(),images=new ArrayList<>(),voices=new ArrayList<>();
         for(Material m:materials){switch(m.slot()==null?"image":m.slot()){case "character" -> people.add(m);case "voice" -> voices.add(m);default -> images.add(m);}}
+        if("replacement".equals(method)&&mode.edit()!=null&&!mode.edit().acceptsReferenceAudio()&&!voices.isEmpty())
+            throw BusinessException.badRequest("STUDIO_VIDEO_INPUT_INVALID","当前模型编辑原视频时无法添加独立参考声音，请移除参考声音或更换模型");
         List<Material> pictures=new ArrayList<>(people);pictures.addAll(images);
         var materialArray=task.putArray("materials");
         for(Material m:materials)materialArray.addObject().put("nodeId",m.nodeId()).put("title",blank(m.title())?"素材":m.title()).put("slot",slotLabel(m.slot()));

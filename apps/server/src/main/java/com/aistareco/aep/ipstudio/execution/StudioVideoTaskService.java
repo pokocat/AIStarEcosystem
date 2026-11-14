@@ -150,6 +150,8 @@ public class StudioVideoTaskService {
             // 深度复刻 / 元素替换：所选模型要能带参考视频（深度复刻还要有动作提取服务），分段不超过参考视频（元素替换走编辑时按编辑）的时长上限
             var chosen=clip?clones.require(req.kind(),req.configuration().model()):clones.model(req.configuration().model());
             var bounds=clip?StudioCloneVideoPlan.clip(chosen,req.kind()):null;
+            if(voices>0&&StudioCloneVideoPlan.edits(req.kind(),chosen)&&!StudioCloneVideoPlan.edit(chosen).acceptsReferenceAudio())
+                throw invalid("当前模型编辑原视频时无法添加独立参考声音，请移除参考声音或更换模型");
             // 时长可以跟随原片，也可以自己定（只截原片的前 N 秒，StudioWorkflowService 的 limitSec），但不能短于模型的下限
             int minimum=clones.minimumSeconds(req.kind(),chosen);
             if(cfg.duration()<minimum)throw invalid("时长至少 "+minimum+" 秒");

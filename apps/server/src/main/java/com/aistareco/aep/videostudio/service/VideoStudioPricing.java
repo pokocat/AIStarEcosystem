@@ -83,7 +83,8 @@ public final class VideoStudioPricing {
             row.replaceAll((tier, cell) -> cell != null ? cell : modelRatePerSecond);
         }
         return new VideoStudioDtos.VideoStudioPricing(grid, config.freeRefImages(),
-                config.extraRefImagePerSecond(), config.promptOptimizationPerCall());
+                config.extraRefImagePerSecond(), config.promptOptimizationPerCall(),
+                endpointId == null || config.endpointEditTierRates() == null ? null : config.endpointEditTierRates().get(endpointId));
     }
 
     /**
@@ -96,7 +97,13 @@ public final class VideoStudioPricing {
      */
     public static long total(VideoStudioDtos.VideoStudioPricing pricing, String mode, String tier, int seconds,
                              int referenceImages, boolean hasReferenceRules) {
-        Map<String, Long> row = pricing.perSecond() == null ? null : pricing.perSecond().get(mode);
+        return total(pricing, mode, tier, seconds, referenceImages, hasReferenceRules, false);
+    }
+
+    public static long total(VideoStudioDtos.VideoStudioPricing pricing, String mode, String tier, int seconds,
+                             int referenceImages, boolean hasReferenceRules, boolean edit) {
+        Map<String, Long> row = edit && pricing.editTierRates() != null ? pricing.editTierRates()
+                : pricing.perSecond() == null ? null : pricing.perSecond().get(mode);
         Long perSecond = row == null ? null : row.get(tier);
         if (perSecond == null) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_STUDIO_PRICE_NOT_CONFIGURED",
@@ -136,7 +143,14 @@ public final class VideoStudioPricing {
         }
         requireAmount(input.extraRefImagePerSecond(), "全能参考每张加价");
         requireAmount(input.promptOptimizationPerCall(), "智能优化单价");
-        if (input.endpointTierRates() != null) input.endpointTierRates().forEach((endpoint, rates) -> {
+        validateEndpointRates(input.endpointTierRates());
+        validateEndpointRates(input.endpointEditTierRates());
+        return new VideoStudioPricingConfig(fullGrid(input.perSecond()), free,
+                input.extraRefImagePerSecond(), input.promptOptimizationPerCall(), input.endpointTierRates(), input.endpointEditTierRates());
+    }
+
+    private static void validateEndpointRates(Map<String, Map<String, Long>> configured) {
+        if (configured != null) configured.forEach((endpoint, rates) -> {
             if (!endpoint.matches("[A-Za-z0-9_.:-]{1,100}") || rates == null)
                 throw invalid("端点清晰度售价配置无效");
             rates.forEach((tier, rate) -> {
@@ -144,8 +158,6 @@ public final class VideoStudioPricing {
                     throw invalid("端点清晰度售价必须为正整数");
             });
         });
-        return new VideoStudioPricingConfig(fullGrid(input.perSecond()), free,
-                input.extraRefImagePerSecond(), input.promptOptimizationPerCall(), input.endpointTierRates());
     }
 
     static boolean validModeKey(String mode) {

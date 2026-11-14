@@ -88,6 +88,9 @@ export interface VideoStudioEditSpec {
   followSource: boolean;
   /** 编辑任务另加的请求字段。 */
   requestFields: Record<string, unknown> | null;
+  /** 独立参考声音；原视频自身音轨随视频提交。 */
+  allowReferenceAudio?: boolean;
+  maxReferenceVideos?: number;
 }
 
 /** 一个模型的完整合同（服务端下发，前端不写死）。 */
@@ -115,6 +118,8 @@ export interface VideoStudioContract {
 export interface VideoStudioPricing {
   /** 每秒价：按端点合同中的模式、清晰度索引。null = 未定价。 */
   perSecond: Record<VideoStudioMode, Record<string, number | null>>;
+  /** 编辑原视频时的清晰度售价。 */
+  editTierRates?: Record<string, number>;
   /** 全能参考里前几张参考图不加价。 */
   freeRefImages: number;
   /** 全能参考第 freeRefImages+1 张起，每张每秒加价（0 = 不加）。 */
@@ -131,6 +136,8 @@ export interface VideoStudioPricing {
 export interface VideoStudioPricingConfig {
   /** Optional endpoint ID → resolution tier → credits per second. */
   endpointTierRates?: Record<string, Record<string, number>>;
+  /** Optional endpoint ID → native editing resolution → credits per second. */
+  endpointEditTierRates?: Record<string, Record<string, number>>;
   perSecond: Record<VideoStudioMode, Record<string, number | null>>;
   freeRefImages: number;
   extraRefImagePerSecond: number;

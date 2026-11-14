@@ -567,6 +567,7 @@ export function SceneVideoStudio() {
   // 复刻的时长默认跟随原片；也可以自己定，范围是模型单段的下限（深度复刻 / 元素替换还要够参考视频的下限）到原片时长，
   // 只截原片的前 N 秒来做（服务端 StudioCloneVideoPlan#minimumSeconds、StudioWorkflowService 的 limitSec）。
   const cloneRef = nativeClone ? cloneReferenceMode(chosenVideo) : undefined;
+  const canAddCloneVoice = cloneMode !== 'replacement' || cloneRef?.edit?.allowReferenceAudio !== false;
   const cloneMin = Math.max(1, contract?.minSeconds ?? 1,
     !nativeClone ? 0 : cloneMode === 'replacement' && cloneRef?.edit ? cloneRef.edit.minSourceSec : cloneRef?.references?.video.minDurationSec ?? 0);
   // 这条参考视频适合哪种复刻方式（按切镜数和镜头时长，服务端 StudioCloneVideoPlan#advise）。拿不到就不显示推荐，不挡生成。
@@ -604,6 +605,7 @@ export function SceneVideoStudio() {
     : scene.video?.required && !video ? `请添加${scene.video.label}`
     : scene.images.required && !images.length ? `请添加${scene.images.label}`
     : scene.textRequired && !text.trim() ? "请填写要求"
+    : !canAddCloneVoice && voice ? "当前模型编辑原视频时无法添加独立参考声音，请先移除已选声音"
     : cloneDurationBlocker;
 
   /**
@@ -1357,15 +1359,15 @@ export function SceneVideoStudio() {
         </div>)}
         {character && tile("character", character, "角色", UserRound, true, () => { drop("character", character.key); setCharacter(undefined); })}
       </div>}
-      <div className="scene-recreation-sound">
+      {(canAddCloneVoice || voice) && <div className="scene-recreation-sound">
         <div className="scene-recreation-file">
           <Mic size={17} aria-hidden/>
           <span title={voice?.fileName || voice?.title}>{voice ? voice.fileName || voice.title : "参考声音 · 可选 1 段"}</span>
-          <Button size="small" loading={uploading === "voice"} disabled={busy || !!uploading} onClick={() => choose("voice")}>{voice ? "更换声音" : "添加声音"}</Button>
+          {canAddCloneVoice && <Button size="small" loading={uploading === "voice"} disabled={busy || !!uploading} onClick={() => choose("voice")}>{voice ? "更换声音" : "添加声音"}</Button>}
           {voice && <Button size="small" type="text" icon={<X size={15}/>} disabled={busy || !!uploading} onClick={removeVoice} aria-label="移除声音"/>}
         </div>
         {voice && <SignedAudio key={voice.key} src={voice.url} storageKey={voice.key} controls aria-label="已选择参考声音"/>}
-      </div>
+      </div>}
     </section>
   </div>;
   const specTime = recreation && !clipCustom && !sourceSeconds ? "原片" : `${shownDuration} 秒`;

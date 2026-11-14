@@ -73,6 +73,18 @@ class VideoStudioPricingTest {
         }
 
         @Test
+        void editPricingUsesItsOwnTierRates() {
+            var contract = com.aistareco.aep.videostudio.service.VideoStudioService.contract(4, 30);
+            var cfg = new VideoStudioPricingConfig(cells("universal_reference_video", "768p", 108L),
+                    0, 0L, 0L, null, Map.of("seedance25", Map.of("768p", 119L)));
+            var pricing = VideoStudioPricing.effective(cfg, 120L, contract, "seedance25");
+            assertEquals(3240L, VideoStudioPricing.total(pricing, "universal_reference_video", "768p", 30, 1, true));
+            assertEquals(3570L, VideoStudioPricing.total(pricing, "universal_reference_video", "768p", 30, 1, true, true));
+            assertThrows(BusinessException.class,
+                    () -> VideoStudioPricing.total(pricing, "universal_reference_video", "544p", 30, 1, true, true));
+        }
+
+        @Test
         @DisplayName("每一格 = 配置 ?? 模型每秒价 ?? null；四种模式 × 两档都在，顺序固定")
         void fallbackChain() {
             VideoStudioPricingConfig cfg = VideoStudioPricing.validate(

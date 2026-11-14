@@ -60,7 +60,17 @@ public final class VideoStudioDtos {
      */
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record VideoStudioEditSpec(int minSourceSec, int maxSourceSec, boolean followSource,
-                                      Map<String, Object> requestFields) {}
+                                      Map<String, Object> requestFields,
+                                      @JsonInclude(JsonInclude.Include.NON_NULL) Boolean allowReferenceAudio,
+                                      @JsonInclude(JsonInclude.Include.NON_NULL) Integer maxReferenceVideos) {
+        public VideoStudioEditSpec(int minSourceSec, int maxSourceSec, boolean followSource, Map<String, Object> requestFields) {
+            this(minSourceSec, maxSourceSec, followSource, requestFields, null, null);
+        }
+
+        public boolean acceptsReferenceAudio() {
+            return !Boolean.FALSE.equals(allowReferenceAudio);
+        }
+    }
 
     /** 某个模式要什么输入。{@code frameImage} / {@code references} 不适用时为 null。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)
@@ -97,7 +107,13 @@ public final class VideoStudioDtos {
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record VideoStudioPricing(@JsonInclude(value = JsonInclude.Include.ALWAYS, content = JsonInclude.Include.ALWAYS)
                                      Map<String, Map<String, Long>> perSecond,
-                                     int freeRefImages, long extraRefImagePerSecond, long promptOptimizationPerCall) {}
+                                     int freeRefImages, long extraRefImagePerSecond, long promptOptimizationPerCall,
+                                     @JsonInclude(JsonInclude.Include.NON_NULL) Map<String, Long> editTierRates) {
+        public VideoStudioPricing(Map<String, Map<String, Long>> perSecond, int freeRefImages,
+                                  long extraRefImagePerSecond, long promptOptimizationPerCall) {
+            this(perSecond, freeRefImages, extraRefImagePerSecond, promptOptimizationPerCall, null);
+        }
+    }
 
     /**
      * 后台「引擎定价 → 视频生成」编辑的配置（GET / PUT /admin/celebrity/video-studio-pricing）。
@@ -110,7 +126,14 @@ public final class VideoStudioDtos {
                                            Integer freeRefImages, Long extraRefImagePerSecond,
                                            Long promptOptimizationPerCall,
                                            @JsonInclude(JsonInclude.Include.NON_NULL)
-                                           Map<String, Map<String, Long>> endpointTierRates) {
+                                           Map<String, Map<String, Long>> endpointTierRates,
+                                           @JsonInclude(JsonInclude.Include.NON_NULL)
+                                           Map<String, Map<String, Long>> endpointEditTierRates) {
+        public VideoStudioPricingConfig(Map<String, Map<String, Long>> perSecond, Integer freeRefImages,
+                                        Long extraRefImagePerSecond, Long promptOptimizationPerCall,
+                                        Map<String, Map<String, Long>> endpointTierRates) {
+            this(perSecond, freeRefImages, extraRefImagePerSecond, promptOptimizationPerCall, endpointTierRates, null);
+        }
         public VideoStudioPricingConfig(Map<String, Map<String, Long>> perSecond, Integer freeRefImages,
                                         Long extraRefImagePerSecond, Long promptOptimizationPerCall) {
             this(perSecond, freeRefImages, extraRefImagePerSecond, promptOptimizationPerCall, null);

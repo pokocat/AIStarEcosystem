@@ -332,22 +332,27 @@ public class VideoStudioService {
 
     public CanvasPreparation prepareCanvas(String userId, VideoStudioJobRequest request,
             CanvasAssetValidator requireCanvasAsset, String appCode) {
-        return prepareCanvas(userId, request, requireCanvasAsset, appCode, null);
+        return prepareCanvas(userId, request, requireCanvasAsset, appCode, null, false);
     }
 
     /** Validate a Studio source prompt before the text model rewrites it. Final video submission uses the endpoint limit. */
     public CanvasPreparation prepareCanvasForAutoRewrite(String userId, VideoStudioJobRequest request,
             CanvasAssetValidator requireCanvasAsset, int sourcePromptMaxChars) {
-        return prepareCanvas(userId, request, requireCanvasAsset, "studio", sourcePromptMaxChars);
+        return prepareCanvas(userId, request, requireCanvasAsset, "studio", sourcePromptMaxChars, false);
+    }
+
+    public CanvasPreparation prepareCanvasEdit(String userId, VideoStudioJobRequest request, CanvasAssetValidator requireCanvasAsset) {
+        return prepareCanvas(userId, request, requireCanvasAsset, "studio", null, true);
     }
 
     private CanvasPreparation prepareCanvas(String userId, VideoStudioJobRequest request,
-            CanvasAssetValidator requireCanvasAsset, String appCode, Integer sourcePromptMaxChars) {
+            CanvasAssetValidator requireCanvasAsset, String appCode, Integer sourcePromptMaxChars, boolean edit) {
         if (request == null || request.templateId() != null || request.optimizationId() != null)
             throw inputInvalid("画布视频请直接选择画布素材");
         Validated v = validate(userId, Draft.of(request), requireCanvasAsset, appCode, sourcePromptMaxChars);
-        return new CanvasPreparation(v.spec(), VideoStudioPricing.total(v.model().pricing(), v.mode(),
-                v.tier(), v.seconds(), v.inputs().referenceImages(), v.modeSpec().references() != null),
+        if (edit) requireEditInputs(v.modeSpec(), v.inputs().references(), v.seed());
+        return new CanvasPreparation(edit ? v.spec().withEditSource() : v.spec(), VideoStudioPricing.total(v.model().pricing(), v.mode(),
+                v.tier(), v.seconds(), v.inputs().referenceImages(), v.modeSpec().references() != null, edit),
                 v.model().contract().seedMax());
     }
 
@@ -369,6 +374,11 @@ public class VideoStudioService {
      */
     public CanvasPreparation priceCanvas(String endpointId, String mode, String tier, String aspectRatio, Integer seconds,
             int imageRefs, int videoRefs, int audioRefs, String appCode) {
+        return priceCanvas(endpointId, mode, tier, aspectRatio, seconds, imageRefs, videoRefs, audioRefs, appCode, false);
+    }
+
+    public CanvasPreparation priceCanvas(String endpointId, String mode, String tier, String aspectRatio, Integer seconds,
+            int imageRefs, int videoRefs, int audioRefs, String appCode, boolean edit) {
         VideoStudioModel model = pickResolvedModel(resolvedModels(appCode), endpointId).model();
         VideoStudioModeSpec modeSpec = model.contract().modes().stream().filter(m -> m.mode().equals(mode)).findFirst().orElse(null);
         if (mode == null || modeSpec == null) throw BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID", "所选模型不支持这个生成模式，请重新选择");
@@ -384,10 +394,22 @@ public class VideoStudioService {
             for (int i = 0; i < videoRefs; i++) references.add(new VideoGenSpec.Reference(JusuanH3Contract.MEDIA_VIDEO, null));
             for (int i = 0; i < audioRefs; i++) references.add(new VideoGenSpec.Reference(JusuanH3Contract.MEDIA_AUDIO, null));
         }
+        if (edit) requireEditInputs(modeSpec, references, null);
         long credits = VideoStudioPricing.total(model.pricing(), modeSpec.mode(), geometry.tier().tier(), geometry.seconds(),
-                referenceRules ? imageRefs : 0, referenceRules);
+                referenceRules ? imageRefs : 0, referenceRules, edit);
         return new CanvasPreparation(new VideoGenSpec(modeSpec.mode(), geometry.tier().tier(), null, null, null, references),
                 credits, model.contract().seedMax());
+    }
+
+    public static void requireEditInputs(VideoStudioModeSpec mode, List<VideoGenSpec.Reference> references, Long seed) {
+        if (mode == null || mode.edit() == null || references.stream().noneMatch(r -> "video".equals(r.mediaType())))
+            throw inputInvalid("编辑原视频需要支持该功能的模型和参考视频");
+        if (mode.edit().maxReferenceVideos() != null
+                && references.stream().filter(r -> "video".equals(r.mediaType())).count() > mode.edit().maxReferenceVideos())
+            throw inputInvalid("当前模型编辑原视频时最多支持 " + mode.edit().maxReferenceVideos() + " 段参考视频");
+        if (!mode.edit().acceptsReferenceAudio() && references.stream().anyMatch(r -> "audio".equals(r.mediaType())))
+            throw inputInvalid("当前模型编辑原视频时无法添加独立参考声音，请移除参考声音或更换模型");
+        if (seed != null) throw inputInvalid("编辑原视频时不支持指定随机种子");
     }
 
     private record Geometry(VideoStudioTier tier, VideoStudioCanvas canvas, int seconds) {}

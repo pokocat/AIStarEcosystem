@@ -873,6 +873,8 @@ public class MaterialVideoModelClient {
                     .anyMatch(c -> c.aspectRatio().equals(aspectRatio));
             if (mode == null || !canvas) throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID",
                     "所选视频模型不支持这组生成参数");
+            if (spec.edits()) com.aistareco.aep.videostudio.service.VideoStudioService
+                    .requireEditInputs(mode, spec.references(), spec.seed());
             if (PROTOCOL_SEEDANCE.equals(protocol) || PROTOCOL_JUSUAN_MEDIA.equals(protocol)
                     || PROTOCOL_JSON_TEMPLATE.equals(protocol)) {
                 requireInput(mode.needsFirstFrame() == (spec.firstFrameKey() != null),
