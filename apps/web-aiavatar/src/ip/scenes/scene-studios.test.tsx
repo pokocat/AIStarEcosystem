@@ -336,6 +336,21 @@ test("爆款复刻用所选清晰度生成并保存草稿", async () => {
   }));
 });
 
+test("原生编辑显示模型的替换图上限并默认保留原声", async () => {
+  window.history.replaceState(null, "", "/video?scene=recreation&tool=replacement");
+  const mode = H3.contract.modes[1];
+  const edit = { minSourceSec: 4, maxSourceSec: 30, followSource: false, allowReferenceAudio: false, maxReferenceVideos: 1,
+    requestFields: { omni_reference_task_type: "edit" } };
+  api.videoModels.mockResolvedValue([{ ...H3, contract: { ...H3.contract, minSeconds: 4, maxSeconds: 30, modes: [
+    { ...mode, edit, references: { ...mode.references, maxImagesWithVideo: 9 } },
+  ] } }]);
+  await act(async () => { render(<SceneVideoStudio/>); });
+  await screen.findByText("图片 0 / 9");
+  expect(screen.queryByRole("button", { name: "添加声音", exact: true })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /^视频规格：/ }));
+  expect(screen.getByRole("switch", { name: "保留原声" }).getAttribute("aria-checked")).toBe("true");
+});
+
 test("复刻时长可在选原片前输入，跟随与自定义分别报价，生成使用自定义秒数", async () => {
   window.history.replaceState(null, "", "/video?scene=recreation&tool=replacement");
   api.videoModels.mockResolvedValue([H3]);

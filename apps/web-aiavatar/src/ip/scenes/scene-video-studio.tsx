@@ -117,8 +117,6 @@ export function SceneVideoStudio() {
   const [character, setCharacter] = useState<Media>();
   const [voice, setVoice] = useState<Media>();
   const [video, setVideo] = useState<Media>();
-  const imageLimit = scene?.images.max ?? 6;
-  const imageCapacity = imageLimit - (recreation && character ? 1 : 0);
   const [uploading, setUploading] = useState<Slot>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -178,6 +176,14 @@ export function SceneVideoStudio() {
   const modelsForScene = nativeClone ? videoModels?.filter(m => !!cloneReferenceMode(m)) : videoModels;
   const sceneDefaultVideo = scene?.skill === RECREATION ? modelsForScene?.find(m => m.endpointId === RECREATION_DEFAULT_VIDEO_MODEL) : undefined;
   const chosenVideo = (modelsForScene ?? []).find(m => m.endpointId === modelId) ?? sceneDefaultVideo ?? modelsForScene?.find(m => m.isDefault) ?? modelsForScene?.[0];
+  const cloneRef = nativeClone ? cloneReferenceMode(chosenVideo) : undefined;
+  const hasNativeEdit = cloneMode === 'replacement' && !!cloneRef?.edit;
+  const refRules = hasNativeEdit ? cloneRef?.references : undefined;
+  const imageLimit = refRules ? Math.min(scene?.images.max ?? 6, refRules.image?.maxCount ?? 0,
+    refRules.maxImagesWithVideo || Infinity, refRules.maxTotal > 0 ? refRules.maxTotal - 1 : Infinity) : scene?.images.max ?? 6;
+  const imageCount = images.length + (recreation && character ? 1 : 0);
+  const imageCapacity = Math.max(0, imageLimit - (recreation && character ? 1 : 0));
+  const editImagesBlocked = hasNativeEdit && imageCount > imageLimit;
   const contract = chosenVideo?.contract;
   const durations = contract ? sceneVideoDurations(contract) : [duration];
   const usedDuration = contract ? clampSceneDuration(duration, contract) : duration;
@@ -567,8 +573,6 @@ export function SceneVideoStudio() {
   const revising = !!latestScript;
   // 复刻的时长默认跟随原片；也可以自己定，范围是模型单段的下限（深度复刻 / 元素替换还要够参考视频的下限）到原片时长，
   // 只截原片的前 N 秒来做（服务端 StudioCloneVideoPlan#minimumSeconds、StudioWorkflowService 的 limitSec）。
-  const cloneRef = nativeClone ? cloneReferenceMode(chosenVideo) : undefined;
-  const hasNativeEdit = nativeClone && cloneMode === 'replacement' && !!cloneRef?.edit;
   const keepSourceAudio = hasNativeEdit && preserveSourceAudio;
   const canAddCloneVoice = !hasNativeEdit || (!keepSourceAudio && cloneRef?.edit?.allowReferenceAudio !== false);
   const cloneMin = Math.max(1, contract?.minSeconds ?? 1,
@@ -606,6 +610,7 @@ export function SceneVideoStudio() {
   /** 爆款复刻生成之前卡在哪。 */
   const handoffBlocker = !scene ? "正在加载场景…" : depthBlocked ? '深度复刻暂不可用，请联系平台处理。'
     : scene.video?.required && !video ? `请添加${scene.video.label}`
+    : editImagesBlocked ? `当前模型最多使用 ${imageLimit} 张替换图，请移除多余图片`
     : scene.images.required && !images.length ? `请添加${scene.images.label}`
     : scene.textRequired && !text.trim() ? "请填写要求"
     : !canAddCloneVoice && voice ? (keepSourceAudio ? "保留原声时请先移除独立参考声音" : "当前模型不支持独立参考声音，请先移除已选声音")
@@ -896,7 +901,7 @@ export function SceneVideoStudio() {
   const [taskQuote, setTaskQuote] = useState<{ key: string; price?: StudioVideoTaskQuote; error?: string }>();
   // 爆款复刻的分析要写明用哪个模型（服务端必填）；其余按原来的规则，不可按编号选的模型走默认。
   const taskModel = recreation ? chosenVideo?.endpointId : chosenVideo?.selectableById && !caps?.mock ? chosenVideo.endpointId : undefined;
-  const clonePriceBlocked = recreation && (!video || !!cloneDurationBlocker);
+  const clonePriceBlocked = recreation && (!video || !!cloneDurationBlocker || editImagesBlocked);
   const taskPriceKey = JSON.stringify([taskKind, chosenVideo?.endpointId, taskModel, settings?.mode, usedTier, shownDuration, ratio, images.length, !!character, !!voice, optimize, depthBlocked, clonePriceBlocked, priceRevision]);
   useEffect(() => {
     if (!chosenVideo || depthBlocked || clonePriceBlocked) return;
@@ -1347,7 +1352,7 @@ export function SceneVideoStudio() {
       </Button>}
     </section>
     <section className="scene-recreation-replacements" aria-label="替换素材">
-      <header><h3>替换素材</h3><span aria-live="polite">图片 {images.length + (character ? 1 : 0)} / {imageLimit}</span></header>
+      <header><h3>替换素材</h3><span aria-live="polite">图片 {imageCount} / {imageLimit}</span></header>
       <div className="scene-recreation-guides">
         {RECREATION_IMAGE_GUIDES.map(({ label, hint, icon: Icon }) => <Button key={label} type="text" className="scene-recreation-guide"
           icon={<Icon size={19}/>} aria-label={`添加${label}`} disabled={busy || !!uploading || images.length >= imageCapacity}

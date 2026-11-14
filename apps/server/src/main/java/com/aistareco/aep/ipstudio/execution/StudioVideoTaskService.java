@@ -154,6 +154,8 @@ public class StudioVideoTaskService {
                 throw invalid("保留原声需要支持编辑原视频的模型，请移除独立参考声音");
             if(voices>0&&StudioCloneVideoPlan.edits(req.kind(),chosen)&&!StudioCloneVideoPlan.edit(chosen).acceptsReferenceAudio())
                 throw invalid("当前模型编辑原视频时无法添加独立参考声音，请移除参考声音或更换模型");
+            if(StudioCloneVideoPlan.edits(req.kind(),chosen))
+                StudioCloneVideoPlan.requireEditImages(StudioCloneVideoPlan.referenceMode(chosen),pictures,voices>0);
             // 时长可以跟随原片，也可以自己定（只截原片的前 N 秒，StudioWorkflowService 的 limitSec），但不能短于模型的下限
             int minimum=clones.minimumSeconds(req.kind(),chosen);
             if(cfg.duration()<minimum)throw invalid("时长至少 "+minimum+" 秒");

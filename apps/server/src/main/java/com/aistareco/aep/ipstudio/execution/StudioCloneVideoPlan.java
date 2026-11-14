@@ -62,6 +62,18 @@ public class StudioCloneVideoPlan {
     /** 这次的方式要不要编辑原视频：元素替换，且模型配了编辑。 */
     public static boolean edits(String kind,VideoStudioModel model) {return "replacement".equals(kind)&&edit(model)!=null;}
 
+    private static int referenceImageLimit(VideoStudioReferenceRules refs,boolean voice) {
+        int limit=refs.image()==null?0:refs.image().maxCount();
+        if(refs.maxImagesWithVideo()>0)limit=Math.min(limit,refs.maxImagesWithVideo());
+        if(refs.maxTotal()>0)limit=Math.min(limit,Math.max(0,refs.maxTotal()-1-(voice?1:0)));
+        return limit;
+    }
+
+    static void requireEditImages(VideoStudioModeSpec mode,int pictures,boolean voice) {
+        int limit=referenceImageLimit(mode.references(),voice);
+        if(pictures>limit)throw bad("当前模型最多使用 "+limit+" 张替换图，请移除多余图片");
+    }
+
     /**
      * 原片画面最接近这档清晰度里的哪个画幅（编辑任务的输出跟原片画幅走，计划和合成要按它）。读不到尺寸、这档没有画布时用 {@code fallback}。
      */
@@ -145,12 +157,11 @@ public class StudioCloneVideoPlan {
         catch(IllegalArgumentException e){throw bad("请选择可用的视频模型");}
         if(segments.size()>SegmentedPlan.MAX_SEGMENTS)throw BusinessException.badRequest("STUDIO_SEGMENTS_TOO_MANY",
                 "「"+selected.name()+"」每段参考视频最长 "+bounds.maxSec()+" 秒，"+duration+" 秒需要分 "+segments.size()+" 段，超出上限。请缩短参考视频或更换模型");
-        var refs=mode.references();
-        int imageLimit=Math.min(refs.image()==null?0:refs.image().maxCount(),refs.maxImagesWithVideo()>0?refs.maxImagesWithVideo():Integer.MAX_VALUE);
         if(voice&&edit&&!mode.edit().acceptsReferenceAudio())
             throw bad("当前模型编辑原视频时无法添加独立参考声音，请移除参考声音或更换模型");
         if(voice&&!StudioRecreationTaskPlan.acceptsVoice(mode,true))throw bad("当前模型不支持参考声音，请更换模型或移除声音");
-        if(refs.maxTotal()>0)imageLimit=Math.min(imageLimit,Math.max(0,refs.maxTotal()-1-(voice?1:0)));
+        if(edit)requireEditImages(mode,images+(character?1:0),voice);
+        int imageLimit=referenceImageLimit(mode.references(),voice);
         boolean scene="depth".equals(kind)&&imageLimit>0;
         int pictures=Math.min(images+(character?1:0)+(scene?1:0),imageLimit);
         ObjectNode plan=mapper.createObjectNode();

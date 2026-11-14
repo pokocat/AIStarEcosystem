@@ -141,6 +141,15 @@ class StudioCloneVideoPlanTest {
         assertEquals(4,images,"带参考视频时图片最多 4 张");
         assertThrows(BusinessException.class,()->service.price("u","replacement","selected-channel","720p",8,"9:16",18,true,false,false));
     }
+    @Test void nativeEditRejectsExtraReplacementImagesRatherThanDroppingThem() throws Exception {
+        when(videos.models()).thenReturn(List.of(editingModel()));
+        var error=assertThrows(BusinessException.class,
+                ()->service.price("u","replacement","selected-channel","720p",30,"9:16",4,true,false,false));
+        assertTrue(error.getMessage().contains("4 张替换图"));
+        verifyNoInteractions(quoter);
+        assertEquals(List.of(30),service.price("u","replacement","selected-channel","720p",30,"9:16",3,true,false,false).segments());
+        assertEquals(5,quoted.get().path("steps").path(0).path("settings").path("referenceBindings").size());
+    }
     @Test void depthAlwaysQuotesThePromptRewrite() {
         service.price("u","depth","selected-channel","720p",8,"9:16",0,false,false,false);
         JsonNode video=null;for(JsonNode st:quoted.get().path("steps"))if("v1".equals(st.path("id").asText()))video=st;
