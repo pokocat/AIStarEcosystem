@@ -17,6 +17,7 @@ import { homeRecommendations, templateKind } from "@/ip/template-facts";
 import { InspirationWall } from "@/ip/inspiration-wall";
 import { sceneHref, useSceneHomeCards } from "@/ip/scenes/scene-catalog";
 import { SceneThumb } from "@/ip/scenes/scene-layout";
+import { HomeHeroTitle } from "./home-hero-title";
 
 /** 一个入口：要么是独立页面，要么是带某个面板打开的新画布。 */
 type HomeStart = { entry: StudioEntry } | { href: string } | { blank: true };
@@ -109,10 +110,10 @@ export function IpHome({ header = true }: { header?: boolean }) {
     <main>
       <section className="home-hero">
         <div className="home-hero-copy">
-          <h1>衣冠百变，戏路万千</h1>
+          <HomeHeroTitle/>
           <p>让好内容带来好生意</p>
         </div>
-        <StudioConversationStart creating={creating === "assistant"} onStart={brief => void startConversation(brief)}/>
+        <StudioConversationStart pill creating={creating === "assistant"} onStart={brief => void startConversation(brief)}/>
       </section>
 
       <nav className="home-tools" aria-label="常用工具">{tools.map(t => {

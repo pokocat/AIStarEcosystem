@@ -4,7 +4,7 @@
 // assistant already talking. No charge note here: images and videos are quoted and start only after
 // the user confirms. A brief that needs a reference video is not sent until the video is there
 // (studioBriefNeedsReference).
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowUp, Loader2 } from "lucide-react";
 
 export const conversationExamples = [
@@ -14,12 +14,22 @@ export const conversationExamples = [
   { label: "搭一套创作流程", text: "帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。" },
 ] as const;
 
-export function StudioConversationStart({ onStart, creating, pending = false }: {
+export function StudioConversationStart({ onStart, creating, pending = false, pill = false }: {
   /** An empty brief opens the canvas with the assistant waiting; a non-empty one is sent as the first message. */
   onStart: (brief: string) => void; creating?: boolean; pending?: boolean;
+  /** 首页主视觉用的细边胶囊：一行起步，写长了往下长（最多几行后在框内滚动），发送按钮在右边。 */
+  pill?: boolean;
 }) {
   const [brief, setBrief] = useState("");
   const area = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = area.current;
+    if (!pill || !el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+    // 到了最大高度才出滚动条；没到时出现滚动条是小数像素的误差。
+    el.style.overflowY = el.scrollHeight > el.clientHeight + 1 ? "auto" : "hidden";
+  }, [pill, brief]);
   // While an earlier save is pending the text is frozen, but the retry button must stay live.
   const locked = !!creating || pending;
   const canSubmit = !creating && (pending || !!brief.trim());
@@ -28,10 +38,10 @@ export function StudioConversationStart({ onStart, creating, pending = false }: 
     if (e.nativeEvent.isComposing || e.key !== "Enter" || e.shiftKey) return;
     e.preventDefault(); submit();
   };
-  return <form className="studio-conversation-start" aria-label="与助手开始创作" onSubmit={e => { e.preventDefault(); submit(); }}>
+  return <form className={pill ? "studio-conversation-start is-pill" : "studio-conversation-start"} aria-label="与助手开始创作" onSubmit={e => { e.preventDefault(); submit(); }}>
     <div className="studio-conversation-start-box">
       <label htmlFor="studio-conversation-brief" className="studio-conversation-start-label">想做什么</label>
-      <textarea id="studio-conversation-brief" ref={area} value={brief} rows={3} maxLength={4000} disabled={locked} onChange={e => setBrief(e.target.value)} onKeyDown={keydown}
+      <textarea id="studio-conversation-brief" ref={area} value={brief} rows={pill ? 1 : 3} maxLength={4000} disabled={locked} onChange={e => setBrief(e.target.value)} onKeyDown={keydown}
         placeholder="描述你想做的内容，例如：参照这条视频的拍法，把商品换成我的保温杯"/>
       <div className="studio-conversation-start-row">
         <button type="submit" className="studio-conversation-start-send" disabled={!canSubmit} title={pending ? "继续保存并打开画布" : brief.trim() ? "开始对话（Enter）" : "请输入想做的内容"}>

@@ -130,3 +130,50 @@ html:not([data-layout="desktop"]) .studio-next-page .home-tools button { overflo
 .studio-next-page .home-feed-tabs button[aria-pressed="true"] { background: #ffffff; box-shadow: 0 1px 2px rgba(23, 32, 42, .08); color: var(--ip-ink); font-weight: 500; }
 .studio-next-page .ip-home-footer { border-top: 1px solid var(--ip-line); background: #ffffff; color: var(--ip-muted); }
 .studio-next-page .home-feed-tabs { display: inline-flex; width: fit-content; }
+
+/* ── 2026-11-13 首页主视觉：彩色声波穿过中间写成标题的字图（home-hero-title.tsx）；对话框是细边胶囊。
+   颜色只在标题图上，副标题、输入、按钮都是黑白灰。 ── */
+.ip-home.studio-next-page .home-hero { gap: 0; padding-top: 40px; }
+.ip-home.studio-next-page .home-hero-copy { width: 100%; }
+.ip-home.studio-next-page .home-hero-copy>p { margin-top: 14px !important; color: var(--ip-muted); font-size: 14px; letter-spacing: .3em; }
+.ip-home.studio-next-page .home-hero .is-pill { max-width: 640px; margin-top: 44px; gap: 16px; }
+.ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-box { flex-direction: row; align-items: flex-end; gap: 12px; padding: 7px 7px 7px 24px; border: 1px solid #dfe2e7; border-radius: 28px;
+  background: rgba(255, 255, 255, .82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: none; transition: border-color 160ms var(--ip-ease), box-shadow 160ms var(--ip-ease); }
+.ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-box:focus-within { border-color: #b8bdc5; box-shadow: 0 0 0 4px rgba(20, 24, 31, .04); }
+.ip-home.studio-next-page .home-hero .is-pill textarea { flex: 1; min-width: 0; min-height: 0; max-height: 9.6em; padding: 9px 0; overflow-y: hidden; font-size: 14.5px; line-height: 1.6; }
+.ip-home.studio-next-page .home-hero .is-pill textarea::placeholder { color: #9aa0a8; }
+.ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-row { flex-shrink: 0; flex-direction: row; }
+.ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-send { flex-direction: row-reverse; gap: 6px; height: 40px; min-height: 0; padding: 0 16px 0 18px; border-radius: 999px; background: #14181f; box-shadow: none; color: #fff; font-size: 13px; font-weight: 400; letter-spacing: .04em; }
+.ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-send svg { width: 15px; height: 15px; transform: rotate(90deg); }
+.ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-send .studio-gallery-spinner { transform: none; }
+.ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-send:not(:disabled):hover { background: #2a313b; filter: none; }
+.ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-send:disabled { opacity: .28; }
+.ip-home.studio-next-page .home-hero .is-pill>.studio-conversation-start-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 20px; }
+.ip-home.studio-next-page .home-hero .is-pill>.studio-conversation-start-examples button { height: 26px; padding: 0 2px; border: 0; border-radius: 4px; background: none; color: var(--ip-muted); font-size: 12.5px; transition: color 140ms var(--ip-ease); }
+.ip-home.studio-next-page .home-hero .is-pill>.studio-conversation-start-examples button:hover:not(:disabled) { color: #14181f; }
+
+/* 手机：同样的结构缩小。 */
+html:not([data-layout="desktop"]) .ip-home.studio-next-page .home-hero { padding-top: 12px; }
+html:not([data-layout="desktop"]) .ip-home.studio-next-page .home-hero-copy>p { margin-top: 8px !important; font-size: 12.5px; letter-spacing: .24em; }
+html:not([data-layout="desktop"]) .ip-home.studio-next-page .home-hero .is-pill { margin-top: 28px; gap: 12px; }
+html:not([data-layout="desktop"]) .ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-box { padding-left: 18px; }
+html:not([data-layout="desktop"]) .ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-send { padding: 0 14px; }
+html:not([data-layout="desktop"]) .ip-home.studio-next-page .home-hero .is-pill>.studio-conversation-start-examples { display: grid; grid-template-columns: repeat(2, auto); justify-content: center; gap: 2px 28px; }
+html:not([data-layout="desktop"]) .ip-home.studio-next-page .home-hero .is-pill>.studio-conversation-start-examples button { height: 28px; }
+/* 手机上发送只留圆形箭头（文字仍给读屏），提示语少折一行，胶囊不至于太厚。 */
+html:not([data-layout="desktop"]) .ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-send { width: 40px; padding: 0; justify-content: center; }
+html:not([data-layout="desktop"]) .ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-send>span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+html:not([data-layout="desktop"]) .ip-home.studio-next-page .home-hero .is-pill .studio-conversation-start-send svg { width: 17px; height: 17px; }
+
+/* 标题：一张字图，电脑上铺到页面两侧的留白里；文字给读屏，不显示。 */
+.home-title { margin: 0; line-height: 0; }
+.home-title-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.home-title-art { display: block; width: calc(100% + 96px); max-width: none; height: auto; margin: 0 -48px; filter: saturate(.65) brightness(1.04);
+  -webkit-mask-image: linear-gradient(90deg, #000 40%, transparent 60%); mask-image: linear-gradient(90deg, #000 40%, transparent 60%);
+  -webkit-mask-size: 260% 100%; mask-size: 260% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: 0 0; mask-position: 0 0;
+  animation: home-title-write 1800ms cubic-bezier(.45, 0, .2, 1) 120ms both; }
+@keyframes home-title-write { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0 0; mask-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .home-title-art { animation: none; } }
+/* 手机：图放大一点、裁掉两头只有细线的部分，字才不至于太小。 */
+html:not([data-layout="desktop"]) .home-title { margin: 0 -16px; overflow: hidden; }
+html:not([data-layout="desktop"]) .home-title-art { width: 120%; margin: 0 -10%; }
