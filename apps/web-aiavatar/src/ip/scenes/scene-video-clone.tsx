@@ -70,6 +70,19 @@ export function CloneModePicker({ mode, disabled, onChange, advice }: {
   </div>;
 }
 
+export function CloneOriginalAudio({ checked, disabled, onChange }: {
+  checked: boolean; disabled: boolean; onChange: (on: boolean) => void;
+}) {
+  return <div className="studio-clone-check">
+    <span id="studio-clone-original-audio-label">保留原声</span>
+    <Tooltip title="把原片的音轨合入成片。原片无声时，成片也无声。" placement="top">
+      <button type="button" className="studio-clone-help" aria-label="保留原声说明"><CircleHelp size={14} strokeWidth={1.8} aria-hidden="true"/></button>
+    </Tooltip>
+    <Switch size="small" checked={checked} disabled={disabled} onChange={onChange}
+      aria-labelledby="studio-clone-original-audio-label"/>
+  </div>;
+}
+
 export function CloneAutoCheck({ checked, disabled, onChange }: {
   checked: boolean; disabled: boolean; onChange: (on: boolean) => void;
 }) {

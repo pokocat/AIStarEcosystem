@@ -154,7 +154,8 @@ public final class StudioPlanSteps {
         boolean off=video.path("optimize").isBoolean()&&!video.path("optimize").asBoolean();
         // edit=true（元素替换，模型配了编辑原视频）：编辑参考视频，不照它重新生成。和 optimize 一样由确认制作时按任务补上（校验会重建 settings）。
         Boolean edit=video.path("edit").asBoolean(false)?Boolean.TRUE:null;
-        return new VideoSettings(mode,video.path("resolutionTier").asText(),seed,first,last,references.isEmpty()?null:references,off&&spec.rewrite()?Boolean.FALSE:null,!off&&spec.rewrite()?"auto":null,edit);
+        return new VideoSettings(mode,video.path("resolutionTier").asText(),seed,first,last,references.isEmpty()?null:references,off&&spec.rewrite()?Boolean.FALSE:null,!off&&spec.rewrite()?"auto":null,edit,
+                video.path("preserveSourceAudio").asBoolean(false)?Boolean.TRUE:null);
     }
     static List<JsonNode> ordered(JsonNode bindings) {
         List<JsonNode> out=new ArrayList<>();if(bindings.isArray())bindings.forEach(out::add);

@@ -57,7 +57,7 @@ import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 import { sceneScriptLayers } from "./scene-script-layers";
 import { classifyBlanks, missingFigures, overlongShots, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
-import { CloneAutoCheck, CloneModeGuide, CloneModePicker, cloneAdvice, cloneModeOf, cloneReferenceMode, cloneTool } from './scene-video-clone';
+import { CloneAutoCheck, CloneOriginalAudio, CloneModeGuide, CloneModePicker, cloneAdvice, cloneModeOf, cloneReferenceMode, cloneTool } from './scene-video-clone';
 
 type Media = StudioMediaImportResult & { title: string };
 type Slot = "image" | "character" | "voice" | "video";
@@ -144,6 +144,7 @@ export function SceneVideoStudio() {
   const [optimize, setOptimize] = useState(true);
   // 爆款复刻的「自动检查」：跟着草稿存，默认关
   const [autoCheck, setAutoCheck] = useState(false);
+  const [preserveSourceAudio, setPreserveSourceAudio] = useState(true);
   // 生成过一次就重新报价：可能刚设了默认付款账户，模型赠款也用掉了一些。
   const [priceRevision, setPriceRevision] = useState(0);
   const [hint, setHint] = useState("");
@@ -203,10 +204,10 @@ export function SceneVideoStudio() {
 
   // 每个场景没发出去的东西：一句话、选项、素材。离开时开着草稿就只记草稿号，回来时打开那份草稿（2026-10-30 审查 G03：
   // 以前开着草稿换场景全清空、没草稿换场景文字和图一起带走，两种做法不一样，而且门店照片会被当成商品图用）。
-  type Unsent = { text: string; picked: Record<string, string>; images: Media[]; character?: Media; voice?: Media; video?: Media; autoCheck?: boolean; customDuration?: number };
+  type Unsent = { text: string; picked: Record<string, string>; images: Media[]; character?: Media; voice?: Media; video?: Media; autoCheck?: boolean; preserveSourceAudio?: boolean; customDuration?: number };
   const unsent = useRef(new Map<string, Unsent | { draftId: string }>());
   const inputsNow = useRef<Unsent>({ text: "", picked: {}, images: [] });
-  inputsNow.current = { text, picked, images, character, voice, video, autoCheck, ...(clipCustom ? { customDuration: duration } : {}) };
+  inputsNow.current = { text, picked, images, character, voice, video, autoCheck, preserveSourceAudio, ...(clipCustom ? { customDuration: duration } : {}) };
 
   const showDraft = useCallback((project: IpProject | undefined, ticket?: number) => {
     const shown = show(project, ticket);
@@ -218,7 +219,7 @@ export function SceneVideoStudio() {
     setSelectedTask(undefined); setMobileView('compose');
     try { sessionStorage.removeItem(VIDEO_TASK_SELECTION); } catch { /* UI preference */ }
     showDraft(undefined, begin()); setText(""); setImages([]); setCharacter(undefined); setVoice(undefined); setVideo(undefined);
-    setView("compose"); setScriptId(undefined); setRevise(""); setHint(""); setTab("example"); setAutoCheck(false);
+    setView("compose"); setScriptId(undefined); setRevise(""); setHint(""); setTab("example"); setAutoCheck(false); setPreserveSourceAudio(true);
     setClipCustom(false);
     if (next) { setDuration(next.duration); writeQuery(next.id); }
   };
@@ -232,7 +233,7 @@ export function SceneVideoStudio() {
     const leaving = sceneNow.current, now = inputsNow.current, open = draftRef.current;
     if (leaving && leaving !== next.id) {
       if (open) unsent.current.set(leaving, { draftId: open.id });
-      else if (now.text.trim() || Object.keys(now.picked).length || now.images.length || now.character || now.voice || now.video || now.autoCheck || now.customDuration !== undefined) unsent.current.set(leaving, now);
+      else if (now.text.trim() || Object.keys(now.picked).length || now.images.length || now.character || now.voice || now.video || now.autoCheck || now.preserveSourceAudio === false || now.customDuration !== undefined) unsent.current.set(leaving, now);
       else unsent.current.delete(leaving);
     }
     const back = unsent.current.get(next.id);
@@ -241,7 +242,7 @@ export function SceneVideoStudio() {
     if (open) reset(next);
     pickScene(next);
     if (back && !("draftId" in back)) {
-      setText(back.text); setPicked(back.picked); setImages(back.images); setCharacter(back.character); setVoice(back.voice); setVideo(back.video); setAutoCheck(back.autoCheck === true);
+      setText(back.text); setPicked(back.picked); setImages(back.images); setCharacter(back.character); setVoice(back.voice); setVideo(back.video); setAutoCheck(back.autoCheck === true); setPreserveSourceAudio(back.preserveSourceAudio !== false);
       if (back.customDuration !== undefined) { setClipCustom(true); setDuration(back.customDuration); }
       setNote(undefined);
       return;
@@ -249,7 +250,7 @@ export function SceneVideoStudio() {
     const keepImages = !!from && from.images.label === next.images.label;
     const carried = { images: keepImages ? now.images.slice(0, next.images.max ?? 6) : [],
       character: next.character ? now.character : undefined, voice: next.voice ? now.voice : undefined, video: next.video ? now.video : undefined };
-    setText(""); setImages(carried.images); setCharacter(carried.character); setVoice(carried.voice); setVideo(carried.video); setAutoCheck(false);
+    setText(""); setImages(carried.images); setCharacter(carried.character); setVoice(carried.voice); setVideo(carried.video); setAutoCheck(false); setPreserveSourceAudio(true);
     const dropped = [now.images.length > carried.images.length && from ? from.images.label : "", now.character && !carried.character ? "出镜人物" : "",
       now.voice && !carried.voice ? "声音" : "", now.video && !carried.video ? "参考视频" : ""].filter(Boolean);
     // 单独一行灰字，不借用 hint：hint 是卡点（金色），借用会顶掉花费那行（2026-10-30 界面评审）。
@@ -288,7 +289,7 @@ export function SceneVideoStudio() {
       // 离开时的条件放回来：没发的那句话、选项、台词语言、清晰度、时长、画面、要不要先优化，停在「生成视频」时连改了一半的脚本一起
       // （存在草稿里，见 sceneVideoState；老草稿按最近一版脚本记的推断）。改稿因此沿用写那一版时的选项，不会悄悄回到默认值。
       const state = openedVideoState(project.doc, videoDefaults(from));
-      setCloneMode(cloneModeOf(state.cloneMode)); setAutoCheck(state.autoCheck === true);
+      setCloneMode(cloneModeOf(state.cloneMode)); setAutoCheck(state.autoCheck === true); setPreserveSourceAudio(state.preserveSourceAudio !== false);
       setText(state.edit ? state.edit.prompt ?? "" : state.text); setPicked(state.options); setLanguage(state.language!); setTier(state.tier); setOptimize(state.optimize!);
       // 草稿里记过时长才算用户定的；没记过的按场景默认值，同样先按模型单段上限出。
       setDuration(state.duration!); setRatio(state.ratio!); durationTouched.current = !!project.doc.sceneVideoState?.duration;
@@ -567,7 +568,9 @@ export function SceneVideoStudio() {
   // 复刻的时长默认跟随原片；也可以自己定，范围是模型单段的下限（深度复刻 / 元素替换还要够参考视频的下限）到原片时长，
   // 只截原片的前 N 秒来做（服务端 StudioCloneVideoPlan#minimumSeconds、StudioWorkflowService 的 limitSec）。
   const cloneRef = nativeClone ? cloneReferenceMode(chosenVideo) : undefined;
-  const canAddCloneVoice = cloneMode !== 'replacement' || cloneRef?.edit?.allowReferenceAudio !== false;
+  const hasNativeEdit = nativeClone && cloneMode === 'replacement' && !!cloneRef?.edit;
+  const keepSourceAudio = hasNativeEdit && preserveSourceAudio;
+  const canAddCloneVoice = !hasNativeEdit || (!keepSourceAudio && cloneRef?.edit?.allowReferenceAudio !== false);
   const cloneMin = Math.max(1, contract?.minSeconds ?? 1,
     !nativeClone ? 0 : cloneMode === 'replacement' && cloneRef?.edit ? cloneRef.edit.minSourceSec : cloneRef?.references?.video.minDurationSec ?? 0);
   // 这条参考视频适合哪种复刻方式（按切镜数和镜头时长，服务端 StudioCloneVideoPlan#advise）。拿不到就不显示推荐，不挡生成。
@@ -605,7 +608,7 @@ export function SceneVideoStudio() {
     : scene.video?.required && !video ? `请添加${scene.video.label}`
     : scene.images.required && !images.length ? `请添加${scene.images.label}`
     : scene.textRequired && !text.trim() ? "请填写要求"
-    : !canAddCloneVoice && voice ? "当前模型编辑原视频时无法添加独立参考声音，请先移除已选声音"
+    : !canAddCloneVoice && voice ? (keepSourceAudio ? "保留原声时请先移除独立参考声音" : "当前模型不支持独立参考声音，请先移除已选声音")
     : cloneDurationBlocker;
 
   /**
@@ -779,8 +782,8 @@ export function SceneVideoStudio() {
   // 页面上的条件写进草稿（有草稿时）：刷新、从「最近」再打开都从离开的地方接着来。素材另记在 sceneInputs、视频模型在 sceneVideoModel。
   // 采用过脚本时，编辑框里的就是（可能改过的）脚本，记成 edit；没采用时记成那句想法。
   const videoState = useMemo<StudioSceneVideoState>(() => ({ text: scriptId ? "" : text, options: picked, language, ...(tier ? { tier } : {}), duration, ratio, optimize,
-    ...(scene?.skill === RECREATION ? { cloneMode, durationMode: clipCustom ? 'custom' : 'source', ...(autoCheck ? { autoCheck: true } : {}) } : {}),
-    ...(scriptId ? { edit: { scriptId, prompt: text } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, scriptId, cloneMode, clipCustom, autoCheck, scene?.skill]);
+    ...(scene?.skill === RECREATION ? { cloneMode, durationMode: clipCustom ? 'custom' : 'source', ...(autoCheck ? { autoCheck: true } : {}), ...(preserveSourceAudio ? {} : { preserveSourceAudio: false }) } : {}),
+    ...(scriptId ? { edit: { scriptId, prompt: text } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, scriptId, cloneMode, clipCustom, autoCheck, preserveSourceAudio, scene?.skill]);
   useSceneStateSave("sceneVideoState", draft, videoState, persist, doc => openedVideoState(doc, videoDefaults(findVideoScene(catalogRef.current, draft?.sceneId))));
   const materials: SceneVideoMaterial[] = useMemo(() => {
     const nodes = doc.nodes as CanvasNodeData[];
@@ -1150,7 +1153,8 @@ export function SceneVideoStudio() {
         const clientRequestId = nanoid(), cap = taskQuote!.price!.cap;
         const configuration: StudioSegmentedVideoRequest = { clientRequestId, sceneId: scene.id, text: text.trim(), hasScript: !!scriptId,
           options: sceneOptionValues(scene.options, picked), language, duration: shownDuration, ratio,
-          model: taskModel, tier: usedTier, optimize: optimize || depthClone, materials, budgetCap: cap, ...(recreation ? { autoCheck } : {}) };
+          model: taskModel, tier: usedTier, optimize: optimize || depthClone, materials, budgetCap: cap, ...(recreation ? { autoCheck } : {}),
+          ...(kind === "replacement" && keepSourceAudio ? { preserveSourceAudio: true } : {}) };
         const native = kind === 'direct' ? addVideoRow({ ...draftRef.current!.doc, nodes }, { title: scene.title, prompt: sentPrompt, script: text.trim(), scriptId,
           refIds: plan!.used.map(m => placed.find(p => p.media.key === m.key)?.node.id).filter((id): id is string => !!id),
           video: settings!, durationSec: usedDuration, aspectRatio: ratio, model: taskModel, maxCost: videoQuote ?? undefined }).request : undefined;
@@ -1385,7 +1389,10 @@ export function SceneVideoStudio() {
         tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
         language={language} onLanguage={setLanguage} optimizable={!!chosenVideo?.supportsPromptOptimization} optimize={optimize || depthClone} onOptimize={setOptimize}
         optimizeFixed={depthClone}
-        extra={recreation && <CloneAutoCheck checked={autoCheck} disabled={busy || uploading !== undefined} onChange={setAutoCheck}/>}
+        extra={recreation && <>
+          {hasNativeEdit && <CloneOriginalAudio checked={preserveSourceAudio} disabled={busy || uploading !== undefined} onChange={setPreserveSourceAudio}/>}
+          <CloneAutoCheck checked={autoCheck} disabled={busy || uploading !== undefined} onChange={setAutoCheck}/>
+        </>}
         options={scene.options} picked={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))} onClose={() => setSettingsOpen(false)}/>}
     </div>;
 

@@ -317,7 +317,7 @@ public class MaterialVideoWorker {
         }
 
         try {
-            CdnMirrorResult mirror = mirrorToCdn(jobId, poll.videoUrl(), poll.thumbnailUrl(), poll.lastFrameUrl(),
+            CdnMirrorResult mirror = mirrorToCdn(job, poll.videoUrl(), poll.thumbnailUrl(), poll.lastFrameUrl(),
                     submit, poll.outputAssetId());
             storage.record(appCodeOf(job), job.getOwnerUserId(), storageCategoryOf(job), job.getScriptId(),
                     mirror.videoKey(), mirror.videoBytes());
@@ -360,7 +360,7 @@ public class MaterialVideoWorker {
         if (!props.isUploadToCdn() || cdnUploader == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
                 "VIDEO_CDN_NOT_CONFIGURED", "当前未配置成片存储");
         try {
-            var mirror = mirrorToCdn(job.getId(), poll.videoUrl(), poll.thumbnailUrl(), poll.lastFrameUrl(), submit, poll.outputAssetId());
+            var mirror = mirrorToCdn(job, poll.videoUrl(), poll.thumbnailUrl(), poll.lastFrameUrl(), submit, poll.outputAssetId());
             inTransaction(() -> {
                 var current = settlementJob(job.getId()).orElseThrow();
                 if (!"succeeded".equals(current.getStatus())) throw new IllegalStateException("video status changed during recovery");
@@ -475,7 +475,7 @@ public class MaterialVideoWorker {
                 }
                 if (props.isUploadToCdn() && cdnUploader != null) {
                     try {
-                        CdnMirrorResult mirror = mirrorToCdn(jobId, videoUrl, thumbnailUrl, lastFrameUrl,
+                        CdnMirrorResult mirror = mirrorToCdn(job, videoUrl, thumbnailUrl, lastFrameUrl,
                                 submit, poll.outputAssetId());
                         videoUrl = mirror.videoUrl();
                         thumbnailUrl = mirror.thumbnailUrl();
@@ -550,18 +550,27 @@ public class MaterialVideoWorker {
 
     // ── 成片持久化 ──────────────────────────────────────────────────────────
 
-    private CdnMirrorResult mirrorToCdn(String jobId, String videoUrl, String thumbnailUrl, String lastFrameUrl,
+    private CdnMirrorResult mirrorToCdn(MaterialVideoJob job, String videoUrl, String thumbnailUrl, String lastFrameUrl,
                                         MaterialVideoModelClient.SubmitResult submit, String outputAssetId)
             throws IOException, InterruptedException {
+        String jobId = job.getId();
         DownloadedMedia video = null;
+        Path withSourceAudio = null;
         DownloadedMedia thumbnail = null;
         DownloadedMedia lastFrame = null;
         try {
             video = outputAssetId != null && !outputAssetId.isBlank()
                     ? downloadProtectedOutput(submit, outputAssetId, "material-video-" + jobId)
                     : downloadMedia(videoUrl, "material-video-" + jobId, ".mp4", "video/mp4");
-            String videoKey = "material-videos/" + jobId + "/video" + video.extension();
-            var uploadedVideo = cdnUploader.upload(video.path(), videoKey, video.contentType());
+            var spec = VideoGenSpec.fromVariantConfigJson(job.getVariantConfigJson());
+            if (spec.preservesSourceAudio() && MaterialVideoJobService.APP_IPSTUDIO.equals(job.getApp())) {
+                String sourceKey = spec.references().stream().filter(ref -> "video".equals(ref.mediaType()))
+                        .map(VideoGenSpec.Reference::key).findFirst().orElseThrow();
+                withSourceAudio = MaterialVideoSourceAudio.restore(ffmpeg, files.openForRead(sourceKey), video.path());
+            }
+            Path delivery = withSourceAudio == null ? video.path() : withSourceAudio;
+            String videoKey = "material-videos/" + jobId + "/video" + (withSourceAudio == null ? video.extension() : ".mp4");
+            var uploadedVideo = cdnUploader.upload(delivery, videoKey, withSourceAudio == null ? video.contentType() : "video/mp4");
 
             String finalThumbnailUrl = thumbnailUrl;
             boolean coverStored = false;
@@ -605,6 +614,7 @@ public class MaterialVideoWorker {
             return new CdnMirrorResult(uploadedVideo.cdnUrl(), finalThumbnailUrl,
                     uploadedVideo.key(), uploadedVideo.uploadedBytes(), lastFrameKey);
         } finally {
+            if (withSourceAudio != null) try { Files.deleteIfExists(withSourceAudio); } catch (IOException ignored) { }
             deleteTemp(video);
             deleteTemp(thumbnail);
             deleteTemp(lastFrame);

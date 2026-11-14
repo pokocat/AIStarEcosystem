@@ -33,7 +33,7 @@ import java.util.Map;
  */
 public record VideoGenSpec(String generationMode, String resolutionTier, Long seed,
                            String firstFrameKey, String lastFrameKey, List<Reference> references,
-                           Boolean optimizePrompt, Boolean editSource) {
+                           Boolean optimizePrompt, Boolean editSource, Boolean preserveSourceAudio) {
 
     public static final String KEY_GENERATION_MODE = "generation_mode";
     public static final String KEY_RESOLUTION_TIER = "resolution_tier";
@@ -45,6 +45,7 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
     public static final String KEY_REFERENCE_KEY = "key";
     public static final String KEY_OPTIMIZE_PROMPT = "optimize_prompt";
     public static final String KEY_EDIT_SOURCE = "edit_source";
+    public static final String KEY_PRESERVE_SOURCE_AUDIO = "preserve_source_audio";
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -68,6 +69,12 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
     public VideoGenSpec(String generationMode, String resolutionTier, Long seed,
                         String firstFrameKey, String lastFrameKey, List<Reference> references, Boolean optimizePrompt) {
         this(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, optimizePrompt, null);
+    }
+
+    public VideoGenSpec(String generationMode, String resolutionTier, Long seed,
+                        String firstFrameKey, String lastFrameKey, List<Reference> references,
+                        Boolean optimizePrompt, Boolean editSource) {
+        this(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, optimizePrompt, editSource, null);
     }
 
     public VideoGenSpec {
@@ -109,17 +116,27 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
         return new VideoGenSpec(text(vc, KEY_GENERATION_MODE), text(vc, KEY_RESOLUTION_TIER), longOrNull(vc.get(KEY_SEED)),
                 text(vc, KEY_FIRST_FRAME), text(vc, KEY_LAST_FRAME), refs,
                 optimize != null && optimize.isBoolean() ? optimize.booleanValue() : null,
-                edit != null && edit.isBoolean() && edit.booleanValue() ? Boolean.TRUE : null);
+                edit != null && edit.isBoolean() && edit.booleanValue() ? Boolean.TRUE : null,
+                vc.path(KEY_PRESERVE_SOURCE_AUDIO).asBoolean(false) ? Boolean.TRUE : null);
     }
 
     /** 同一份规格，只改「出片前要不要让厂商改写提示词」。 */
     public VideoGenSpec withOptimizePrompt(Boolean value) {
-        return new VideoGenSpec(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, value, editSource);
+        return new VideoGenSpec(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, value, editSource, preserveSourceAudio);
     }
 
     /** 同一份规格，改成编辑参考视频（元素替换）。 */
     public VideoGenSpec withEditSource() {
-        return new VideoGenSpec(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, optimizePrompt, Boolean.TRUE);
+        return new VideoGenSpec(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, optimizePrompt, Boolean.TRUE, preserveSourceAudio);
+    }
+
+    public VideoGenSpec withSourceAudio() {
+        return new VideoGenSpec(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references,
+                optimizePrompt, editSource, Boolean.TRUE);
+    }
+
+    public boolean preservesSourceAudio() {
+        return Boolean.TRUE.equals(preserveSourceAudio);
     }
 
     /** 编辑参考视频而不是照它重新生成。 */
@@ -138,7 +155,7 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
      */
     public boolean hasNativeOptions() {
         return generationMode != null || resolutionTier != null || seed != null
-                || lastFrameKey != null || !references.isEmpty() || optimizePrompt != null || edits();
+                || lastFrameKey != null || !references.isEmpty() || optimizePrompt != null || edits() || preservesSourceAudio();
     }
 
     /**
@@ -165,6 +182,7 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
         if (lastFrameKey != null) vc.put(KEY_LAST_FRAME, lastFrameKey);
         if (optimizePrompt != null) vc.put(KEY_OPTIMIZE_PROMPT, optimizePrompt);
         if (edits()) vc.put(KEY_EDIT_SOURCE, true);
+        if (preservesSourceAudio()) vc.put(KEY_PRESERVE_SOURCE_AUDIO, true);
         if (!references.isEmpty()) {
             ArrayNode arr = vc.putArray(KEY_REFERENCE_INPUTS);
             for (Reference r : references) {

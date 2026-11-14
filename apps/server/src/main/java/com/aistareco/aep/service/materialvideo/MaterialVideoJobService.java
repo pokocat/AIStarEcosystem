@@ -592,6 +592,8 @@ public class MaterialVideoJobService {
         if (!APP_VIDEO_STUDIO.equals(app) && !APP_IPSTUDIO.equals(app) && spec.hasNativeOptions()) {
             throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "这里不支持指定生成模式、清晰度、尾帧或参考素材");
         }
+        if (spec.preservesSourceAudio() && !APP_IPSTUDIO.equals(app))
+            throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "这里不支持保留编辑原片的音轨");
         if (spec.firstFrameKey() != null && (app == null || !FIRST_FRAME_KEY_APPS.contains(app))) {  // Set.of 不收 null
             throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "这里不支持首帧参考图");
         }

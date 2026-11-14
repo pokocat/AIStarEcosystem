@@ -118,7 +118,13 @@ public final class StudioWorkflowDtos {
      */
     /** {@code edit}：编辑参考视频而不是照它重新生成（元素替换）；只有所选模式配了 edit 的模型能用，见 VideoStudioEditSpec。 */
     public record VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
-            List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt,String rewrite,Boolean edit) {
+            List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt,String rewrite,Boolean edit,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Boolean preserveSourceAudio) {
+        public VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
+                List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt,String rewrite,Boolean edit) {
+            this(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,optimizePrompt,rewrite,edit,null);
+        }
+
         public VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
                 List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt,String rewrite) {
             this(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,optimizePrompt,rewrite,null);
@@ -133,7 +139,7 @@ public final class StudioWorkflowDtos {
         }
         /** 交给视频模型时的设置：改写已做完，厂商不再改写。 */
         public VideoSettings submitted() {
-            return rewrite==null?this:new VideoSettings(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,Boolean.FALSE,null,edit);
+            return rewrite==null?this:new VideoSettings(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,Boolean.FALSE,null,edit,preserveSourceAudio);
         }
         public boolean edits() {
             return Boolean.TRUE.equals(edit);

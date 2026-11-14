@@ -18,6 +18,7 @@ export interface StudioVideoSettings {
    * review = 没有提示就直接出片，有提示停下来让用户选用优化稿还是原文（画布）。带它时服务端关掉厂商自己的改写。
    */
   rewrite?: "auto" | "review";
+  preserveSourceAudio?: boolean;
 }
 /** 智能优化的结果：发给模型的英文（台词已填好）、要用户判断的提示、已经自动处理好的小事、能不能直接用（超长不能用）。 */
 export interface StudioVideoPromptOptimization { text: string; warnings: string[]; notes?: string[]; usable: boolean }
@@ -636,6 +637,8 @@ export interface StudioSegmentedVideoRequest {
   model?: string; tier?: string; optimize?: boolean; materials: StudioSegmentedMaterial[];
   /** 爆款复刻：每段生成后自动检查，人或商品没换对重新生成一次（不写算开）。关掉时不检查也不重出。 */
   autoCheck?: boolean;
+  /** 元素替换生成后把原片音轨合回成片。 */
+  preserveSourceAudio?: boolean;
   /** 用户看到的「最多」（StudioSegmentedVideoPrice.cap）；服务端重新报价，对不上 409 STUDIO_PRICE_CHANGED。 */
   budgetCap: number; billing?: EnterpriseBillingSelection;
 }

@@ -370,6 +370,7 @@ export function openedVideoState(doc: IpProjectDoc, defaults: { language: string
   return { text: state.text, options: state.options, language: state.language ?? defaults.language, ...(state.tier ? { tier: state.tier } : {}),
     ...(state.cloneMode ? { cloneMode: state.cloneMode } : {}), ...(state.autoCheck === true ? { autoCheck: true } : {}),
     ...(state.durationMode ? { durationMode: state.durationMode } : {}),
+    ...(state.preserveSourceAudio === false ? { preserveSourceAudio: false } : {}),
     duration: state.duration ?? turn?.duration ?? defaults.duration, ratio: state.ratio ?? turn?.ratio ?? defaults.ratio,
     optimize: state.optimize ?? true, ...(edit ? { edit } : {}) };
 }

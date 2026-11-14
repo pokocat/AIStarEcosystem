@@ -805,6 +805,7 @@ components:
         firstFrameKey: { type: string, nullable: true }
         lastFrameKey: { type: string, nullable: true }
         references: { type: array, items: { $ref: '#/components/schemas/VideoStudioReferenceInput' } }
+        preserveSourceAudio: { type: boolean, description: 编辑原视频时将原片音轨合回成片 }
         optimizePrompt:
           type: boolean
           nullable: true
@@ -1607,6 +1608,7 @@ components:
         materials: { type: array, items: { $ref: '#/components/schemas/StudioSegmentedMaterial' } }
         budgetCap: { type: integer, format: int64 }
         billing: { type: object, additionalProperties: true }
+        preserveSourceAudio: { type: boolean, description: 元素替换生成后将原片音轨合回成片 }
         autoCheck: { type: boolean, description: 爆款复刻每段生成后自动检查，人或商品没换对重新生成一次；不写算开，false 时不检查也不重出。 }
     StudioSegmentedVideoPrice:
       type: object

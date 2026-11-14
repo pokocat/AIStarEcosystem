@@ -18,7 +18,14 @@ public final class StudioSegmentedDtos {
      */
     public record SegmentedVideoRequest(String clientRequestId, String sceneId, String text, Boolean hasScript, Map<String, String> options, String language,
                                         Integer duration, String ratio, String model, String tier, Boolean optimize, List<SegmentedMaterial> materials,
-                                        Long budgetCap, BillingSelection billing, Boolean autoCheck) {
+                                        Long budgetCap, BillingSelection billing, Boolean autoCheck,
+                                        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Boolean preserveSourceAudio) {
+        public SegmentedVideoRequest(String clientRequestId, String sceneId, String text, Boolean hasScript, Map<String, String> options, String language,
+                                     Integer duration, String ratio, String model, String tier, Boolean optimize, List<SegmentedMaterial> materials,
+                                     Long budgetCap, BillingSelection billing, Boolean autoCheck) {
+            this(clientRequestId, sceneId, text, hasScript, options, language, duration, ratio, model, tier, optimize, materials, budgetCap, billing, autoCheck, null);
+        }
+
         /** autoCheck：爆款复刻每段生成后自动检查（没换对的人或商品重出一次）；不写算开。 */
         public SegmentedVideoRequest(String clientRequestId, String sceneId, String text, Boolean hasScript, Map<String, String> options, String language,
                                      Integer duration, String ratio, String model, String tier, Boolean optimize, List<SegmentedMaterial> materials,

@@ -83,6 +83,19 @@ class MaterialVideoEditSourceTest {
     }
 
     @Test
+    void preserveSourceSoundIsFrozenAndProviderAudioIsDisabled() {
+        var configured = seedance(new VideoStudioEditSpec(4, 30, false,
+                Map.of("omni_reference_task_type", "edit", "generate_audio", true), false, 1));
+        var spec = reference(tier(configured), true).withEditSource().withSourceAudio();
+        var snapshot = om.createObjectNode();
+        spec.writeTo(snapshot);
+        var restored = VideoGenSpec.fromVariantConfig(snapshot);
+        assertTrue(restored.preservesSourceAudio());
+        assertEquals(Boolean.FALSE, client.buildSubmitBody("seedance", "seedance-2.5", "编辑视频",
+                30, "16:9", restored, urls(), configured).get("generate_audio"));
+    }
+
+    @Test
     @DisplayName("同一个端点不带编辑标记：照普通参考生成发页面选的画幅和秒数，不带编辑字段")
     void plainReferenceKeepsRequestedGeometry() throws Exception {
         var configured = seedance(SEEDANCE_25);

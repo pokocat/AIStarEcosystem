@@ -109,6 +109,7 @@ export interface StudioSceneVideoState {
   optimize?: boolean;
   /** 爆款复刻的「自动检查」：每段生成后检查人和商品是否换对，没换对重新生成一次。不写算开。 */
   autoCheck?: boolean;
+  preserveSourceAudio?: boolean;
   /** 停在「生成视频」时：照哪一版脚本、改到了什么样。 */
   edit?: { scriptId?: string; prompt: string };
 }

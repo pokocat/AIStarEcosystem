@@ -80,6 +80,9 @@ public class StudioVideoService {
         if(last.adjusted()!=null)adjustments.set("lastFrameAdjusted",last.adjusted());
         VideoStudioModel model=videoModel(endpointId);
         VideoStudioModeSpec modeSpec=v.edits()?editMode(modeSpec(model,v.mode()),v):modeSpec(model,v.mode());
+        if(Boolean.TRUE.equals(v.preserveSourceAudio())&&(!v.edits()||v.references().stream().filter(r->r!=null&&"video".equals(r.mediaType())).count()!=1
+                ||v.references().stream().anyMatch(r->r!=null&&"audio".equals(r.mediaType()))))
+            throw invalid("保留原声需要一段待编辑视频，且不能添加独立参考声音");
         // 「按原文生成」只对出片前会改写描述的模型有意义（同视频生成区的「智能优化」能力判定）；别的模型带着它就明确拒绝。
         if(v.optimizePrompt()!=null && !model.supportsPromptOptimization())
             throw BusinessException.badRequest("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不会改写描述，不需要选择「按原文生成」");
@@ -91,6 +94,7 @@ public class StudioVideoService {
                 :videos.prepareCanvas(userId,nativeRequest,validateMedia,"studio");
         var spec=prepared.spec();
         if(v.optimizePrompt()!=null)spec=spec.withOptimizePrompt(v.optimizePrompt());
+        if(Boolean.TRUE.equals(v.preserveSourceAudio()))spec=spec.withSourceAudio();
         return new Prepared(spec==prepared.spec()?prepared:new VideoStudioService.CanvasPreparation(spec,prepared.credits(),prepared.seedMax()),adjustments);
     }
 

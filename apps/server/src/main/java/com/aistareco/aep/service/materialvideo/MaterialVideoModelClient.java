@@ -864,6 +864,11 @@ public class MaterialVideoModelClient {
         if (spec.optimizePrompt() != null && !PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
             throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "所选视频模型不会改写描述，不需要选择「按原文生成」");
         }
+        if (spec.preservesSourceAudio()) {
+            long sources = spec.references().stream().filter(r -> "video".equals(r.mediaType())).count();
+            if (!spec.edits() || sources != 1 || spec.references().stream().anyMatch(r -> "audio".equals(r.mediaType())))
+                throw BusinessException.badRequest("VIDEO_STUDIO_INPUT_INVALID", "保留原声需要一段待编辑视频");
+        }
         if (configured != null && spec.isExplicit()) {
             var mode = configured.contract().modes().stream()
                     .filter(m -> m.mode().equals(spec.generationMode())).findFirst().orElse(null);
@@ -1189,6 +1194,7 @@ public class MaterialVideoModelClient {
                     body.put(field.getKey(), field.getValue());
                 }
             }
+            if (genSpec.preservesSourceAudio()) body.put("generate_audio", false);
             // 2026-10-31: Seedance-compatible gateways need not support this optional output.
             // Configured endpoints opt in via requestFields; retain the legacy native adapter default.
             if (configured == null)

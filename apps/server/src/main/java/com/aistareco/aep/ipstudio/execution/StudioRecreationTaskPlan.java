@@ -488,6 +488,7 @@ public final class StudioRecreationTaskPlan {
             // 深度复刻总是先优化提示词（StudioCloneVideoPlan.optimize）
             if("depth".equals(kind))video.put("optimize",true);
             if(edit)video.put("edit",true);
+            if(edit&&config.path("preserveSourceAudio").asBoolean(false))video.put("preserveSourceAudio",true);
             seconds+=settings.path("durationSec").asInt();
         }
         return new int[]{seconds,videos};

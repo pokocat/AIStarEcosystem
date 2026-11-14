@@ -275,6 +275,7 @@ public class StudioPlanExecutionService {
         state.path("canvasContextIds").forEach(v->allowed.add(v.asText()));
         for(JsonNode u:prepared.path("units"))if(u.hasNonNull("clipNodeId"))allowed.add(u.path("clipNodeId").asText());
         ObjectNode plan=StudioPlanValidator.validateSkillPlan(answer,rules,"production",allowed,StudioRecreationTaskPlan.MAX_MATERIALS);
+        StudioRecreationTaskPlan.applyPageSettings(plan,config,"replacement",edit!=null,ratio);
         plan.put("skillKey",rules.key()).put("skillVersion",rules.version()).put("stage","production").put("revision",1);
         quoter.quote(e.getOwnerUserId(),plan);
         quoter.estimate(e.getOwnerUserId(),plan);
