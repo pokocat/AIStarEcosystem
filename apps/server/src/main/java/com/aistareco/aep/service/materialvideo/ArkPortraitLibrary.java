@@ -31,6 +31,8 @@ public class ArkPortraitLibrary {
     public static final String VERSION="ark-portrait-v1-20261109";
     public static final String AGREEMENT="本人同意将所选人像素材提交火山引擎方舟，用于活体核验、人脸一致性比对、素材审核和存储，并仅供本人主动发起的视频创作使用。刷脸核验不等同于证件实名或公证。可在本页撤销授权；撤销后停止新增使用，并删除官方素材及素材组。";
     public static final String VIRTUAL_DECLARATION="本人确认拥有素材的合法使用及处分权限，该素材为 AI 生成的虚拟人像，不与任何自然人肖像或形象雷同，不侵害第三方权利。";
+    /** Platform-owned approvals for free official avatar reference sheets. */
+    static final String OFFICIAL_AVATAR_OWNER = "system:studio-official-avatars";
     private static final Logger log = LoggerFactory.getLogger(ArkPortraitLibrary.class);
     private static final String SUBMISSION_UNKNOWN = ArkAssetClient.SUBMISSION_UNKNOWN;
     private static final ObjectMapper JSON=new ObjectMapper();
@@ -92,10 +94,28 @@ public class ArkPortraitLibrary {
     public List<Item> itemsFor(String owner,String lib,Collection<String> keys) {
         var result=new ArrayList<Item>();
         for(String key:new LinkedHashSet<>(keys)) {
+            var official = approvedOfficialAvatar(lib, key);
+            if (official.isPresent()) {
+                result.add(item(official.get()));
+                continue;
+            }
             var rows=db.queryForList("SELECT * FROM video_asset_portrait WHERE id=? AND owner_user_id=?",hash(owner,lib,key),owner);
             if(!rows.isEmpty())result.add(item(rows.get(0)));
         }
         return result;
+    }
+
+    private Optional<Map<String, Object>> approvedOfficialAvatar(String libraryId, String key) {
+        if (!key.startsWith("dap_plaza/platform/")) return Optional.empty();
+        return db.queryForList("""
+            SELECT p.* FROM video_asset_portrait p
+            WHERE p.id=? AND p.owner_user_id=? AND p.library_id=? AND p.source_key=?
+                AND p.status='active' AND p.placement='virtual' AND p.media_type='image'
+                AND p.person_id IS NULL AND p.asset_id LIKE 'asset-%'
+                AND EXISTS (SELECT 1 FROM dap_public_avatar a WHERE a.three_view_key=p.source_key
+                    AND a.created_by_user_id='platform' AND a.access='free' AND a.id NOT IN ('PA-07','PA-08','PA-09'))
+            """, hash(OFFICIAL_AVATAR_OWNER, libraryId, key), OFFICIAL_AVATAR_OWNER, libraryId, key)
+                .stream().findFirst();
     }
     public Item register(String owner,String libraryId,String key,String mediaType,String label) {
         library(libraryId);key=projects.requireOwnedAssetKey(owner,key);
@@ -120,6 +140,7 @@ public class ArkPortraitLibrary {
         String official = referenceError(response);
         boolean needsReview=false;
         for(int i:indices) {
+            if (approvedOfficialAvatar(libraryId, keys.get(i)).isPresent()) continue;
             var item=register(owner,libraryId,keys.get(i),types.get(i),"参考素材 "+(i+1));
             if (official != null && "needs_review".equals(item.status())) {
                 db.update("""
@@ -141,6 +162,8 @@ public class ArkPortraitLibrary {
     /** All undeclared nonportrait inputs retain signed URLs. Known portraits can only use Active references. */
     public String reference(String owner,String libraryId,String key) {
         library(libraryId);
+        var official = approvedOfficialAvatar(libraryId, key);
+        if (official.isPresent()) return "asset://" + official.get().get("asset_id");
         var rows=db.queryForList("SELECT * FROM video_asset_portrait WHERE id=? AND owner_user_id=?",hash(owner,libraryId,key),owner);
         if(rows.isEmpty())return storage.upstreamFetchUrl(key);
         var r=rows.get(0);

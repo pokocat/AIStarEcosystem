@@ -93,6 +93,8 @@ VideoAssetLibrary（适配器）         ← 新增接口
 
 **火山入库步骤（虚拟人像）：** `CreateAssetGroup`（`GroupType=AIGC`，平台共用一个组）→ `CreateAsset` → 轮询 `GetAsset` 到 `Active`。
 
+Studio 自制官方形象的合成设定图由平台统一申报，审核结果以平台主体 `system:studio-official-avatars` 保存在同一素材库。只有仍在架的免费官方设定图可以复用平台的 `active` 虚拟人像记录。生成前检查直接识别该记录，提交时传同一火山项目的 `asset://`。个人的人像、核验和授权仍按用户隔离。头像仅用于列表预览。OneToken 使用各凭据作用域的临时回执，过期时由生成链自动重新上传。
+
 **火山入库步骤（真人）：** `CreateVisualValidateSession` 拿 `H5Link` 和 `BytedToken` → 本人刷脸 → 浏览器回到我们的回调地址，`resultCode=10000` 算通过 → `GetVisualValidateResult` 拿 `GroupId`（`BytedToken` 30 分钟内有效）→ `CreateAsset` 传该组 → 人脸比对 → 轮询到 `Active`。
 
 ## 6. 素材怎么分流
